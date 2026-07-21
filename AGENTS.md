@@ -46,8 +46,9 @@ Before the first remote push:
    violations in one run while returning non-zero if any violation exists.
    Keep checks for canonical identity, contacts, repository metadata, public-
    safe language, and standalone content.
-4. Gate scheduled live smoke with a `LIVE_SMOKE_ENABLED` repository variable.
-   An unset or non-true value must prevent live execution. Keep
+4. Gate scheduled and manually dispatched live smoke with a
+   `LIVE_SMOKE_ENABLED` repository variable. An unset or non-true value must
+   prevent live execution. Keep
    `RELEASE_PLEASE_ENABLED` disabled through the initial manual alpha.
 5. Make the release live-model setting use `gpt-5.4` when
    `COMETAPI_LIVE_MODEL` is unset or empty; never allow an empty model value.

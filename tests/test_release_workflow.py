@@ -380,13 +380,43 @@ def test_semantic_contract_rejects_split_monitoring_live_concurrency() -> None:
         )
 
 
-def test_semantic_contract_rejects_ungated_scheduled_live_smoke() -> None:
-    live_smoke = LIVE_SMOKE_WORKFLOW.read_text(encoding="utf-8").replace(
+@pytest.mark.parametrize(
+    "replacement",
+    [
+        "github.event_name == 'workflow_dispatch'",
         "(github.event_name == 'workflow_dispatch' || vars.LIVE_SMOKE_ENABLED == 'true')",
+        "vars.LIVE_SMOKE_ENABLED != 'false'",
+        "vars.LIVE_SMOKE_ENABLED == 'true'\n      || github.event_name == 'workflow_dispatch'",
+    ],
+    ids=["manual-only", "manual-bypass", "non-exact-opt-in", "continued-manual-bypass"],
+)
+def test_semantic_contract_rejects_live_smoke_gate_bypasses(replacement: str) -> None:
+    live_smoke = LIVE_SMOKE_WORKFLOW.read_text(encoding="utf-8").replace(
+        "vars.LIVE_SMOKE_ENABLED == 'true'",
+        replacement,
+        1,
+    )
+    with pytest.raises(RuntimeError, match="every trigger"):
+        check_publish_workflow(
+            PUBLISH_WORKFLOW.read_text(encoding="utf-8"),
+            live_smoke,
+        )
+
+
+def test_semantic_contract_checks_live_smoke_gate_on_smoke_job() -> None:
+    live_smoke = LIVE_SMOKE_WORKFLOW.read_text(encoding="utf-8").replace(
+        "vars.LIVE_SMOKE_ENABLED == 'true'",
         "github.event_name == 'workflow_dispatch'",
         1,
     )
-    with pytest.raises(RuntimeError, match="LIVE_SMOKE_ENABLED=true"):
+    live_smoke += """
+  decoy:
+    if: >-
+      github.ref == format('refs/heads/{0}', github.event.repository.default_branch) &&
+      vars.LIVE_SMOKE_ENABLED == 'true'
+    runs-on: ubuntu-latest
+"""
+    with pytest.raises(RuntimeError, match="every trigger"):
         check_publish_workflow(
             PUBLISH_WORKFLOW.read_text(encoding="utf-8"),
             live_smoke,
