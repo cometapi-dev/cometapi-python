@@ -39,11 +39,11 @@ The package manifest uses `authors = [{ name = "CometAPI" }]`. Remove
 `.github/CODEOWNERS` and its validation dependencies; it is not required while
 the project has one active maintainer.
 
-Before the first push, require `LIVE_SMOKE_ENABLED=true` for scheduled live
-execution and keep `RELEASE_PLEASE_ENABLED` disabled through the initial manual
-alpha. An unset or non-true value prevents the corresponding workflow from
-running. The release live-model configuration resolves an unset or empty
-`COMETAPI_LIVE_MODEL` to `gpt-5.4`.
+Before the first push, require `LIVE_SMOKE_ENABLED=true` for scheduled and
+manually dispatched live execution, and keep `RELEASE_PLEASE_ENABLED` disabled
+through the initial manual alpha. An unset or non-true value prevents the
+corresponding gated job from executing. The release live-model configuration
+resolves an unset or empty `COMETAPI_LIVE_MODEL` to `gpt-5.4`.
 
 The private stage validates sanitized history, the complete local gate, and
 real credential-free default-branch CI only. Do not configure or exercise
@@ -128,8 +128,8 @@ violations in one run and still returns non-zero when any violation exists.
   is ongoing monitoring only and cannot satisfy a release gate. It is capped at
   four requests, 16 output tokens
   per generation, a 30-second request timeout, concurrency one, a ten-minute
-  workflow timeout, and stop on the first failure. Scheduled execution also
-  requires `LIVE_SMOKE_ENABLED=true`.
+  workflow timeout, and stop on the first failure. Every trigger requires
+  `LIVE_SMOKE_ENABLED=true`.
 - `release-please.yml` maintains a human-reviewed version and changelog pull
   request from Conventional Commits after maintainers enable the
   `RELEASE_PLEASE_ENABLED` repository variable. Keep it disabled until the

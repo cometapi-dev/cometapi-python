@@ -93,8 +93,8 @@ jobs:
     timeout-minutes: 10
     permissions:
       contents: read
-    # Required repository configuration: protect this environment, require reviewers, and
-    # configure COMETAPI_KEY plus the approved COMETAPI_LIVE_MODEL variable.
+    # Required repository configuration: protect this environment without required reviewers,
+    # and configure COMETAPI_KEY plus the approved COMETAPI_LIVE_MODEL variable.
     environment: live-smoke
     env:
       COMETAPI_LIVE_CONCURRENCY: "1"

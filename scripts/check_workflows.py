@@ -23,13 +23,13 @@ def _require_pattern(text: str, pattern: str, message: str) -> None:
         raise CheckError(message)
 
 
-def _job(text: str, name: str) -> str:
+def _job(text: str, name: str, *, source: str = "publish workflow") -> str:
     match = re.search(
         rf"(?ms)^  {re.escape(name)}:\n(?P<body>.*?)(?=^  [a-zA-Z0-9_-]+:\n|\Z)",
         text,
     )
     if match is None:
-        raise CheckError(f"publish workflow has no {name!r} job")
+        raise CheckError(f"{source} has no {name!r} job")
     return match.group(0)
 
 
@@ -135,20 +135,21 @@ def check_publish_workflow(text: str, live_smoke_text: str) -> None:
     if write_permissions != ["id-token"]:
         raise CheckError("id-token: write on the publish job must be the only write permission")
 
+    monitoring_live = _job(live_smoke_text, "smoke", source="live-smoke workflow")
     _require_pattern(
         live_smoke_text,
         r"(?m)^concurrency:\n  group: trusted-live-smoke\n  cancel-in-progress: false$",
         "release and monitoring live smokes must share one non-cancelling concurrency group",
     )
-    _require(
-        live_smoke_text,
-        "(github.event_name == 'workflow_dispatch' || vars.LIVE_SMOKE_ENABLED == 'true')",
-        "scheduled live smoke must require LIVE_SMOKE_ENABLED=true",
-    )
-    _require(
-        live_smoke_text,
-        "github.ref == format('refs/heads/{0}', github.event.repository.default_branch)",
-        "monitoring live smoke must run only against the canonical default branch",
+    _require_pattern(
+        monitoring_live,
+        r"(?m)^    if: >-\n"
+        r"      github\.ref == format\('refs/heads/\{0\}', "
+        r"github\.event\.repository\.default_branch\) &&\n"
+        r"      vars\.LIVE_SMOKE_ENABLED == 'true'\n"
+        r"    runs-on:",
+        "monitoring live smoke must run only against the canonical default branch and "
+        "require LIVE_SMOKE_ENABLED=true for every trigger",
     )
 
     build = _job(text, "build")

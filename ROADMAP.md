@@ -216,8 +216,9 @@ All workflow files must pass local `actionlint` 1.7.12. This is static
 validation only. Remote behavior remains unverified until each workflow runs
 successfully in the canonical GitHub repository.
 
-Scheduled live smoke must additionally require `LIVE_SMOKE_ENABLED=true`; an
-unset or other value prevents live execution. Release Please requires
+Scheduled and manually dispatched live smoke must require
+`LIVE_SMOKE_ENABLED=true`; an unset or other value prevents live execution.
+Release Please requires
 `RELEASE_PLEASE_ENABLED=true` and remains disabled through the initial manual
 alpha. Release jobs must resolve an unset or empty `COMETAPI_LIVE_MODEL` to
 `gpt-5.4` rather than attempt a request with an empty model.
