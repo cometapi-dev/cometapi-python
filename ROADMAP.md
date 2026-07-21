@@ -1,7 +1,7 @@
 # CometAPI Python SDK Roadmap
 
 Status: `0.1.0a1` in progress
-Last updated: 2026-07-20
+Last updated: 2026-07-21
 Repository contract: this roadmap is self-contained.
 
 ## Product target
@@ -10,18 +10,18 @@ The SDK provides the shortest reliable path from an OpenAI Python integration
 to CometAPI while preserving official request, response, error, retry, timeout,
 sync, async, and streaming behavior.
 
-The current target is to complete Private Remote Validation for a sanitized
-repository and then stop before its visibility changes. Public Preview and the
-functional `0.1.0a1` prerelease follow as separate evidence gates. Support and
-release claims remain limited to the evidence defined in this roadmap and
+Private Remote Validation is complete for the sanitized repository, which
+remains private. Work stops before any visibility change. Public Preview and
+the functional `0.1.0a1` prerelease remain separate evidence gates. Support
+and release claims remain limited to the evidence defined in this roadmap and
 `COMPATIBILITY.md`.
 
 ## Milestones
 
 | Milestone | Status | Exit outcome |
 | --- | --- | --- |
-| Repository foundation | In progress | Public files, offline gates, packaging checks, and self-containment are complete. |
-| Private Remote Validation | Planned | The sanitized private repository passes real credential-free default-branch CI; public-only controls and live tests remain disabled. |
+| Repository foundation | Complete | Public files, offline gates, packaging checks, and self-containment are complete. |
+| Private Remote Validation | Complete | The sanitized private repository passes real credential-free default-branch CI; public-only controls and live tests remain disabled. |
 | Public Preview | Planned | The public repository has blocking CI, repository rules, security reporting, protected environments, and authorized live-smoke evidence before it claims preview readiness. |
 | `0.1.0a1` Registry Alpha | Planned | Early adopters can install a functional prerelease from PyPI. |
 | `0.1.0` stable | Planned | Complete runtime, release-PR, example, provenance, and registry gates pass. |
@@ -81,6 +81,19 @@ The private repository is created empty, without generated starter files, so
 the sanitized local content becomes its first history. This stage ends after
 real credential-free default-branch CI is recorded. It does not change
 visibility or publish to a private or public registry.
+
+Recorded evidence on 2026-07-21:
+
+- The empty private canonical repository received sanitized root commit
+  `7bbffde609e2a5767c3ac1a8b6387ca9744c9e44`.
+- Credential-free default-branch
+  [CI run 29796686485](https://github.com/cometapi-dev/cometapi-python/actions/runs/29796686485)
+  completed successfully for that commit. Blocking Python 3.10 through 3.14,
+  minimum-OpenAI, quality, workflow, package, clean-install, and copied-checkout
+  jobs passed; the push-only latest-within-major canary skipped as designed.
+- Release Please remained disabled and its push run skipped. The repository
+  remained private, and no live request, public-only control, tag, release, or
+  package publication was configured or exercised.
 
 ## Public Preview
 
