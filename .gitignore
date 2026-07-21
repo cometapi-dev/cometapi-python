@@ -1,0 +1,32 @@
+# Python
+__pycache__/
+*.pyc
+*.pyo
+.mypy_cache/
+.pytest_cache/
+.pyright/
+.ruff_cache/
+.cache/
+.coverage
+htmlcov/
+
+# Virtual environment
+.venv/
+
+# Build artifacts
+dist/
+build/
+*.egg-info/
+
+# Environment
+.env
+.env.*
+.envrc
+.netrc
+*.key
+*.p12
+*.pem
+*.pfx
+
+# macOS
+.DS_Store

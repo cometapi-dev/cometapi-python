@@ -1,0 +1,222 @@
+#!/usr/bin/env python3
+"""Inspect wheel and sdist identity, metadata, paths, and package shape."""
+
+from __future__ import annotations
+
+import argparse
+import re
+import tarfile
+import zipfile
+from pathlib import Path, PurePosixPath
+
+from _checks import (
+    CANONICAL_AUTHOR,
+    CANONICAL_PROJECT_URLS,
+    CheckError,
+    normalize_version,
+    parse_metadata,
+    read_project_version,
+    sha256_file,
+)
+
+REQUIRED_PACKAGE_FILES = {
+    "cometapi/__init__.py",
+    "cometapi/_config.py",
+    "cometapi/client.py",
+    "cometapi/py.typed",
+}
+REQUIRED_SDIST_FILES = {
+    "AGENTS.md",
+    "ARCHITECTURE.md",
+    "CHANGELOG.md",
+    "CODE_OF_CONDUCT.md",
+    "COMPATIBILITY.md",
+    "CONTRIBUTING.md",
+    "LICENSE",
+    "README.md",
+    "RELEASING.md",
+    "ROADMAP.md",
+    "SECURITY.md",
+    "SUPPORT.md",
+    "pyproject.toml",
+    "scripts/_checks.py",
+    "scripts/check_artifacts.py",
+    "scripts/check_clean_install.py",
+    "scripts/check_repository_independence.py",
+    "scripts/check_registry_release.py",
+    "scripts/check_secrets.py",
+    "scripts/check_version.py",
+    "scripts/check_workflows.py",
+    "scripts/run_actionlint.py",
+    "scripts/verify_release_trust.sh",
+    "src/cometapi/__init__.py",
+    "src/cometapi/_config.py",
+    "src/cometapi/client.py",
+    "src/cometapi/py.typed",
+    "tests/__init__.py",
+    "tests/conftest.py",
+    "tests/live/__init__.py",
+    "tests/live/test_live_smoke.py",
+    "tests/test_client.py",
+    "tests/test_contract.py",
+    "tests/test_release_documents.py",
+    "tests/test_release_workflow.py",
+    "tests/typing/constructor_contract.py",
+}
+OPTIONAL_SDIST_FILES = {".gitignore"}
+FORBIDDEN_PARTS = {
+    ".DS_Store",
+    ".env",
+    ".git",
+    ".mypy_cache",
+    ".pytest_cache",
+    ".ruff_cache",
+    ".venv",
+    "__pycache__",
+    "dist",
+}
+
+
+def _safe_path(name: str, source: Path) -> PurePosixPath:
+    path = PurePosixPath(name)
+    if path.is_absolute() or ".." in path.parts or not path.parts:
+        raise CheckError(f"{source.name}: unsafe archive path {name!r}")
+    if any(part in FORBIDDEN_PARTS for part in path.parts) or path.suffix == ".pyc":
+        raise CheckError(f"{source.name}: forbidden archive path {name!r}")
+    return path
+
+
+def _check_metadata(raw: bytes, source: str, expected_version: str) -> None:
+    metadata = parse_metadata(raw, source)
+    actual_version = normalize_version(str(metadata["Version"]))
+    if actual_version != expected_version:
+        raise CheckError(
+            f"{source}: metadata version {actual_version} does not equal {expected_version}"
+        )
+    requirements = metadata.get_all("Requires-Dist", [])
+    openai = [value.replace(" ", "") for value in requirements if value.startswith("openai")]
+    if len(openai) != 1 or ">=2.45.0" not in openai[0] or "<3.0.0" not in openai[0]:
+        raise CheckError(
+            f"{source}: expected one openai>=2.45.0,<3.0.0 runtime requirement; got {requirements}"
+        )
+    unexpected = [value for value in requirements if not value.startswith("openai")]
+    if unexpected:
+        raise CheckError(f"{source}: unexpected direct runtime requirements: {unexpected}")
+    if metadata.get("Author") != CANONICAL_AUTHOR:
+        raise CheckError(f"{source}: expected Author: {CANONICAL_AUTHOR}")
+    project_urls: dict[str, str] = {}
+    for value in metadata.get_all("Project-URL", []):
+        label, separator, url = value.partition(",")
+        if separator:
+            project_urls[label.strip()] = url.strip()
+    for label, expected in CANONICAL_PROJECT_URLS.items():
+        if project_urls.get(label) != expected:
+            raise CheckError(f"{source}: expected Project-URL {label}, {expected}")
+
+
+def _check_wheel(path: Path, expected_version: str) -> None:
+    expected_fragment = f"cometapi-{expected_version}-"
+    if expected_fragment not in path.name:
+        raise CheckError(f"{path.name}: filename does not contain {expected_fragment!r}")
+    with zipfile.ZipFile(path) as archive:
+        paths = [_safe_path(info.filename, path) for info in archive.infolist()]
+        names = {item.as_posix() for item in paths}
+        missing = REQUIRED_PACKAGE_FILES - names
+        if missing:
+            raise CheckError(f"{path.name}: missing package files: {sorted(missing)}")
+        package_files = {
+            name for name in names if name.startswith("cometapi/") and not name.endswith("/")
+        }
+        extra_package_files = package_files - REQUIRED_PACKAGE_FILES
+        if extra_package_files:
+            raise CheckError(
+                f"{path.name}: unexpected package files: {sorted(extra_package_files)}"
+            )
+        unexpected = [
+            name for name in names if not (name.startswith("cometapi/") or ".dist-info/" in name)
+        ]
+        if unexpected:
+            raise CheckError(f"{path.name}: unexpected wheel members: {sorted(unexpected)}")
+        metadata_names = [name for name in names if name.endswith(".dist-info/METADATA")]
+        if len(metadata_names) != 1:
+            raise CheckError(f"{path.name}: expected exactly one .dist-info/METADATA")
+        _check_metadata(
+            archive.read(metadata_names[0]), f"{path.name}:{metadata_names[0]}", expected_version
+        )
+        for source_name in ("cometapi/__init__.py", "cometapi/client.py"):
+            text = archive.read(source_name).decode("utf-8")
+            if re.search(r"\b(?:CometClient|AsyncCometClient)\b", text):
+                raise CheckError(f"{path.name}:{source_name}: legacy public client name remains")
+
+
+def _check_sdist(path: Path, expected_version: str) -> None:
+    expected_root = f"cometapi-{expected_version}"
+    if path.name != f"{expected_root}.tar.gz":
+        raise CheckError(f"{path.name}: expected sdist filename {expected_root}.tar.gz")
+    with tarfile.open(path, mode="r:gz") as archive:
+        members = archive.getmembers()
+        paths = [_safe_path(member.name, path) for member in members]
+        if any(member.issym() or member.islnk() or member.isdev() for member in members):
+            raise CheckError(f"{path.name}: links and device members are forbidden")
+        if any(item.parts[0] != expected_root for item in paths):
+            raise CheckError(f"{path.name}: every member must be below {expected_root}/")
+        relative_files = {
+            PurePosixPath(*item.parts[1:]).as_posix()
+            for member, item in zip(members, paths, strict=True)
+            if member.isfile()
+        }
+        missing = REQUIRED_SDIST_FILES - relative_files
+        if missing:
+            raise CheckError(f"{path.name}: missing sdist files: {sorted(missing)}")
+        expected_files = REQUIRED_SDIST_FILES | OPTIONAL_SDIST_FILES | {"PKG-INFO"}
+        unexpected = sorted(relative_files - expected_files)
+        if unexpected:
+            raise CheckError(f"{path.name}: unexpected sdist files: {unexpected}")
+        metadata_members = [
+            member for member in members if PurePosixPath(member.name).name == "PKG-INFO"
+        ]
+        if len(metadata_members) != 1:
+            raise CheckError(f"{path.name}: expected exactly one PKG-INFO")
+        stream = archive.extractfile(metadata_members[0])
+        if stream is None:
+            raise CheckError(f"{path.name}: cannot read PKG-INFO")
+        _check_metadata(stream.read(), f"{path.name}:PKG-INFO", expected_version)
+
+
+def _artifacts(arguments: list[str]) -> list[Path]:
+    paths = [Path(value).resolve() for value in arguments]
+    if not paths:
+        paths = sorted(Path("dist").glob("cometapi-*.whl")) + sorted(
+            Path("dist").glob("cometapi-*.tar.gz")
+        )
+    if not paths or any(not path.is_file() for path in paths):
+        raise CheckError("artifact arguments must name existing files")
+    wheels = [path for path in paths if path.suffix == ".whl"]
+    sdists = [path for path in paths if path.name.endswith(".tar.gz")]
+    if len(wheels) != 1 or len(sdists) != 1 or len(paths) != 2:
+        raise CheckError("expected exactly one wheel and one .tar.gz source distribution")
+    return paths
+
+
+def main() -> int:
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("artifacts", nargs="*", help="wheel and sdist (defaults to dist/)")
+    parser.add_argument("--expected-version", default=read_project_version())
+    args = parser.parse_args()
+    expected_version = normalize_version(args.expected_version)
+    paths = _artifacts(args.artifacts)
+    for path in paths:
+        if path.suffix == ".whl":
+            _check_wheel(path, expected_version)
+        else:
+            _check_sdist(path, expected_version)
+        print(f"{sha256_file(path)}  {path}")
+    print(f"artifact checks passed for cometapi {expected_version}")
+    return 0
+
+
+if __name__ == "__main__":
+    try:
+        raise SystemExit(main())
+    except CheckError as error:
+        raise SystemExit(f"artifact check failed: {error}") from error

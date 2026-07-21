@@ -1,0 +1,8 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Report a vulnerability privately
+    url: https://github.com/cometapi-dev/cometapi-python/security/advisories/new
+    about: Use the private security advisory form instead of a public issue.
+  - name: Private support and conduct contact
+    url: mailto:support@cometapi.com
+    about: Email CometAPI for matters that should not be discussed publicly.

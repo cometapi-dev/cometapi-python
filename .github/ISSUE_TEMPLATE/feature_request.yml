@@ -1,0 +1,55 @@
+name: Feature request
+description: Propose a focused SDK improvement
+title: "feat: "
+labels:
+  - enhancement
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Describe the user problem before proposing an API. The 0.1 surface is intentionally narrow; later milestones are tracked in ROADMAP.md.
+  - type: textarea
+    id: problem
+    attributes:
+      label: User problem
+      description: What cannot be done reliably with the current supported surface?
+    validations:
+      required: true
+  - type: textarea
+    id: outcome
+    attributes:
+      label: Desired outcome
+      description: Describe observable behavior rather than only an implementation.
+    validations:
+      required: true
+  - type: dropdown
+    id: milestone
+    attributes:
+      label: Likely scope
+      options:
+        - Existing 0.1 supported operation
+        - Packaging, typing, documentation, or tooling
+        - Future provider-native adapter
+        - Future CometAPI-specific resource
+        - Future media or task API
+        - Unsure
+    validations:
+      required: true
+  - type: textarea
+    id: compatibility
+    attributes:
+      label: Compatibility considerations
+      description: Note upstream OpenAI behavior, types, runtime support, or migration impact.
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered
+  - type: checkboxes
+    id: acknowledgements
+    attributes:
+      label: Acknowledgements
+      options:
+        - label: I understand that a request does not expand the current 0.1 release scope automatically.
+          required: true
+        - label: I did not include credentials, customer data, or private service information.
+          required: true

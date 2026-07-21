@@ -1,0 +1,99 @@
+[project]
+name = "cometapi"
+version = "0.1.0a1"
+description = "Typed OpenAI-compatible Python client for the CometAPI gateway"
+readme = "README.md"
+requires-python = ">=3.10"
+authors = [{ name = "CometAPI" }]
+license = "MIT"
+license-files = ["LICENSE"]
+keywords = ["ai", "cometapi", "openai", "sdk"]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Programming Language :: Python :: 3.14",
+    "Typing :: Typed",
+]
+dependencies = ["openai>=2.45.0,<3.0.0"]
+
+[project.urls]
+Homepage = "https://www.cometapi.com"
+Documentation = "https://apidoc.cometapi.com/"
+Repository = "https://github.com/cometapi-dev/cometapi-python"
+Issues = "https://github.com/cometapi-dev/cometapi-python/issues"
+Support = "mailto:support@cometapi.com"
+Security = "https://github.com/cometapi-dev/cometapi-python/security/advisories/new"
+
+[dependency-groups]
+dev = [
+    "build>=1.3.0,<2.0.0",
+    "httpx>=0.28.1,<1.0.0",
+    "packaging>=24.2,<27.0",
+    "pyright>=1.1.408,<2.0.0",
+    "pytest>=8.3.5,<10.0.0",
+    "pytest-asyncio>=0.24.0,<2.0.0",
+    "ruff>=0.12.0,<1.0.0",
+    "tomli>=2.2.1,<3.0.0",
+    "twine>=6.1.0,<7.0.0",
+]
+
+[build-system]
+requires = ["hatchling>=1.27.0,<2.0.0"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.sdist]
+include = [
+    "/AGENTS.md",
+    "/ARCHITECTURE.md",
+    "/CHANGELOG.md",
+    "/CODE_OF_CONDUCT.md",
+    "/COMPATIBILITY.md",
+    "/CONTRIBUTING.md",
+    "/LICENSE",
+    "/README.md",
+    "/RELEASING.md",
+    "/ROADMAP.md",
+    "/SECURITY.md",
+    "/SUPPORT.md",
+    "/pyproject.toml",
+    "/scripts",
+    "/src",
+    "/tests",
+]
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/cometapi"]
+
+[tool.pyright]
+include = ["src", "tests", "scripts"]
+pythonVersion = "3.10"
+typeCheckingMode = "strict"
+reportUnnecessaryTypeIgnoreComment = "error"
+
+[tool.pytest.ini_options]
+addopts = ["--strict-config", "--strict-markers", "-ra"]
+asyncio_default_fixture_loop_scope = "function"
+asyncio_mode = "auto"
+testpaths = ["tests"]
+markers = [
+    "live: trusted, budgeted tests that call the CometAPI service",
+]
+
+[tool.ruff]
+target-version = "py310"
+line-length = 100
+
+[tool.ruff.format]
+docstring-code-format = true
+
+[tool.ruff.lint]
+select = ["B", "E", "F", "I", "RUF", "UP"]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/**/*.py" = ["S101"]

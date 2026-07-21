@@ -1,0 +1,82 @@
+name: Bug report
+description: Report a reproducible problem in the supported SDK surface
+title: "bug: "
+labels:
+  - bug
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thank you for reporting a problem. Never include API keys, authorization headers, customer data, or production prompts and responses. Security issues must follow SECURITY.md instead of this public form.
+  - type: dropdown
+    id: operation
+    attributes:
+      label: Supported operation
+      options:
+        - chat.completions.create
+        - responses.create
+        - models.list
+        - Installation or packaging
+        - Typing or documentation
+        - Other or inherited OpenAI resource
+    validations:
+      required: true
+  - type: dropdown
+    id: mode
+    attributes:
+      label: Mode
+      options:
+        - Synchronous non-streaming
+        - Synchronous streaming
+        - Asynchronous non-streaming
+        - Asynchronous streaming
+        - Not applicable
+    validations:
+      required: true
+  - type: input
+    id: versions
+    attributes:
+      label: Versions
+      description: Provide Python, cometapi, and openai versions.
+      placeholder: "Python 3.13; cometapi 0.1.0a1; openai 2.45.0"
+    validations:
+      required: true
+  - type: input
+    id: platform
+    attributes:
+      label: Operating system
+      placeholder: "macOS 15, Ubuntu 24.04, or Windows 11"
+    validations:
+      required: true
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: Minimal reproduction
+      description: Use placeholder credentials and remove sensitive request or response data.
+      render: python
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behavior
+    validations:
+      required: true
+  - type: textarea
+    id: actual
+    attributes:
+      label: Actual behavior
+      description: Include only sanitized exception types and messages.
+    validations:
+      required: true
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: Safety and scope checks
+      options:
+        - label: I removed all credentials, authorization headers, customer data, and private prompts or responses.
+          required: true
+        - label: I checked COMPATIBILITY.md and understand that inherited resources outside the tested surface are unsupported.
+          required: true
+        - label: This is not a vulnerability report.
+          required: true
