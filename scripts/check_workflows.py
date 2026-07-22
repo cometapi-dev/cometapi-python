@@ -1336,6 +1336,10 @@ def workflow_paths(directory: Path) -> list[Path]:
 
 
 def check_workflow_inventory(directory: Path) -> list[Path]:
+    if directory.is_symlink() or directory.parent.is_symlink() or not directory.is_dir():
+        raise CheckError(
+            "workflow directory and .github parent must be real repository directories"
+        )
     paths = workflow_paths(directory)
     expected = {"ci.yml", "live-smoke.yml", "publish.yml", "release-please.yml"}
     actual = {path.name for path in paths}

@@ -1179,6 +1179,27 @@ def test_workflow_inventory_rejects_expected_name_symlink(tmp_path: Path) -> Non
         check_workflow_inventory(workflow_root)
 
 
+@pytest.mark.parametrize("linked_component", ["github", "workflows"])
+def test_workflow_inventory_rejects_linked_directory(tmp_path: Path, linked_component: str) -> None:
+    outside = tmp_path / "outside"
+    outside_workflows = outside / "workflows"
+    outside_workflows.mkdir(parents=True)
+    for name in ("ci.yml", "live-smoke.yml", "publish.yml", "release-please.yml"):
+        (outside_workflows / name).write_text("name: outside\n", encoding="utf-8")
+
+    repository = tmp_path / "repository"
+    repository.mkdir()
+    github = repository / ".github"
+    if linked_component == "github":
+        github.symlink_to(outside, target_is_directory=True)
+    else:
+        github.mkdir()
+        (github / "workflows").symlink_to(outside_workflows, target_is_directory=True)
+
+    with pytest.raises(RuntimeError, match="real repository directories"):
+        check_workflow_inventory(github / "workflows")
+
+
 def test_secret_scope_scan_includes_yaml_workflows(tmp_path: Path) -> None:
     workflow_root = tmp_path / ".github/workflows"
     workflow_root.mkdir(parents=True)
