@@ -94,6 +94,8 @@ def _scan_content(root: Path) -> list[str]:
 def _scan_workflow_scope(root: Path) -> list[str]:
     findings: list[str] = []
     workflow_root = root / ".github" / "workflows"
+    if not workflow_root.is_dir():
+        return findings
     ci = workflow_root / "ci.yml"
     if ci.is_file() and re.search(
         r"\$\{\{\s*secrets\.", ci.read_text(encoding="utf-8"), flags=re.IGNORECASE
@@ -110,7 +112,11 @@ def _scan_workflow_scope(root: Path) -> list[str]:
             findings.append(
                 ".github/workflows/publish.yml: exactly one job must receive id-token: write"
             )
-    for path in workflow_root.glob("*.yml"):
+    for path in sorted(
+        candidate
+        for candidate in workflow_root.iterdir()
+        if candidate.is_file() and candidate.suffix in {".yaml", ".yml"}
+    ):
         text = path.read_text(encoding="utf-8")
         if path.name != "publish.yml" and "id-token: write" in text:
             findings.append(f"{path.relative_to(root)}: id-token: write is publish-job-only")

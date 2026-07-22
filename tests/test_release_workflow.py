@@ -1,7 +1,9 @@
 from __future__ import annotations
 
 import os
+import re
 import subprocess
+import sys
 from collections.abc import Callable
 from pathlib import Path
 
@@ -12,6 +14,8 @@ from scripts.check_workflows import (
     check_ci_workflow,
     check_publish_workflow,
     check_release_please_workflow,
+    check_workflow_inventory,
+    workflow_paths,
 )
 from tests.live.test_live_smoke import resolve_live_model
 
@@ -320,13 +324,69 @@ def test_live_model_defaults_when_unset_or_empty(configured: str | None) -> None
 
 
 def test_workflow_contract_rejects_mutable_action_reference() -> None:
-    text = CI_WORKFLOW.read_text(encoding="utf-8").replace(
-        "actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683",
-        "actions/checkout@v4",
-        1,
+    text, replacements = re.subn(
+        r"(actions/checkout@)[0-9a-f]{40}",
+        r"\g<1>v4",
+        CI_WORKFLOW.read_text(encoding="utf-8"),
+        count=1,
     )
+    assert replacements == 1
     with pytest.raises(RuntimeError, match="full commit SHA"):
         check_action_pins(text, CI_WORKFLOW.name)
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        "jobs:\n  check:\n    runs-on: ubuntu-latest\n    steps:\n"
+        '      - "uses": actions/checkout@v4\n',
+        "jobs:\n  check:\n    runs-on: ubuntu-latest\n    steps: [{ uses: actions/checkout@v4 }]\n",
+        "jobs:\n  check:\n    runs-on: ubuntu-latest\n    steps:\n"
+        "      - uses: >-\n          actions/checkout@v4\n",
+        "checkout: &checkout actions/checkout@v4\njobs:\n  check:\n"
+        "    runs-on: ubuntu-latest\n    steps:\n      - uses: *checkout\n",
+        "jobs:\n  check:\n    runs-on: ubuntu-latest\n    steps:\n"
+        "      - ? uses\n        : actions/checkout@v4\n",
+        "jobs:\n  check:\n    runs-on: ubuntu-latest\n    steps:\n"
+        "      - uses: !!str actions/checkout@v4\n",
+    ],
+    ids=[
+        "quoted-key",
+        "inline-mapping",
+        "folded-scalar",
+        "alias",
+        "explicit-mapping",
+        "tagged-scalar",
+    ],
+)
+def test_workflow_contract_rejects_disguised_mutable_action_reference(text: str) -> None:
+    with pytest.raises(RuntimeError, match="full commit SHA"):
+        check_action_pins(text, "adversarial workflow")
+
+
+def test_workflow_contract_ignores_nonsemantic_uses_key() -> None:
+    text = """\
+env:
+  uses: actions/checkout@v4
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - run: echo checked
+"""
+    check_action_pins(text, "nonsemantic uses workflow")
+
+
+def test_workflow_contract_rejects_unpinned_docker_action() -> None:
+    text = """\
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: docker://alpine:latest
+"""
+    with pytest.raises(RuntimeError, match="Docker action references are not permitted"):
+        check_action_pins(text, "Docker workflow")
 
 
 @pytest.mark.parametrize(
@@ -365,6 +425,117 @@ def test_semantic_contract_rejects_publication_bypasses(
     with pytest.raises(RuntimeError):
         check_publish_workflow(
             mutation(PUBLISH_WORKFLOW.read_text(encoding="utf-8")),
+            LIVE_SMOKE_WORKFLOW.read_text(encoding="utf-8"),
+        )
+
+
+@pytest.mark.parametrize(
+    ("needle", "replacement"),
+    [
+        (
+            "run: bash scripts/verify_release_trust.sh",
+            'run: echo "bash scripts/verify_release_trust.sh"',
+        ),
+        (
+            "run: uv run python scripts/check_workflows.py",
+            "run: uv run python scripts/check_workflows.py | true",
+        ),
+        (
+            'run: test "$(git rev-parse HEAD)" = "$RELEASE_COMMIT"',
+            "run: true",
+        ),
+        (
+            "run: uv run pytest -m live --maxfail=1 -q",
+            "run: uv run pytest -m live --maxfail=1 -q --collect-only",
+        ),
+        (
+            "run: sha256sum --check artifact-sha256.txt",
+            'run: echo "sha256sum --check artifact-sha256.txt"',
+        ),
+        (
+            "uses: pypa/gh-action-pypi-publish@",
+            "uses: attacker/example-action@",
+        ),
+        (
+            "python -m pip --isolated install",
+            "echo python -m pip --isolated install",
+        ),
+        (
+            "python scripts/check_registry_release.py",
+            "echo python scripts/check_registry_release.py",
+        ),
+        (
+            "python scripts/check_clean_install.py\n"
+            '          --expected-version "$RELEASE_VERSION"',
+            "echo python scripts/check_clean_install.py\n"
+            '          --expected-version "$RELEASE_VERSION"',
+        ),
+    ],
+    ids=[
+        "trust-echo-decoy",
+        "workflow-check-pipe-bypass",
+        "commit-check-noop",
+        "live-collect-only",
+        "publish-digest-echo-decoy",
+        "arbitrary-oidc-action",
+        "provenance-install-echo-decoy",
+        "registry-verification-echo-decoy",
+        "registry-install-echo-decoy",
+    ],
+)
+def test_semantic_contract_rejects_exact_step_decoys(needle: str, replacement: str) -> None:
+    text = PUBLISH_WORKFLOW.read_text(encoding="utf-8")
+    assert needle in text
+    with pytest.raises(RuntimeError):
+        check_publish_workflow(
+            text.replace(needle, replacement, 1),
+            LIVE_SMOKE_WORKFLOW.read_text(encoding="utf-8"),
+        )
+
+
+def test_semantic_contract_rejects_registry_ref_decoy() -> None:
+    text = PUBLISH_WORKFLOW.read_text(encoding="utf-8")
+    registry_start = text.index("  verify-registry:")
+    registry = text[registry_start:].replace(
+        "ref: ${{ needs.build.outputs.release-commit }}",
+        "ref: main\n"
+        "        env:\n"
+        "          EXPECTED_REF: ${{ needs.build.outputs.release-commit }}",
+        1,
+    )
+    with pytest.raises(RuntimeError):
+        check_publish_workflow(
+            text[:registry_start] + registry,
+            LIVE_SMOKE_WORKFLOW.read_text(encoding="utf-8"),
+        )
+
+
+def test_semantic_contract_rejects_publish_environment_test_bypass() -> None:
+    text = PUBLISH_WORKFLOW.read_text(encoding="utf-8").replace(
+        "  UV_VERSION: 0.11.8",
+        "  UV_VERSION: 0.11.8\n  PYTEST_ADDOPTS: --collect-only",
+        1,
+    )
+    with pytest.raises(RuntimeError, match="pinned uv"):
+        check_publish_workflow(
+            text,
+            LIVE_SMOKE_WORKFLOW.read_text(encoding="utf-8"),
+        )
+
+
+def test_semantic_contract_rejects_extra_oidc_step() -> None:
+    text = PUBLISH_WORKFLOW.read_text(encoding="utf-8").replace(
+        "    steps:\n      - name: Download the verified release bundle",
+        "    steps:\n"
+        "      - name: Unreviewed OIDC consumer\n"
+        "        uses: attacker/example-action@"
+        "0123456789abcdef0123456789abcdef01234567\n"
+        "      - name: Download the verified release bundle",
+        1,
+    )
+    with pytest.raises(RuntimeError, match="reviewed sequence"):
+        check_publish_workflow(
+            text,
             LIVE_SMOKE_WORKFLOW.read_text(encoding="utf-8"),
         )
 
@@ -423,6 +594,148 @@ def test_semantic_contract_checks_live_smoke_gate_on_smoke_job() -> None:
         )
 
 
+@pytest.mark.parametrize(
+    ("needle", "replacement", "message"),
+    [
+        (
+            "permissions:\n  contents: read",
+            "permissions:\n  contents: write",
+            "permissions",
+        ),
+        (
+            "run: uv run pytest -m live --maxfail=1 -q",
+            "continue-on-error: true\n        run: uv run pytest -m live --maxfail=1 -q",
+            "must not allow failure",
+        ),
+        (
+            "on:\n  schedule:",
+            "on:\n  push:\n    branches: [main]\n  schedule:",
+            "only on schedule or manual dispatch",
+        ),
+        ("runs-on: ubuntu-latest", "runs-on: self-hosted", "GitHub-hosted runner"),
+    ],
+    ids=["write-token", "continued-test", "extra-trigger", "self-hosted-runner"],
+)
+def test_semantic_contract_rejects_monitoring_live_bypasses(
+    needle: str, replacement: str, message: str
+) -> None:
+    live_smoke = LIVE_SMOKE_WORKFLOW.read_text(encoding="utf-8").replace(needle, replacement, 1)
+    with pytest.raises(RuntimeError, match=message):
+        check_publish_workflow(
+            PUBLISH_WORKFLOW.read_text(encoding="utf-8"),
+            live_smoke,
+        )
+
+
+@pytest.mark.parametrize(
+    ("needle", "replacement"),
+    [
+        (
+            "        run: bash scripts/verify_release_trust.sh",
+            "        working-directory: decoy\n        run: bash scripts/verify_release_trust.sh",
+        ),
+        (
+            "        run: uv run pytest -m live --maxfail=1 -q",
+            "        working-directory: decoy\n        run: uv run pytest -m live --maxfail=1 -q",
+        ),
+        (
+            "        run: >-\n          python scripts/check_registry_release.py",
+            "        working-directory: decoy\n"
+            "        run: >-\n"
+            "          python scripts/check_registry_release.py",
+        ),
+    ],
+    ids=["release-trust", "exact-release-live", "registry-provenance"],
+)
+def test_semantic_contract_rejects_release_working_directory_redirects(
+    needle: str, replacement: str
+) -> None:
+    text = PUBLISH_WORKFLOW.read_text(encoding="utf-8")
+    assert needle in text
+    with pytest.raises(RuntimeError, match="repository root"):
+        check_publish_workflow(
+            text.replace(needle, replacement, 1),
+            LIVE_SMOKE_WORKFLOW.read_text(encoding="utf-8"),
+        )
+
+
+def test_semantic_contract_rejects_monitoring_working_directory_redirect() -> None:
+    live_smoke = LIVE_SMOKE_WORKFLOW.read_text(encoding="utf-8").replace(
+        "        run: uv run pytest -m live --maxfail=1 -q",
+        "        working-directory: decoy\n        run: uv run pytest -m live --maxfail=1 -q",
+        1,
+    )
+    with pytest.raises(RuntimeError, match="repository root"):
+        check_publish_workflow(
+            PUBLISH_WORKFLOW.read_text(encoding="utf-8"),
+            live_smoke,
+        )
+
+
+@pytest.mark.parametrize(
+    ("needle", "replacement"),
+    [
+        (
+            "  build:\n    name:",
+            "  build:\n    container: attacker/image:latest\n    name:",
+        ),
+        (
+            "  release-live-smoke:\n    name:",
+            "  release-live-smoke:\n"
+            "    strategy:\n"
+            "      matrix:\n"
+            "        copy: [one, two]\n"
+            "    name:",
+        ),
+        (
+            "  publish:\n    name:",
+            "  publish:\n    strategy:\n      matrix:\n        copy: [one, two]\n    name:",
+        ),
+        (
+            "  verify-registry:\n    name:",
+            "  verify-registry:\n"
+            "    services:\n"
+            "      unreviewed:\n"
+            "        image: attacker/image:latest\n"
+            "    name:",
+        ),
+    ],
+    ids=["build-container", "live-matrix", "publish-matrix", "registry-service"],
+)
+def test_semantic_contract_rejects_unreviewed_release_job_controls(
+    needle: str, replacement: str
+) -> None:
+    text = PUBLISH_WORKFLOW.read_text(encoding="utf-8")
+    assert needle in text
+    with pytest.raises(RuntimeError, match="reviewed contract"):
+        check_publish_workflow(
+            text.replace(needle, replacement, 1),
+            LIVE_SMOKE_WORKFLOW.read_text(encoding="utf-8"),
+        )
+
+
+@pytest.mark.parametrize(
+    "control",
+    [
+        "    container: attacker/image:latest\n",
+        "    strategy:\n      matrix:\n        copy: [one, two]\n",
+        "    services:\n      unreviewed:\n        image: attacker/image:latest\n",
+    ],
+    ids=["container", "matrix", "service"],
+)
+def test_semantic_contract_rejects_unreviewed_monitoring_job_controls(control: str) -> None:
+    live_smoke = LIVE_SMOKE_WORKFLOW.read_text(encoding="utf-8").replace(
+        "  smoke:\n    name:",
+        f"  smoke:\n{control}    name:",
+        1,
+    )
+    with pytest.raises(RuntimeError, match="reviewed contract"):
+        check_publish_workflow(
+            PUBLISH_WORKFLOW.read_text(encoding="utf-8"),
+            live_smoke,
+        )
+
+
 def test_current_release_please_workflow_is_disabled_by_default() -> None:
     check_release_please_workflow(RELEASE_PLEASE_WORKFLOW.read_text(encoding="utf-8"))
 
@@ -444,8 +757,195 @@ def test_release_please_requires_exact_enable_opt_in(replacement: str) -> None:
         check_release_please_workflow(text)
 
 
+def test_release_please_checks_opt_in_on_real_job() -> None:
+    text = RELEASE_PLEASE_WORKFLOW.read_text(encoding="utf-8").replace(
+        "if: vars.RELEASE_PLEASE_ENABLED == 'true'",
+        "if: github.ref == 'refs/heads/main'",
+        1,
+    )
+    text = text.replace(
+        "    steps:\n",
+        "    steps:\n"
+        "      - name: Decoy condition text\n"
+        "        run: >-\n"
+        "          echo \"if: vars.RELEASE_PLEASE_ENABLED == 'true'\"\n",
+        1,
+    )
+    with pytest.raises(RuntimeError, match="RELEASE_PLEASE_ENABLED=true"):
+        check_release_please_workflow(text)
+
+
+def test_release_please_rejects_an_additional_ungated_job() -> None:
+    text = (
+        RELEASE_PLEASE_WORKFLOW.read_text(encoding="utf-8")
+        + """
+  decoy:
+    runs-on: ubuntu-latest
+    steps:
+      - run: echo bypass
+"""
+    )
+    with pytest.raises(RuntimeError, match="only its gated"):
+        check_release_please_workflow(text)
+
+
+def test_release_please_rejects_trigger_text_hidden_in_name() -> None:
+    text = RELEASE_PLEASE_WORKFLOW.read_text(encoding="utf-8").replace(
+        "name: Release Please",
+        "name: |\n  push:\n    branches:\n      - main",
+        1,
+    )
+    text = text.replace(
+        "on:\n  push:\n    branches:\n      - main",
+        'on:\n  schedule:\n    - cron: "0 0 * * *"',
+        1,
+    )
+    with pytest.raises(RuntimeError, match="default-branch pushes"):
+        check_release_please_workflow(text)
+
+
+@pytest.mark.parametrize(
+    ("needle", "replacement"),
+    [
+        (
+            "    branches:\n      - main",
+            "    branches:\n      - main\n    paths:\n      - src/**",
+        ),
+        (
+            "uses: googleapis/release-please-action@",
+            "uses: attacker/example-action@",
+        ),
+        (
+            "config-file: release-please-config.json",
+            "config-file: attacker-config.json",
+        ),
+        (
+            "manifest-file: .release-please-manifest.json",
+            "manifest-file: attacker-manifest.json",
+        ),
+    ],
+    ids=["path-filter", "arbitrary-action", "config-decoy", "manifest-decoy"],
+)
+def test_release_please_rejects_structural_bypasses(needle: str, replacement: str) -> None:
+    text = RELEASE_PLEASE_WORKFLOW.read_text(encoding="utf-8")
+    assert needle in text
+    with pytest.raises(RuntimeError):
+        check_release_please_workflow(text.replace(needle, replacement, 1))
+
+
+def test_release_please_rejects_extra_privileged_step() -> None:
+    text = RELEASE_PLEASE_WORKFLOW.read_text(encoding="utf-8").replace(
+        "    steps:\n",
+        "    steps:\n"
+        "      - name: Unreviewed token consumer\n"
+        '        run: echo "${{ github.token }}"\n',
+        1,
+    )
+    with pytest.raises(RuntimeError, match="reviewed sequence"):
+        check_release_please_workflow(text)
+
+
+@pytest.mark.parametrize(
+    "control",
+    [
+        "    container: attacker/image:latest\n",
+        "    strategy:\n      matrix:\n        copy: [one, two]\n",
+        "    services:\n      unreviewed:\n        image: attacker/image:latest\n",
+    ],
+    ids=["container", "matrix", "service"],
+)
+def test_release_please_rejects_unreviewed_job_controls(control: str) -> None:
+    text = RELEASE_PLEASE_WORKFLOW.read_text(encoding="utf-8").replace(
+        "  release-please:\n    name:",
+        f"  release-please:\n{control}    name:",
+        1,
+    )
+    with pytest.raises(RuntimeError, match="reviewed contract"):
+        check_release_please_workflow(text)
+
+
 def test_current_ci_workflow_covers_private_remote_validation() -> None:
     check_ci_workflow(CI_WORKFLOW.read_text(encoding="utf-8"))
+
+
+@pytest.mark.parametrize(
+    ("needle", "replacement", "message"),
+    [
+        (
+            "      - name: Check out the candidate\n",
+            "      - name: Check out the candidate\n        with:\n          ref: main\n",
+            "triggering candidate",
+        ),
+        (
+            "      - name: Run offline unit and contract tests\n"
+            '        run: uv run pytest -m "not live"',
+            "      - name: Run offline unit and contract tests\n"
+            "        working-directory: decoy\n"
+            '        run: uv run pytest -m "not live"',
+            "repository root",
+        ),
+        (
+            "  quality:\n    name:",
+            "  quality:\n    container: attacker/image:latest\n    name:",
+            "reviewed contract",
+        ),
+        (
+            "  quality:\n    name:",
+            "  quality:\n"
+            "    services:\n"
+            "      unreviewed:\n"
+            "        image: attacker/image:latest\n"
+            "    name:",
+            "reviewed contract",
+        ),
+        (
+            "  quality:\n    name:",
+            "  quality:\n    strategy:\n      matrix:\n        copy: [one, two]\n    name:",
+            "reviewed contract",
+        ),
+        (
+            "    steps:\n      - name: Check out the candidate",
+            "    steps:\n"
+            "      - name: Unreviewed action\n"
+            "        uses: attacker/example-action@"
+            "0123456789abcdef0123456789abcdef01234567\n"
+            "      - name: Check out the candidate",
+            "reviewed sequence",
+        ),
+    ],
+    ids=[
+        "checkout-ref",
+        "working-directory",
+        "container",
+        "service",
+        "matrix",
+        "extra-action",
+    ],
+)
+def test_ci_contract_rejects_candidate_execution_redirects(
+    needle: str, replacement: str, message: str
+) -> None:
+    text = CI_WORKFLOW.read_text(encoding="utf-8")
+    assert needle in text
+    with pytest.raises(RuntimeError, match=message):
+        check_ci_workflow(text.replace(needle, replacement, 1))
+
+
+def test_ci_contract_rejects_extra_skip_dependency_job() -> None:
+    text = CI_WORKFLOW.read_text(encoding="utf-8").replace(
+        "  quality:\n",
+        "  skip-gate:\n"
+        "    name: Skip required evidence\n"
+        "    if: github.event_name == 'never'\n"
+        "    runs-on: ubuntu-latest\n"
+        "    steps:\n"
+        "      - run: true\n\n"
+        "  quality:\n"
+        "    needs: skip-gate\n",
+        1,
+    )
+    with pytest.raises(RuntimeError, match="reviewed validation chain"):
+        check_ci_workflow(text)
 
 
 @pytest.mark.parametrize(
@@ -456,13 +956,270 @@ def test_current_ci_workflow_covers_private_remote_validation() -> None:
         "        run: uv run python scripts/check_version.py --require-public-preview-docs\n",
         "      - name: Verify from a copied standalone repository\n"
         "        run: python scripts/check_repository_independence.py\n",
+        "      - name: Recheck retained artifact digests\n"
+        "        working-directory: verified-artifacts\n"
+        "        run: sha256sum --check artifact-sha256.txt\n",
     ],
-    ids=["lock", "public-content", "standalone"],
+    ids=["lock", "public-content", "standalone", "artifact-round-trip"],
 )
 def test_ci_contract_rejects_missing_private_validation_gate(needle: str) -> None:
     text = CI_WORKFLOW.read_text(encoding="utf-8").replace(needle, "", 1)
     with pytest.raises(RuntimeError):
         check_ci_workflow(text)
+
+
+def test_ci_contract_rejects_commented_public_content_decoy() -> None:
+    text = CI_WORKFLOW.read_text(encoding="utf-8").replace(
+        "      - name: Check canonical public content and identity\n"
+        "        run: uv run python scripts/check_version.py --require-public-preview-docs\n",
+        "      # run: uv run python scripts/check_version.py --require-public-preview-docs\n",
+        1,
+    )
+    with pytest.raises(RuntimeError, match="public-preview-docs"):
+        check_ci_workflow(text)
+
+
+@pytest.mark.parametrize(
+    ("needle", "replacement", "message"),
+    [
+        (
+            "permissions:\n  contents: read",
+            "permissions:\n  contents: write",
+            "permissions",
+        ),
+        ("  package:\n", "  package:\n    if: github.event_name == 'never'\n", "conditional"),
+        ("  quality:\n", "  quality:\n    continue-on-error: true\n", "allow failure"),
+        ("run: uv lock --check", "run: uv lock --check || true", "active run step"),
+        (
+            "run: uv lock --check",
+            "run: uv lock --check\n        shell: bash -c '{0} || true'",
+            "command shell",
+        ),
+    ],
+    ids=["write-token", "conditional-package", "continued-quality", "shell-or", "step-shell"],
+)
+def test_ci_contract_rejects_blocking_bypasses(needle: str, replacement: str, message: str) -> None:
+    text = CI_WORKFLOW.read_text(encoding="utf-8").replace(needle, replacement, 1)
+    with pytest.raises(RuntimeError, match=message):
+        check_ci_workflow(text)
+
+
+def test_ci_contract_rejects_workflow_shell_override() -> None:
+    text = CI_WORKFLOW.read_text(encoding="utf-8").replace(
+        "\njobs:\n",
+        "\ndefaults:\n  run:\n    shell: bash -c '{0} || true'\n\njobs:\n",
+        1,
+    )
+    with pytest.raises(RuntimeError, match="command defaults"):
+        check_ci_workflow(text)
+
+
+def test_ci_contract_rejects_trigger_text_hidden_in_name() -> None:
+    text = CI_WORKFLOW.read_text(encoding="utf-8").replace(
+        "name: CI",
+        "name: |\n  pull_request:\n  push:\n    branches:\n      - main",
+        1,
+    )
+    text = text.replace(
+        "on:\n  pull_request:\n  push:\n    branches:\n      - main\n  schedule:",
+        "on:\n  schedule:",
+        1,
+    )
+    with pytest.raises(RuntimeError, match="pull requests"):
+        check_ci_workflow(text)
+
+
+@pytest.mark.parametrize(
+    ("needle", "replacement"),
+    [
+        (
+            "  pull_request:\n",
+            "  pull_request:\n    paths:\n      - src/**\n",
+        ),
+        (
+            "    branches:\n      - main\n  schedule:",
+            "    branches:\n      - main\n    paths:\n      - src/**\n  schedule:",
+        ),
+        ('    - cron: "23 4 * * 1"', '    - cron: "23 4 * * 2"'),
+        (
+            "if: github.event_name == 'schedule' || github.actor == 'dependabot[bot]'",
+            "if: github.event_name == 'never'",
+        ),
+        (
+            'uv pip install --python .venv/bin/python --upgrade "openai>=2.45.0,<3.0.0"',
+            'uv pip install --python .venv/bin/python "openai==2.45.0"',
+        ),
+        (
+            'run: uv run --no-sync pytest -m "not live"',
+            'run: uv run --no-sync pytest -m "not live" --collect-only',
+        ),
+        (
+            "python-version: ${{ matrix.python-version }}",
+            'python-version: "3.14"',
+        ),
+        ("runs-on: ubuntu-latest", "runs-on: self-hosted"),
+        (
+            "  UV_VERSION: 0.11.8",
+            "  UV_VERSION: 0.11.8\n  PYTEST_ADDOPTS: --collect-only",
+        ),
+        (
+            "run: uv run python scripts/check_clean_install.py dist/*",
+            "run: uv run python scripts/check_clean_install.py dist/* | true",
+        ),
+    ],
+    ids=[
+        "pull-request-path-filter",
+        "push-path-filter",
+        "weekly-schedule-change",
+        "latest-canary-condition",
+        "latest-openai-no-upgrade",
+        "canary-collect-only",
+        "runtime-matrix-decoy",
+        "self-hosted-runner",
+        "workflow-pytest-addopts",
+        "package-clean-install-pipe",
+    ],
+)
+def test_ci_contract_rejects_structural_bypasses(needle: str, replacement: str) -> None:
+    text = CI_WORKFLOW.read_text(encoding="utf-8")
+    assert needle in text
+    with pytest.raises(RuntimeError):
+        check_ci_workflow(text.replace(needle, replacement, 1))
+
+
+@pytest.mark.parametrize(
+    ("needle", "replacement"),
+    [
+        (
+            "  quality:\n    name:",
+            "  quality:\n    env:\n      PYTEST_ADDOPTS: --collect-only\n    name:",
+        ),
+        (
+            '        run: uv run pytest -m "not live"',
+            "        env:\n"
+            "          PYTEST_ADDOPTS: --collect-only\n"
+            '        run: uv run pytest -m "not live"',
+        ),
+    ],
+    ids=["job-environment", "step-environment"],
+)
+def test_ci_contract_rejects_test_environment_bypasses(needle: str, replacement: str) -> None:
+    text = CI_WORKFLOW.read_text(encoding="utf-8")
+    assert needle in text
+    with pytest.raises(RuntimeError, match="environment"):
+        check_ci_workflow(text.replace(needle, replacement, 1))
+
+
+def test_ci_contract_rejects_bare_secrets_context() -> None:
+    text = (
+        CI_WORKFLOW.read_text(encoding="utf-8")
+        + """
+  secret-context-decoy:
+    runs-on: ubuntu-latest
+    steps:
+      - run: echo "${{ toJSON(secrets) }}"
+"""
+    )
+    with pytest.raises(RuntimeError, match="secrets"):
+        check_ci_workflow(text)
+
+
+def test_ci_contract_keeps_downloaded_artifacts_out_of_copied_candidate() -> None:
+    text = CI_WORKFLOW.read_text(encoding="utf-8")
+    copied_start, copied_end = _step(text, "Verify from a copied standalone repository")
+    download_start, download_end = _step(text, "Download the verified package artifacts")
+    copied_block = text[copied_start:copied_end]
+    download_block = text[download_start:download_end]
+    text = (
+        text[:copied_start]
+        + download_block
+        + text[copied_end:download_start]
+        + copied_block
+        + text[download_end:]
+    )
+    with pytest.raises(RuntimeError, match="copied-checkout verification before downloading"):
+        check_ci_workflow(text)
+
+
+def test_workflow_path_discovery_includes_yaml_and_yml(tmp_path: Path) -> None:
+    (tmp_path / "first.yml").write_text("name: first\n", encoding="utf-8")
+    (tmp_path / "second.yaml").write_text("name: second\n", encoding="utf-8")
+    (tmp_path / "ignored.txt").write_text("ignored\n", encoding="utf-8")
+    assert [path.name for path in workflow_paths(tmp_path)] == ["first.yml", "second.yaml"]
+
+
+def test_workflow_inventory_rejects_unreviewed_workflow(tmp_path: Path) -> None:
+    for name in ("ci.yml", "live-smoke.yml", "publish.yml", "release-please.yml"):
+        (tmp_path / name).write_text("name: reviewed\n", encoding="utf-8")
+    assert {path.name for path in check_workflow_inventory(tmp_path)} == {
+        "ci.yml",
+        "live-smoke.yml",
+        "publish.yml",
+        "release-please.yml",
+    }
+
+    (tmp_path / "rogue.yaml").write_text(
+        "permissions:\n  id-token: write\njobs:\n  rogue:\n    runs-on: ubuntu-latest\n",
+        encoding="utf-8",
+    )
+    with pytest.raises(RuntimeError, match=r"unexpected: rogue\.yaml"):
+        check_workflow_inventory(tmp_path)
+
+
+def test_workflow_inventory_rejects_expected_name_symlink(tmp_path: Path) -> None:
+    workflow_root = tmp_path / "workflows"
+    workflow_root.mkdir()
+    for name in ("live-smoke.yml", "publish.yml", "release-please.yml"):
+        (workflow_root / name).write_text("name: reviewed\n", encoding="utf-8")
+    outside = tmp_path / "outside-ci.yml"
+    outside.write_text("name: outside\n", encoding="utf-8")
+    (workflow_root / "ci.yml").symlink_to(outside)
+
+    with pytest.raises(RuntimeError, match="regular, non-symlink files"):
+        check_workflow_inventory(workflow_root)
+
+
+@pytest.mark.parametrize("linked_component", ["github", "workflows"])
+def test_workflow_inventory_rejects_linked_directory(tmp_path: Path, linked_component: str) -> None:
+    outside = tmp_path / "outside"
+    outside_workflows = outside / "workflows"
+    outside_workflows.mkdir(parents=True)
+    for name in ("ci.yml", "live-smoke.yml", "publish.yml", "release-please.yml"):
+        (outside_workflows / name).write_text("name: outside\n", encoding="utf-8")
+
+    repository = tmp_path / "repository"
+    repository.mkdir()
+    github = repository / ".github"
+    if linked_component == "github":
+        github.symlink_to(outside, target_is_directory=True)
+    else:
+        github.mkdir()
+        (github / "workflows").symlink_to(outside_workflows, target_is_directory=True)
+
+    with pytest.raises(RuntimeError, match="real repository directories"):
+        check_workflow_inventory(github / "workflows")
+
+
+def test_secret_scope_scan_includes_yaml_workflows(tmp_path: Path) -> None:
+    workflow_root = tmp_path / ".github/workflows"
+    workflow_root.mkdir(parents=True)
+    (workflow_root / "rogue.yaml").write_text(
+        "permissions:\n  id-token: write\n",
+        encoding="utf-8",
+    )
+    result = subprocess.run(
+        [
+            sys.executable,
+            str(PROJECT_ROOT / "scripts/check_secrets.py"),
+            "--root",
+            str(tmp_path),
+        ],
+        text=True,
+        check=False,
+        capture_output=True,
+    )
+    assert result.returncode != 0
+    assert ".github/workflows/rogue.yaml: id-token: write is publish-job-only" in result.stderr
 
 
 def test_semantic_contract_rejects_download_before_checkout() -> None:
