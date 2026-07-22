@@ -1,7 +1,7 @@
 # CometAPI Python SDK Roadmap
 
 Status: `0.1.0a1` in progress
-Last updated: 2026-07-21
+Last updated: 2026-07-22
 Repository contract: this roadmap is self-contained.
 
 ## Product target
@@ -11,10 +11,10 @@ to CometAPI while preserving official request, response, error, retry, timeout,
 sync, async, and streaming behavior.
 
 Private Remote Validation is complete for the sanitized repository, which
-remains private. Work stops before any visibility change. Public Preview and
-the functional `0.1.0a1` prerelease remain separate evidence gates. Support
-and release claims remain limited to the evidence defined in this roadmap and
-`COMPATIBILITY.md`.
+remains private. The current pre-visibility phase stops before any visibility
+change. Public Preview and the functional `0.1.0a1` prerelease remain separate
+evidence gates. Support and release claims remain limited to the evidence
+defined in this roadmap and `COMPATIBILITY.md`.
 
 ## Milestones
 
@@ -22,7 +22,7 @@ and release claims remain limited to the evidence defined in this roadmap and
 | --- | --- | --- |
 | Repository foundation | Complete | Public files, offline gates, packaging checks, and self-containment are complete. |
 | Private Remote Validation | Complete | The sanitized private repository passes real credential-free default-branch CI; public-only controls and live tests remain disabled. |
-| Public Preview | Planned | The public repository has blocking CI, repository rules, security reporting, protected environments, and authorized live-smoke evidence before it claims preview readiness. |
+| Public Preview | In progress | Pre-visibility work is delivered through private pull requests; after an authorized visibility change, the public repository must establish blocking CI, repository rules, security reporting, protected environments, and authorized live-smoke evidence before it claims preview readiness. |
 | `0.1.0a1` Registry Alpha | Planned | Early adopters can install a functional prerelease from PyPI. |
 | `0.1.0` stable | Planned | Complete runtime, release-PR, example, provenance, and registry gates pass. |
 | `0.2.0` provider-native text | Planned | Optional official Anthropic and Gemini adapters. |
@@ -96,6 +96,25 @@ Recorded evidence on 2026-07-21:
   package publication was configured or exercised.
 
 ## Public Preview
+
+Public Preview is in progress at the pre-visibility stage. Before requesting a
+visibility change:
+
+- Deliver all remaining documentation and workflow changes through private pull
+  requests with credential-free CI.
+- Review every open dependency pull request. Fix and merge only updates with
+  complete successful CI; otherwise record an explicit deferral and keep the PR
+  out of `main`.
+- Rerun the complete local gate and private pull-request CI, confirm the
+  canonical repository remains private, and stop for explicit visibility-change
+  authorization. Do not configure public-only controls, secrets, environments,
+  live smoke, releases, or publication before that stop point.
+
+Pre-visibility dependency disposition:
+
+| Item | Disposition | Evidence and required action |
+| --- | --- | --- |
+| Dependabot [PR #2](https://github.com/cometapi-dev/cometapi-python/pull/2): `actions/checkout` 4.2.2 to 7.0.1 | Deferred; must not merge as-is | Credential-free [CI run 29796719306](https://github.com/cometapi-dev/cometapi-python/actions/runs/29796719306) failed in every test lane because the mutable-action-reference regression test hard-codes the previous v4 checkout SHA and no longer exercises its replacement; dependent artifact and copied-checkout jobs were skipped. Revisit only with version-independent regression coverage and a completely successful replacement CI run. The failed run is not upgrade evidence. |
 
 Changing the repository to public begins a short configuration interval; it
 does not establish Public Preview readiness by itself. The preview is ready
