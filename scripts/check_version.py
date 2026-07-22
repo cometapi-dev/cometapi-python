@@ -160,6 +160,11 @@ def require_public_preview_docs() -> None:
     documents = _read_public_documents(violations)
     _check_project_identity(violations)
 
+    if Path(".github/CODEOWNERS").exists():
+        violations.append(
+            ".github/CODEOWNERS: must remain absent until a real multi-maintainer model exists"
+        )
+
     try:
         license_text = Path("LICENSE").read_text(encoding="utf-8")
     except (OSError, UnicodeError) as exc:

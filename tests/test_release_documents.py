@@ -121,6 +121,14 @@ def test_public_preview_documents_accept_durable_public_content(
     require_public_preview_docs()
 
 
+def test_public_preview_documents_reject_codeowners(releasable_documents: Path) -> None:
+    codeowners = releasable_documents / ".github/CODEOWNERS"
+    codeowners.parent.mkdir(parents=True, exist_ok=True)
+    codeowners.write_text("* @placeholder\n", encoding="utf-8")
+    with pytest.raises(CheckError, match="CODEOWNERS: must remain absent"):
+        require_public_preview_docs()
+
+
 def test_public_preview_documents_report_all_violations_together(
     releasable_documents: Path,
 ) -> None:

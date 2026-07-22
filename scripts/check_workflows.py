@@ -5,7 +5,11 @@ from __future__ import annotations
 
 import argparse
 import re
+from collections.abc import Iterator
 from pathlib import Path
+from typing import cast
+
+import yaml
 
 try:
     from ._checks import PROJECT_ROOT, CheckError
@@ -13,340 +17,1120 @@ except ImportError:  # Direct execution from the repository root.
     from _checks import PROJECT_ROOT, CheckError
 
 
-def _require(text: str, needle: str, message: str) -> None:
-    if needle not in text:
-        raise CheckError(message)
+def _mapping(value: object, label: str) -> dict[str, object]:
+    if not isinstance(value, dict):
+        raise CheckError(f"{label} must be a mapping")
+    raw = cast(dict[object, object], value)
+    if not all(isinstance(key, str) for key in raw):
+        raise CheckError(f"{label} must use scalar string keys")
+    mapping = {cast(str, key): item for key, item in raw.items()}
+    if "<<" in mapping:
+        raise CheckError(f"{label} must not use YAML merge keys")
+    return mapping
 
 
-def _require_pattern(text: str, pattern: str, message: str) -> None:
-    if re.search(pattern, text) is None:
-        raise CheckError(message)
+def _sequence(value: object, label: str) -> list[object]:
+    if not isinstance(value, list):
+        raise CheckError(f"{label} must be a sequence")
+    return cast(list[object], value)
 
 
-def _job(text: str, name: str, *, source: str = "publish workflow") -> str:
-    match = re.search(
-        rf"(?ms)^  {re.escape(name)}:\n(?P<body>.*?)(?=^  [a-zA-Z0-9_-]+:\n|\Z)",
-        text,
-    )
-    if match is None:
+def _scalar(value: object, label: str) -> str:
+    if not isinstance(value, str):
+        raise CheckError(f"{label} must be a scalar string")
+    return value
+
+
+def _load_workflow(text: str, source: str) -> dict[str, object]:
+    try:
+        loaded: object = yaml.load(text, Loader=yaml.BaseLoader)
+    except yaml.YAMLError as error:
+        raise CheckError(f"{source} is not valid YAML: {error}") from error
+    return _mapping(loaded, source)
+
+
+def _workflow_job(workflow: dict[str, object], name: str, source: str) -> dict[str, object]:
+    jobs = _mapping(workflow.get("jobs"), f"{source} jobs")
+    if name not in jobs:
         raise CheckError(f"{source} has no {name!r} job")
-    return match.group(0)
+    return _mapping(jobs[name], f"{source} {name!r} job")
 
 
-def _step(job: str, name: str) -> str:
-    match = re.search(
-        rf"(?ms)^      - name: {re.escape(name)}\n(?P<body>.*?)(?=^      - name: |\Z)",
-        job,
-    )
-    if match is None:
-        raise CheckError(f"publish workflow has no {name!r} step")
-    return match.group(0)
+def _workflow_steps(job: dict[str, object], label: str) -> list[dict[str, object]]:
+    return [
+        _mapping(item, f"{label} step {index}")
+        for index, item in enumerate(_sequence(job.get("steps"), f"{label} steps"))
+    ]
+
+
+def _walk_mappings(value: object, label: str) -> Iterator[dict[str, object]]:
+    if isinstance(value, dict):
+        mapping = _mapping(cast(dict[object, object], value), label)
+        yield mapping
+        for key, child in mapping.items():
+            yield from _walk_mappings(child, f"{label}.{key}")
+    elif isinstance(value, list):
+        for index, child in enumerate(cast(list[object], value)):
+            yield from _walk_mappings(child, f"{label}[{index}]")
+
+
+def _walk_scalars(value: object) -> Iterator[str]:
+    if isinstance(value, str):
+        yield value
+    elif isinstance(value, dict):
+        for child in cast(dict[object, object], value).values():
+            yield from _walk_scalars(child)
+    elif isinstance(value, list):
+        for child in cast(list[object], value):
+            yield from _walk_scalars(child)
+
+
+def _secret_references(value: object) -> list[str]:
+    pattern = re.compile(r"\$\{\{[^}]*\bsecrets\b[^}]*\}\}", flags=re.IGNORECASE)
+    return [scalar for scalar in _walk_scalars(value) if pattern.search(scalar)]
+
+
+def _require_unconditional(mapping: dict[str, object], label: str) -> None:
+    if "if" in mapping:
+        raise CheckError(f"{label} must not be conditional")
+    if "continue-on-error" in mapping:
+        raise CheckError(f"{label} must not allow failure")
+    if "defaults" in mapping:
+        raise CheckError(f"{label} must not override command defaults")
+    if "shell" in mapping:
+        raise CheckError(f"{label} must not override the command shell")
+
+
+def _require_blocking_job(job: dict[str, object], label: str) -> None:
+    _require_unconditional(job, label)
+    if "permissions" in job:
+        raise CheckError(f"{label} must not override credential-free workflow permissions")
+    if "env" in job:
+        raise CheckError(f"{label} must not override the reviewed CI environment")
+    for index, step in enumerate(_workflow_steps(job, label)):
+        _require_unconditional(step, f"{label} step {index}")
+        if "env" in step:
+            raise CheckError(f"{label} step {index} must not override the CI environment")
+
+
+def _run_step(job: dict[str, object], command: str, label: str) -> tuple[int, dict[str, object]]:
+    matches = [
+        (index, step)
+        for index, step in enumerate(_workflow_steps(job, label))
+        if step.get("run") == command
+    ]
+    if len(matches) != 1:
+        raise CheckError(f"{label} must contain exactly one active run step: {command}")
+    index, step = matches[0]
+    _require_unconditional(step, f"{label} run step {command!r}")
+    return index, step
+
+
+def _action_step(job: dict[str, object], action: str, label: str) -> tuple[int, dict[str, object]]:
+    matches: list[tuple[int, dict[str, object]]] = []
+    for index, step in enumerate(_workflow_steps(job, label)):
+        uses = step.get("uses")
+        if isinstance(uses, str) and uses.rpartition("@")[0] == action:
+            matches.append((index, step))
+    if len(matches) != 1:
+        raise CheckError(f"{label} must contain exactly one {action} step")
+    index, step = matches[0]
+    _require_unconditional(step, f"{label} {action} step")
+    return index, step
+
+
+def _named_step(job: dict[str, object], name: str, label: str) -> tuple[int, dict[str, object]]:
+    matches = [
+        (index, step)
+        for index, step in enumerate(_workflow_steps(job, label))
+        if step.get("name") == name
+    ]
+    if len(matches) != 1:
+        raise CheckError(f"{label} must contain exactly one {name!r} step")
+    index, step = matches[0]
+    _require_unconditional(step, f"{label} {name!r} step")
+    return index, step
+
+
+def _named_run_step(
+    job: dict[str, object], name: str, command: str, label: str
+) -> tuple[int, dict[str, object]]:
+    index, step = _named_step(job, name, label)
+    if step.get("run") != command or "uses" in step:
+        raise CheckError(f"{label} {name!r} step must run exactly: {command}")
+    return index, step
+
+
+def _named_action_step(
+    job: dict[str, object], name: str, action: str, label: str
+) -> tuple[int, dict[str, object]]:
+    index, step = _action_step(job, action, label)
+    if step.get("name") != name or "run" in step:
+        raise CheckError(f"{label} must use {action} in its {name!r} step")
+    return index, step
+
+
+def _require_step_names(job: dict[str, object], expected: list[str], label: str) -> None:
+    names = [step.get("name") for step in _workflow_steps(job, label)]
+    if names != expected:
+        raise CheckError(f"{label} steps must match the reviewed sequence")
+
+
+def _require_needs(job: dict[str, object], expected: list[str], label: str) -> None:
+    value = job.get("needs")
+    if isinstance(value, str):
+        actual = [value]
+    else:
+        actual = [
+            _scalar(item, f"{label} dependency")
+            for item in _sequence(value, f"{label} dependencies")
+        ]
+    if actual != expected:
+        raise CheckError(f"{label} must depend on {', '.join(expected)}")
+
+
+def _require_permissions(mapping: dict[str, object], expected: dict[str, str], label: str) -> None:
+    permissions = _mapping(mapping.get("permissions"), f"{label} permissions")
+    if permissions != expected:
+        raise CheckError(f"{label} permissions do not match the reviewed least-privilege map")
+
+
+def _require_options(step: dict[str, object], expected: dict[str, str], label: str) -> None:
+    options = _mapping(step.get("with"), f"{label} options")
+    if options != expected:
+        raise CheckError(f"{label} options do not match the reviewed contract")
+
+
+def _require_step_environments(
+    job: dict[str, object], expected: dict[str, dict[str, str]], label: str
+) -> None:
+    for index, step in enumerate(_workflow_steps(job, label)):
+        name = _scalar(step.get("name"), f"{label} step {index} name")
+        if name in expected:
+            environment = _mapping(step.get("env"), f"{label} {name!r} environment")
+            if environment != expected[name]:
+                raise CheckError(f"{label} {name!r} environment does not match the contract")
+        elif "env" in step:
+            raise CheckError(f"{label} {name!r} step must not override the environment")
+
+
+def _action_references(workflow: dict[str, object], source: str) -> Iterator[tuple[str, str]]:
+    jobs = _mapping(workflow.get("jobs"), f"{source} jobs")
+    for job_name, value in jobs.items():
+        job = _mapping(value, f"{source} {job_name!r} job")
+        if "uses" in job:
+            yield (
+                f"{source} {job_name!r} job",
+                _scalar(job["uses"], f"{source} {job_name!r} job uses"),
+            )
+        if "steps" not in job:
+            continue
+        for index, step in enumerate(_workflow_steps(job, f"{source} {job_name!r} job")):
+            if "uses" in step:
+                yield (
+                    f"{source} {job_name!r} step {index}",
+                    _scalar(step["uses"], f"{source} {job_name!r} step {index} uses"),
+                )
 
 
 def check_action_pins(text: str, source: str) -> None:
-    for match in re.finditer(r"(?m)^\s*uses:\s*([^@\s]+)@([^\s#]+)", text):
-        action, reference = match.groups()
+    workflow = _load_workflow(text, source)
+    for label, value in _action_references(workflow, source):
+        if value.startswith("./"):
+            continue
+        if value.startswith("docker://"):
+            raise CheckError(f"{label}: Docker action references are not permitted")
+        action, separator, reference = value.rpartition("@")
+        if not separator or not action:
+            raise CheckError(f"{label}: external action reference {value!r} has no ref")
         if re.fullmatch(r"[0-9a-f]{40}", reference) is None:
-            raise CheckError(f"{source}: {action} must be pinned to a full commit SHA")
+            raise CheckError(f"{label}: {action} must be pinned to a full commit SHA")
 
 
 def check_ci_workflow(text: str) -> None:
     """Require credential-free CI to cover every private-validation evidence layer."""
-    _prefix, separator, _jobs = text.partition("\njobs:\n")
-    if not separator:
-        raise CheckError("CI workflow has no jobs mapping")
-    for needle, message in (
-        ("pull_request:", "CI must run for pull requests"),
-        ("push:\n    branches:\n      - main", "CI must run for default-branch pushes"),
-        ("run: uv lock --check", "CI must verify lock consistency"),
-        (
-            "run: uv run python scripts/check_version.py --require-public-preview-docs",
-            "CI must enforce canonical public content and identity",
-        ),
-        (
-            "run: python scripts/check_repository_independence.py",
-            "CI must run standalone copied-checkout verification",
-        ),
-        (
-            'python-version: ["3.10", "3.11", "3.12", "3.13", "3.14"]',
-            "CI must block on every supported Python runtime",
-        ),
-        (
-            'run: uv pip install --python .venv/bin/python "openai==2.45.0"',
-            "CI must cover the minimum supported OpenAI version",
-        ),
+    workflow = _load_workflow(text, "CI workflow")
+    _require_permissions(workflow, {"contents": "read"}, "credential-free CI")
+    if "defaults" in workflow:
+        raise CheckError("credential-free CI must not override command defaults")
+    if _mapping(workflow.get("env"), "CI workflow environment") != {"UV_VERSION": "0.11.8"}:
+        raise CheckError("credential-free CI must retain only its pinned uv frontend version")
+    triggers = _mapping(workflow.get("on"), "CI workflow triggers")
+    if set(triggers) != {"pull_request", "push", "schedule"}:
+        raise CheckError("CI triggers must equal pull requests, main pushes, and weekly schedule")
+    if triggers["pull_request"] != "":
+        raise CheckError("CI pull-request validation must not use activity or path filters")
+    push = _mapping(triggers["push"], "CI push trigger")
+    if set(push) != {"branches"}:
+        raise CheckError("CI main-push validation must not use path, tag, or activity filters")
+    branches = [
+        _scalar(item, "CI push branch")
+        for item in _sequence(push.get("branches"), "CI push branches")
+    ]
+    if branches != ["main"]:
+        raise CheckError("CI must run only for default-branch pushes")
+    schedule = _sequence(triggers["schedule"], "CI schedule trigger")
+    if schedule != [{"cron": "23 4 * * 1"}]:
+        raise CheckError("CI latest-OpenAI canary must run on the reviewed weekly schedule")
+
+    quality = _workflow_job(workflow, "quality", "CI workflow")
+    locked_runtime = _workflow_job(workflow, "locked-runtime", "CI workflow")
+    minimum_openai = _workflow_job(workflow, "minimum-openai", "CI workflow")
+    latest_openai = _workflow_job(workflow, "latest-openai", "CI workflow")
+    package = _workflow_job(workflow, "package", "CI workflow")
+    standalone = _workflow_job(workflow, "standalone", "CI workflow")
+    jobs = _mapping(workflow.get("jobs"), "CI workflow jobs")
+    for name, value in jobs.items():
+        job = _mapping(value, f"CI {name!r} job")
+        if "permissions" in job:
+            raise CheckError("CI jobs must not override credential-free workflow permissions")
+    for name, job in (
+        ("quality", quality),
+        ("locked-runtime", locked_runtime),
+        ("minimum-openai", minimum_openai),
+        ("package", package),
+        ("standalone", standalone),
     ):
-        _require(text, needle, message)
-    if re.search(r"\$\{\{\s*secrets\.", text, flags=re.IGNORECASE):
+        _require_blocking_job(job, f"CI {name!r} job")
+    if latest_openai.get("if") != (
+        "github.event_name == 'schedule' || github.actor == 'dependabot[bot]'"
+    ):
+        raise CheckError(
+            "CI latest-OpenAI canary must run only for the weekly schedule or Dependabot"
+        )
+    if any(key in latest_openai for key in ("continue-on-error", "defaults", "env", "shell")):
+        raise CheckError("CI latest-OpenAI canary must retain blocking command execution")
+    for index, step in enumerate(_workflow_steps(latest_openai, "CI latest-openai job")):
+        _require_unconditional(step, f"CI latest-openai step {index}")
+        if "env" in step:
+            raise CheckError("CI latest-OpenAI steps must not override the CI environment")
+
+    _require_needs(
+        package,
+        ["quality", "locked-runtime", "minimum-openai"],
+        "CI package job",
+    )
+    _require_needs(standalone, ["package"], "CI standalone job")
+
+    required_commands = {
+        "quality": (
+            "uv lock --check",
+            "uv sync --locked",
+            "uv run ruff check src tests scripts",
+            "uv run ruff format --check src tests scripts",
+            "uv run pyright",
+            'uv run pytest -m "not live"',
+            "uv run python scripts/check_version.py --expected 0.1.0a1 --require-changelog",
+            "uv run python scripts/check_version.py --require-public-preview-docs",
+            "uv run python scripts/check_secrets.py",
+            "uv run python scripts/run_actionlint.py",
+            "uv run python scripts/check_workflows.py",
+        ),
+        "locked-runtime": ("uv sync --locked", 'uv run pytest -m "not live"'),
+        "minimum-openai": (
+            "uv sync --locked",
+            'uv pip install --python .venv/bin/python "openai==2.45.0"',
+            'uv run --no-sync pytest -m "not live"',
+        ),
+        "latest-openai": (
+            "uv sync --locked",
+            'uv pip install --python .venv/bin/python --upgrade "openai>=2.45.0,<3.0.0"',
+            'uv run --no-sync pytest -m "not live"',
+        ),
+        "package": (
+            "uv sync --locked",
+            "uv build",
+            "uv run twine check dist/*",
+            "uv run python scripts/check_artifacts.py dist/*",
+            "uv run python scripts/check_clean_install.py dist/*",
+            "sha256sum dist/* > artifact-sha256.txt",
+        ),
+        "standalone": (
+            "python scripts/check_repository_independence.py",
+            "sha256sum --check artifact-sha256.txt",
+        ),
+    }
+    required_jobs = {
+        "quality": quality,
+        "locked-runtime": locked_runtime,
+        "minimum-openai": minimum_openai,
+        "latest-openai": latest_openai,
+        "package": package,
+        "standalone": standalone,
+    }
+    expected_timeouts = {
+        "quality": "20",
+        "locked-runtime": "20",
+        "minimum-openai": "20",
+        "latest-openai": "20",
+        "package": "25",
+        "standalone": "35",
+    }
+    expected_python = {
+        "quality": "3.14",
+        "locked-runtime": "${{ matrix.python-version }}",
+        "minimum-openai": "3.10",
+        "latest-openai": "3.14",
+        "package": "3.14",
+        "standalone": "3.14",
+    }
+    for name, job in required_jobs.items():
+        if job.get("runs-on") != "ubuntu-latest":
+            raise CheckError(f"CI {name} job must use the reviewed GitHub-hosted runner")
+        if job.get("timeout-minutes") != expected_timeouts[name]:
+            raise CheckError(f"CI {name} job must retain its reviewed timeout")
+        _, setup_step = _named_action_step(
+            job, "Set up Python", "actions/setup-python", f"CI {name} job"
+        )
+        _require_options(
+            setup_step,
+            {"python-version": expected_python[name]},
+            f"CI {name} Python setup",
+        )
+    for name, commands in required_commands.items():
+        for command in commands:
+            _run_step(required_jobs[name], command, f"CI {name} job")
+
+    strategy = _mapping(locked_runtime.get("strategy"), "CI locked-runtime strategy")
+    if set(strategy) != {"fail-fast", "matrix"} or strategy["fail-fast"] != "false":
+        raise CheckError("CI runtime matrix must retain fail-fast: false")
+    matrix = _mapping(strategy.get("matrix"), "CI locked-runtime matrix")
+    if set(matrix) != {"python-version"}:
+        raise CheckError("CI runtime matrix must vary only the supported Python version")
+    python_versions = [
+        _scalar(item, "CI locked-runtime Python version")
+        for item in _sequence(matrix.get("python-version"), "CI locked-runtime Python versions")
+    ]
+    if python_versions != ["3.10", "3.11", "3.12", "3.13", "3.14"]:
+        raise CheckError("CI must block on every supported Python runtime")
+    package_digest, _ = _run_step(
+        package, "sha256sum dist/* > artifact-sha256.txt", "CI package job"
+    )
+    package_upload, upload_step = _named_action_step(
+        package, "Retain verified artifacts", "actions/upload-artifact", "CI package job"
+    )
+    _require_options(
+        upload_step,
+        {
+            "name": "python-distributions",
+            "path": "dist/*\nartifact-sha256.txt\n",
+            "if-no-files-found": "error",
+            "retention-days": "7",
+        },
+        "CI package artifact upload",
+    )
+    if package_digest >= package_upload:
+        raise CheckError("CI package job must digest artifacts before retaining them")
+    copied_checkout, _ = _run_step(
+        standalone,
+        "python scripts/check_repository_independence.py",
+        "CI standalone job",
+    )
+    artifact_download, download_step = _action_step(
+        standalone, "actions/download-artifact", "CI standalone job"
+    )
+    _require_options(
+        download_step,
+        {"name": "python-distributions", "path": "verified-artifacts"},
+        "CI artifact download",
+    )
+    digest_check, digest_step = _run_step(
+        standalone,
+        "sha256sum --check artifact-sha256.txt",
+        "CI standalone job",
+    )
+    if digest_step.get("working-directory") != "verified-artifacts":
+        raise CheckError("CI must recheck retained artifact digests after download")
+    if not copied_checkout < artifact_download < digest_check:
+        raise CheckError(
+            "CI must finish copied-checkout verification before downloading and "
+            "rechecking retained artifacts"
+        )
+    if _secret_references(workflow):
         raise CheckError("credential-free CI must not reference repository secrets")
 
 
 def check_release_please_workflow(text: str) -> None:
     """Require Release Please to remain explicitly disabled by default."""
-    prefix, separator, jobs = text.partition("\njobs:\n")
-    if not separator:
-        raise CheckError("release-please workflow has no jobs mapping")
-    _require(
-        prefix,
-        "on:\n  push:\n    branches:\n      - main",
-        "Release Please must run only for default-branch pushes",
+    workflow = _load_workflow(text, "Release Please workflow")
+    _require_permissions(workflow, {"contents": "read"}, "Release Please workflow")
+    if "env" in workflow:
+        raise CheckError("Release Please workflow must not override the action environment")
+    triggers = _mapping(workflow.get("on"), "Release Please triggers")
+    if set(triggers) != {"push"}:
+        raise CheckError("Release Please must run only for default-branch pushes")
+    push = _mapping(triggers["push"], "Release Please push trigger")
+    if set(push) != {"branches"}:
+        raise CheckError("Release Please push trigger must not use path or tag filters")
+    branches = [
+        _scalar(item, "Release Please push branch")
+        for item in _sequence(push.get("branches"), "Release Please push branches")
+    ]
+    if branches != ["main"]:
+        raise CheckError("Release Please must run only for default-branch pushes")
+    concurrency = _mapping(workflow.get("concurrency"), "Release Please concurrency")
+    if concurrency != {
+        "group": "release-please-${{ github.ref }}",
+        "cancel-in-progress": "false",
+    }:
+        raise CheckError("Release Please must serialize updates per ref without cancellation")
+    jobs = _mapping(workflow.get("jobs"), "Release Please jobs")
+    if set(jobs) != {"release-please"}:
+        raise CheckError("Release Please must contain only its gated release-please job")
+    release_job = _workflow_job(workflow, "release-please", "Release Please workflow")
+    if release_job.get("if") != "vars.RELEASE_PLEASE_ENABLED == 'true'":
+        raise CheckError("Release Please must require RELEASE_PLEASE_ENABLED=true")
+    if release_job.get("runs-on") != "ubuntu-latest":
+        raise CheckError("Release Please must use the reviewed GitHub-hosted runner")
+    if release_job.get("timeout-minutes") != "10":
+        raise CheckError("Release Please must retain its ten-minute timeout")
+    if "continue-on-error" in release_job:
+        raise CheckError("Release Please must not allow its job to fail")
+    if "env" in release_job:
+        raise CheckError("Release Please job must not override the action environment")
+    _require_permissions(
+        release_job,
+        {"contents": "write", "pull-requests": "write"},
+        "Release Please job",
     )
-    if "workflow_dispatch:" in prefix or "release:" in prefix:
-        raise CheckError("Release Please must not accept manual or release events")
-    _require(
-        jobs,
-        "if: vars.RELEASE_PLEASE_ENABLED == 'true'",
-        "Release Please must require RELEASE_PLEASE_ENABLED=true",
+    if "defaults" in workflow or "defaults" in release_job:
+        raise CheckError("Release Please must not override command defaults")
+    for index, step in enumerate(_workflow_steps(release_job, "Release Please job")):
+        _require_unconditional(step, f"Release Please step {index}")
+    _require_step_names(
+        release_job,
+        ["Open or update the release PR, or create its approved release"],
+        "Release Please job",
     )
-    if "secrets." in text:
+    _require_step_environments(release_job, {}, "Release Please job")
+    _, release_step = _named_action_step(
+        release_job,
+        "Open or update the release PR, or create its approved release",
+        "googleapis/release-please-action",
+        "Release Please job",
+    )
+    _require_options(
+        release_step,
+        {
+            "config-file": "release-please-config.json",
+            "manifest-file": ".release-please-manifest.json",
+        },
+        "Release Please action",
+    )
+    if _secret_references(workflow):
         raise CheckError("Release Please must not depend on repository credentials")
 
 
 def check_publish_workflow(text: str, live_smoke_text: str) -> None:
     """Validate fail-closed publication, live, permission, and evidence ordering."""
-    prefix, separator, _jobs = text.partition("\njobs:\n")
-    if not separator:
-        raise CheckError("publish workflow has no jobs mapping")
-    _require(
-        prefix,
-        "on:\n  release:\n    types:\n      - published",
-        "publication must be triggered only by a published GitHub release",
-    )
-    if "workflow_dispatch:" in prefix or "push:" in prefix:
-        raise CheckError("production publication must not accept manual, push, or arbitrary refs")
-    _require_pattern(
-        prefix,
-        r"(?m)^permissions:\n  contents: read$",
-        "workflow permissions must default to contents: read",
-    )
-    _require_pattern(
-        prefix,
-        r"(?m)^concurrency:\n  group: pypi-publish\n  cancel-in-progress: false$",
-        "publication must serialize all releases without cancellation",
-    )
-    if re.search(r"(?m)^\s+[\"']?(?:if|continue-on-error)[\"']?\s*:", text):
-        raise CheckError("release gates must not be conditional or allowed to continue on error")
-    shell_text = re.sub(r"\$\{\{[^}]*\}\}", "", text)
-    if "||" in shell_text or re.search(r"(?m)^\s*set\s+\+e(?:\s|$)", shell_text):
-        raise CheckError("release gate commands must not swallow shell failures")
-    if re.search(r"(?m)^\s*[\"']?permissions[\"']?\s*:\s*(?:write-all|read-all)\s*$", text):
-        raise CheckError("release workflow permissions must use explicit read-only job maps")
-    write_permissions = re.findall(r"(?m)^\s+[\"']?([a-z-]+)[\"']?\s*:\s*write\s*$", text)
-    if write_permissions != ["id-token"]:
-        raise CheckError("id-token: write on the publish job must be the only write permission")
+    workflow = _load_workflow(text, "publish workflow")
+    live_workflow = _load_workflow(live_smoke_text, "live-smoke workflow")
 
-    monitoring_live = _job(live_smoke_text, "smoke", source="live-smoke workflow")
-    _require_pattern(
-        live_smoke_text,
-        r"(?m)^concurrency:\n  group: trusted-live-smoke\n  cancel-in-progress: false$",
-        "release and monitoring live smokes must share one non-cancelling concurrency group",
-    )
-    _require_pattern(
-        monitoring_live,
-        r"(?m)^    if: >-\n"
-        r"      github\.ref == format\('refs/heads/\{0\}', "
-        r"github\.event\.repository\.default_branch\) &&\n"
-        r"      vars\.LIVE_SMOKE_ENABLED == 'true'\n"
-        r"    runs-on:",
-        "monitoring live smoke must run only against the canonical default branch and "
-        "require LIVE_SMOKE_ENABLED=true for every trigger",
-    )
+    publish_triggers = _mapping(workflow.get("on"), "publish workflow triggers")
+    if set(publish_triggers) != {"release"}:
+        raise CheckError("publication must be triggered only by a published GitHub release")
+    release_trigger = _mapping(publish_triggers["release"], "publish release trigger")
+    if set(release_trigger) != {"types"}:
+        raise CheckError("publication release trigger must not use additional filters")
+    release_types = [
+        _scalar(item, "publish release type")
+        for item in _sequence(release_trigger.get("types"), "publish release types")
+    ]
+    if release_types != ["published"]:
+        raise CheckError("publication must be triggered only by a published GitHub release")
+    _require_permissions(workflow, {"contents": "read"}, "publish workflow")
+    concurrency = _mapping(workflow.get("concurrency"), "publish workflow concurrency")
+    if concurrency != {"group": "pypi-publish", "cancel-in-progress": "false"}:
+        raise CheckError("publication must serialize all releases without cancellation")
+    if _mapping(workflow.get("env"), "publish workflow environment") != {"UV_VERSION": "0.11.8"}:
+        raise CheckError("publish workflow must retain its pinned uv frontend version")
 
-    build = _job(text, "build")
-    _require_pattern(
+    live_triggers = _mapping(live_workflow.get("on"), "live-smoke triggers")
+    if set(live_triggers) != {"schedule", "workflow_dispatch"}:
+        raise CheckError("monitoring live smoke must run only on schedule or manual dispatch")
+    if live_triggers["workflow_dispatch"] != "":
+        raise CheckError("monitoring live smoke manual dispatch must not accept inputs")
+    if _sequence(live_triggers["schedule"], "live-smoke schedule") != [{"cron": "17 3 * * *"}]:
+        raise CheckError("monitoring live smoke must retain its reviewed daily schedule")
+    _require_permissions(live_workflow, {"contents": "read"}, "live-smoke workflow")
+    if "defaults" in live_workflow:
+        raise CheckError("monitoring live smoke must not override command defaults")
+    live_concurrency = _mapping(live_workflow.get("concurrency"), "live-smoke workflow concurrency")
+    if live_concurrency != {"group": "trusted-live-smoke", "cancel-in-progress": "false"}:
+        raise CheckError(
+            "release and monitoring live smokes must share one non-cancelling concurrency group"
+        )
+    live_environment = _mapping(live_workflow.get("env"), "live-smoke workflow environment")
+    if live_environment != {
+        "UV_VERSION": "0.11.8",
+        "COMETAPI_LIVE_MAX_REQUESTS": "4",
+        "COMETAPI_LIVE_MAX_OUTPUT_TOKENS": "16",
+        "COMETAPI_LIVE_MODEL": "gpt-5.4",
+        "COMETAPI_LIVE_REQUEST_TIMEOUT_SECONDS": "30",
+        "COMETAPI_LIVE_CONCURRENCY": "1",
+        "COMETAPI_LIVE_RUN": "1",
+        "COMETAPI_LIVE_STOP_ON_FAILURE": "1",
+    }:
+        raise CheckError("monitoring live smoke must retain its bounded execution budget")
+
+    for mapping in _walk_mappings(workflow, "publish workflow"):
+        if "if" in mapping:
+            raise CheckError("release gates must not be conditional")
+        if "continue-on-error" in mapping:
+            raise CheckError("release gates must not be allowed to continue on error")
+        if "defaults" in mapping or "shell" in mapping:
+            raise CheckError("release gates must not override command execution")
+
+    monitoring_job = _workflow_job(live_workflow, "smoke", "live-smoke workflow")
+    monitoring_condition = " ".join(
+        _scalar(monitoring_job.get("if"), "monitoring live-smoke condition").split()
+    )
+    expected_monitoring_condition = (
+        "github.ref == format('refs/heads/{0}', "
+        "github.event.repository.default_branch) && "
+        "vars.LIVE_SMOKE_ENABLED == 'true'"
+    )
+    if monitoring_condition != expected_monitoring_condition:
+        raise CheckError(
+            "monitoring live smoke must run only against the canonical default branch and "
+            "require LIVE_SMOKE_ENABLED=true for every trigger"
+        )
+    live_jobs = _mapping(live_workflow.get("jobs"), "live-smoke workflow jobs")
+    if set(live_jobs) != {"smoke"}:
+        raise CheckError("monitoring live smoke must contain only its bounded smoke job")
+    if "continue-on-error" in monitoring_job:
+        raise CheckError("monitoring live smoke must not allow its job to fail")
+    if any(key in monitoring_job for key in ("permissions", "defaults", "env", "shell")):
+        raise CheckError("monitoring live smoke must retain workflow-level execution controls")
+    for index, step in enumerate(_workflow_steps(monitoring_job, "monitoring live-smoke job")):
+        _require_unconditional(step, f"monitoring live-smoke step {index}")
+    if monitoring_job.get("timeout-minutes") != "10":
+        raise CheckError("monitoring live smoke must have a ten-minute timeout")
+    if monitoring_job.get("runs-on") != "ubuntu-latest":
+        raise CheckError("monitoring live smoke must use the reviewed GitHub-hosted runner")
+    if monitoring_job.get("environment") != "live-smoke":
+        raise CheckError("monitoring live smoke must use its protected environment")
+    _require_step_names(
+        monitoring_job,
+        [
+            "Check out the trusted default branch",
+            "Set up Python",
+            "Install the pinned uv frontend",
+            "Reproduce the locked environment",
+            "Run the separately marked, bounded live suite",
+        ],
+        "monitoring live-smoke job",
+    )
+    _require_step_environments(
+        monitoring_job,
+        {
+            "Run the separately marked, bounded live suite": {
+                "COMETAPI_KEY": "${{ secrets.COMETAPI_KEY }}"
+            }
+        },
+        "monitoring live-smoke job",
+    )
+    _, monitoring_checkout = _named_action_step(
+        monitoring_job,
+        "Check out the trusted default branch",
+        "actions/checkout",
+        "monitoring live-smoke job",
+    )
+    _require_options(
+        monitoring_checkout,
+        {
+            "ref": "${{ github.event.repository.default_branch }}",
+            "persist-credentials": "false",
+        },
+        "monitoring live-smoke checkout",
+    )
+    _, monitoring_setup = _named_action_step(
+        monitoring_job, "Set up Python", "actions/setup-python", "monitoring live-smoke job"
+    )
+    _require_options(
+        monitoring_setup, {"python-version": "3.14"}, "monitoring live-smoke Python setup"
+    )
+    _named_run_step(
+        monitoring_job,
+        "Install the pinned uv frontend",
+        'python -m pip install --disable-pip-version-check "uv==$UV_VERSION"',
+        "monitoring live-smoke job",
+    )
+    _named_run_step(
+        monitoring_job,
+        "Reproduce the locked environment",
+        "uv sync --locked",
+        "monitoring live-smoke job",
+    )
+    _, monitoring_test = _named_run_step(
+        monitoring_job,
+        "Run the separately marked, bounded live suite",
+        "uv run pytest -m live --maxfail=1 -q",
+        "monitoring live-smoke job",
+    )
+    monitoring_test_environment = _mapping(
+        monitoring_test.get("env"), "monitoring live-smoke test environment"
+    )
+    if monitoring_test_environment != {"COMETAPI_KEY": "${{ secrets.COMETAPI_KEY }}"}:
+        raise CheckError("monitoring live credentials must be scoped only to the bounded test step")
+    if _secret_references(live_workflow) != ["${{ secrets.COMETAPI_KEY }}"]:
+        raise CheckError("monitoring live smoke must use only its scoped COMETAPI_KEY")
+
+    jobs = _mapping(workflow.get("jobs"), "publish workflow jobs")
+    if set(jobs) != {"build", "release-live-smoke", "publish", "verify-registry"}:
+        raise CheckError("publish workflow jobs must match the reviewed release chain")
+    build = _workflow_job(workflow, "build", "publish workflow")
+    release_live = _workflow_job(workflow, "release-live-smoke", "publish workflow")
+    publish = _workflow_job(workflow, "publish", "publish workflow")
+    registry = _workflow_job(workflow, "verify-registry", "publish workflow")
+    for name, job, timeout in (
+        ("build", build, "25"),
+        ("release-live-smoke", release_live, "10"),
+        ("publish", publish, "10"),
+        ("verify-registry", registry, "10"),
+    ):
+        if job.get("runs-on") != "ubuntu-latest":
+            raise CheckError(f"release {name} job must use the reviewed GitHub-hosted runner")
+        if job.get("timeout-minutes") != timeout:
+            raise CheckError(f"release {name} job must retain its reviewed timeout")
+    for name, job in (("build", build), ("publish", publish), ("verify-registry", registry)):
+        if "env" in job:
+            raise CheckError(f"release {name} job must not override the workflow environment")
+
+    _require_permissions(build, {"contents": "read"}, "release build job")
+    outputs = _mapping(build.get("outputs"), "release build outputs")
+    if outputs != {
+        "release-commit": "${{ steps.trust.outputs.release-commit }}",
+        "version": "${{ steps.version.outputs.version }}",
+    }:
+        raise CheckError("release build must expose only its verified commit and version")
+    _require_step_names(
         build,
-        r"(?m)^    permissions:\n      contents: read$",
-        "verified build permissions must be explicitly read-only",
+        [
+            "Check out the published release tag",
+            "Reject an untrusted release target",
+            "Set up Python",
+            "Install the pinned uv frontend",
+            "Reproduce the locked environment",
+            "Verify project, manifest, changelog, release docs, and tag agreement",
+            "Scan the immutable source for credentials and scope mistakes",
+            "Verify release-workflow trust semantics",
+            "Build wheel and source distribution from the tag",
+            "Verify artifact versions against the tag",
+            "Check package metadata rendering",
+            "Inspect artifact identity and shape",
+            "Install and smoke-test each exact artifact",
+            "Record immutable artifact digests",
+            "Retain only the verified release bundle",
+        ],
+        "release build job",
     )
-    for needle, message in (
-        (
-            "release-commit: ${{ steps.trust.outputs.release-commit }}",
-            "build must expose the verified release commit",
+    _require_step_environments(
+        build,
+        {
+            "Reject an untrusted release target": {
+                "DEFAULT_BRANCH": "${{ github.event.repository.default_branch }}",
+                "RELEASE_IMMUTABLE": "${{ github.event.release.immutable }}",
+                "RELEASE_TAG": "${{ github.event.release.tag_name }}",
+            },
+            "Verify project, manifest, changelog, release docs, and tag agreement": {
+                "RELEASE_TAG": "${{ github.event.release.tag_name }}"
+            },
+            "Verify artifact versions against the tag": {
+                "RELEASE_TAG": "${{ github.event.release.tag_name }}"
+            },
+        },
+        "release build job",
+    )
+    _, build_checkout = _named_action_step(
+        build,
+        "Check out the published release tag",
+        "actions/checkout",
+        "release build job",
+    )
+    _require_options(
+        build_checkout,
+        {
+            "ref": "refs/tags/${{ github.event.release.tag_name }}",
+            "fetch-depth": "0",
+            "persist-credentials": "false",
+        },
+        "release build checkout",
+    )
+    _, trust_step = _named_run_step(
+        build,
+        "Reject an untrusted release target",
+        "bash scripts/verify_release_trust.sh",
+        "release build job",
+    )
+    if trust_step.get("id") != "trust":
+        raise CheckError("release trust step must expose the trust output id")
+    trust_environment = _mapping(trust_step.get("env"), "release trust environment")
+    if trust_environment != {
+        "DEFAULT_BRANCH": "${{ github.event.repository.default_branch }}",
+        "RELEASE_IMMUTABLE": "${{ github.event.release.immutable }}",
+        "RELEASE_TAG": "${{ github.event.release.tag_name }}",
+    }:
+        raise CheckError("release trust step must receive only the immutable release identity")
+    _, build_setup = _named_action_step(
+        build, "Set up Python", "actions/setup-python", "release build job"
+    )
+    _require_options(build_setup, {"python-version": "3.14"}, "release build Python setup")
+    build_commands = {
+        "Install the pinned uv frontend": (
+            'python -m pip install --disable-pip-version-check "uv==$UV_VERSION"'
         ),
-        (
-            "ref: refs/tags/${{ github.event.release.tag_name }}",
-            "build must check out the published tag ref",
+        "Reproduce the locked environment": "uv sync --locked",
+        "Scan the immutable source for credentials and scope mistakes": (
+            "uv run python scripts/check_secrets.py"
         ),
-        ("fetch-depth: 0", "build must fetch history for ancestry validation"),
-        (
-            "DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}",
-            "trust validation must use the protected default branch",
+        "Verify release-workflow trust semantics": "uv run python scripts/check_workflows.py",
+        "Build wheel and source distribution from the tag": "uv build",
+        "Verify artifact versions against the tag": (
+            'uv run python scripts/check_version.py --tag "$RELEASE_TAG" '
+            "--require-changelog --require-releasable-docs dist/*"
         ),
-        (
-            "RELEASE_IMMUTABLE: ${{ github.event.release.immutable }}",
-            "trust validation must receive release.immutable",
+        "Check package metadata rendering": "uv run twine check dist/*",
+        "Inspect artifact identity and shape": "uv run python scripts/check_artifacts.py dist/*",
+        "Install and smoke-test each exact artifact": (
+            "uv run python scripts/check_clean_install.py dist/*"
         ),
-        (
-            "RELEASE_TAG: ${{ github.event.release.tag_name }}",
-            "trust validation must receive the release tag",
-        ),
-        (
-            "run: bash scripts/verify_release_trust.sh",
-            "build must execute the tested release-trust verifier",
-        ),
-        (
-            "run: uv run python scripts/check_workflows.py",
-            "release build must run the local workflow semantic check",
-        ),
-    ):
-        _require(build, needle, message)
-    if "id-token: write" in build or "secrets.COMETAPI_KEY" in build:
+        "Record immutable artifact digests": "sha256sum dist/* > artifact-sha256.txt",
+    }
+    for name, command in build_commands.items():
+        _named_run_step(build, name, command, "release build job")
+    _, version_step = _named_run_step(
+        build,
+        "Verify project, manifest, changelog, release docs, and tag agreement",
+        'version=$(uv run python scripts/check_version.py --tag "$RELEASE_TAG" '
+        "--require-changelog --require-releasable-docs --print-version)\n"
+        'echo "version=$version" >> "$GITHUB_OUTPUT"\n',
+        "release build job",
+    )
+    if version_step.get("id") != "version" or _mapping(
+        version_step.get("env"), "release version environment"
+    ) != {"RELEASE_TAG": "${{ github.event.release.tag_name }}"}:
+        raise CheckError("release version step must expose the verified tag-derived version")
+    _, artifact_upload = _named_action_step(
+        build,
+        "Retain only the verified release bundle",
+        "actions/upload-artifact",
+        "release build job",
+    )
+    _require_options(
+        artifact_upload,
+        {
+            "name": "release-${{ steps.version.outputs.version }}",
+            "path": "dist/*\nartifact-sha256.txt\n",
+            "if-no-files-found": "error",
+            "retention-days": "30",
+        },
+        "release bundle upload",
+    )
+
+    _require_permissions(release_live, {"contents": "read"}, "exact-release live-smoke job")
+    _require_needs(release_live, ["build"], "exact-release live-smoke job")
+    if release_live.get("timeout-minutes") != "10":
+        raise CheckError("exact-release live smoke must have a ten-minute timeout")
+    if release_live.get("environment") != "live-smoke":
+        raise CheckError("exact-release live smoke must use its protected environment")
+    release_live_concurrency = _mapping(
+        release_live.get("concurrency"), "exact-release live-smoke concurrency"
+    )
+    if release_live_concurrency != {
+        "group": "trusted-live-smoke",
+        "cancel-in-progress": "false",
+    }:
         raise CheckError(
-            "build must receive neither OIDC publication permission nor live credentials"
+            "release and monitoring live smokes must share one non-cancelling concurrency group"
         )
+    release_live_environment = _mapping(
+        release_live.get("env"), "exact-release live-smoke environment"
+    )
+    if release_live_environment != {
+        "COMETAPI_LIVE_CONCURRENCY": "1",
+        "COMETAPI_LIVE_MAX_OUTPUT_TOKENS": "16",
+        "COMETAPI_LIVE_MAX_REQUESTS": "4",
+        "COMETAPI_LIVE_MODEL": "${{ vars.COMETAPI_LIVE_MODEL || 'gpt-5.4' }}",
+        "COMETAPI_LIVE_REQUEST_TIMEOUT_SECONDS": "30",
+        "COMETAPI_LIVE_RUN": "1",
+        "COMETAPI_LIVE_STOP_ON_FAILURE": "1",
+    }:
+        raise CheckError("exact-release live smoke must retain its bounded execution budget")
+    _require_step_names(
+        release_live,
+        [
+            "Check out the verified release commit",
+            "Require the exact verified release commit",
+            "Set up Python",
+            "Install the pinned uv frontend",
+            "Reproduce the locked release environment",
+            "Run the bounded exact-release live suite",
+        ],
+        "exact-release live-smoke job",
+    )
+    _require_step_environments(
+        release_live,
+        {
+            "Require the exact verified release commit": {
+                "RELEASE_COMMIT": "${{ needs.build.outputs.release-commit }}"
+            },
+            "Run the bounded exact-release live suite": {
+                "COMETAPI_KEY": "${{ secrets.COMETAPI_KEY }}"
+            },
+        },
+        "exact-release live-smoke job",
+    )
+    _, release_checkout = _named_action_step(
+        release_live,
+        "Check out the verified release commit",
+        "actions/checkout",
+        "exact-release live-smoke job",
+    )
+    _require_options(
+        release_checkout,
+        {
+            "ref": "${{ needs.build.outputs.release-commit }}",
+            "persist-credentials": "false",
+        },
+        "exact-release live-smoke checkout",
+    )
+    _, commit_check = _named_run_step(
+        release_live,
+        "Require the exact verified release commit",
+        'test "$(git rev-parse HEAD)" = "$RELEASE_COMMIT"',
+        "exact-release live-smoke job",
+    )
+    if _mapping(commit_check.get("env"), "exact-release commit-check environment") != {
+        "RELEASE_COMMIT": "${{ needs.build.outputs.release-commit }}"
+    }:
+        raise CheckError("exact-release commit check must use only the verified build output")
+    _, release_setup = _named_action_step(
+        release_live, "Set up Python", "actions/setup-python", "exact-release live-smoke job"
+    )
+    _require_options(
+        release_setup, {"python-version": "3.14"}, "exact-release live-smoke Python setup"
+    )
+    _named_run_step(
+        release_live,
+        "Install the pinned uv frontend",
+        'python -m pip install --disable-pip-version-check "uv==$UV_VERSION"',
+        "exact-release live-smoke job",
+    )
+    _named_run_step(
+        release_live,
+        "Reproduce the locked release environment",
+        "uv sync --locked",
+        "exact-release live-smoke job",
+    )
+    _, live_test = _named_run_step(
+        release_live,
+        "Run the bounded exact-release live suite",
+        "uv run pytest -m live --maxfail=1 -q",
+        "exact-release live-smoke job",
+    )
+    if _mapping(live_test.get("env"), "exact-release live test environment") != {
+        "COMETAPI_KEY": "${{ secrets.COMETAPI_KEY }}"
+    }:
+        raise CheckError("exact-release live credential must be scoped only to its test step")
 
-    live = _job(text, "release-live-smoke")
-    _require_pattern(
-        live,
-        r"(?m)^    permissions:\n      contents: read$",
-        "release live-smoke permissions must be explicitly read-only",
-    )
-    for needle, message in (
-        ("needs:\n      - build", "exact-release live smoke must depend on verified build"),
-        (
-            "concurrency:\n      group: trusted-live-smoke\n      cancel-in-progress: false",
-            "release and monitoring live smokes must share one non-cancelling concurrency group",
-        ),
-        (
-            "ref: ${{ needs.build.outputs.release-commit }}",
-            "release live smoke must check out the verified release commit",
-        ),
-        (
-            'run: test "$(git rev-parse HEAD)" = "$RELEASE_COMMIT"',
-            "release live smoke must recheck its exact commit",
-        ),
-        ('COMETAPI_LIVE_MAX_REQUESTS: "4"', "release live smoke must cap requests at four"),
-        (
-            'COMETAPI_LIVE_MAX_OUTPUT_TOKENS: "16"',
-            "release live smoke must cap output tokens at 16",
-        ),
-        (
-            'COMETAPI_LIVE_REQUEST_TIMEOUT_SECONDS: "30"',
-            "release live smoke must cap request timeout at 30 seconds",
-        ),
-        ('COMETAPI_LIVE_CONCURRENCY: "1"', "release live smoke must use concurrency one"),
-        ('COMETAPI_LIVE_STOP_ON_FAILURE: "1"', "release live smoke must stop on failure"),
-        ("timeout-minutes: 10", "release live smoke must have a ten-minute job timeout"),
-        (
-            "COMETAPI_LIVE_MODEL: ${{ vars.COMETAPI_LIVE_MODEL || 'gpt-5.4' }}",
-            "release live smoke must default an unset or empty model to gpt-5.4",
-        ),
-        (
-            "COMETAPI_KEY: ${{ secrets.COMETAPI_KEY }}",
-            "release live smoke must receive the protected credential only at its test step",
-        ),
-    ):
-        _require(live, needle, message)
-    _require_pattern(
-        live,
-        r"(?m)^    environment: live-smoke$",
-        "release live smoke must use its protected environment",
-    )
-    if "id-token: write" in live:
-        raise CheckError("release live smoke must not receive OIDC publication permission")
-    live_test = _step(live, "Run the bounded exact-release live suite")
-    _require(
-        live_test,
-        "env:\n          COMETAPI_KEY: ${{ secrets.COMETAPI_KEY }}\n"
-        "        run: uv run pytest -m live --maxfail=1 -q",
-        "release live credentials must be scoped only to the bounded test step",
-    )
-
-    publish = _job(text, "publish")
-    for needle, message in (
-        (
-            "needs:\n      - build\n      - release-live-smoke",
-            "publish must require both verified artifacts and successful exact-release live smoke",
-        ),
-        ("id-token: write", "only the publish job must receive PyPI OIDC permission"),
-    ):
-        _require(publish, needle, message)
-    _require_pattern(
+    _require_permissions(publish, {"contents": "read", "id-token": "write"}, "PyPI publish job")
+    _require_needs(
         publish,
-        r"(?m)^    environment:\n      name: pypi\n"
-        r"      url: https://pypi\.org/project/cometapi/"
-        r"\$\{\{ needs\.build\.outputs\.version \}\}/$",
-        "publish must use the protected pypi environment and exact package URL",
+        ["build", "release-live-smoke"],
+        "PyPI publish job",
     )
-    _require_pattern(
+    publish_environment = _mapping(publish.get("environment"), "PyPI publish environment")
+    if publish_environment != {
+        "name": "pypi",
+        "url": "https://pypi.org/project/cometapi/${{ needs.build.outputs.version }}/",
+    }:
+        raise CheckError("publish must use the protected pypi environment and exact package URL")
+    _require_step_names(
         publish,
-        r"(?m)^    permissions:\n      contents: read\n      id-token: write$",
-        "publish must receive only read access plus PyPI OIDC permission",
+        [
+            "Download the verified release bundle",
+            "Recheck immutable artifact digests",
+            "Publish through the configured PyPI Trusted Publisher",
+        ],
+        "PyPI publish job",
     )
-    if "secrets.COMETAPI_KEY" in publish:
-        raise CheckError("publish must not receive the live API credential")
-    if "actions/checkout@" in publish:
-        raise CheckError("publish must consume the verified bundle without a source checkout")
+    _require_step_environments(publish, {}, "PyPI publish job")
+    _, publish_download = _named_action_step(
+        publish,
+        "Download the verified release bundle",
+        "actions/download-artifact",
+        "PyPI publish job",
+    )
+    _require_options(
+        publish_download,
+        {
+            "name": "release-${{ needs.build.outputs.version }}",
+            "path": "release-bundle",
+        },
+        "PyPI release-bundle download",
+    )
+    _, publish_digest = _named_run_step(
+        publish,
+        "Recheck immutable artifact digests",
+        "sha256sum --check artifact-sha256.txt",
+        "PyPI publish job",
+    )
+    if publish_digest.get("working-directory") != "release-bundle":
+        raise CheckError("PyPI publish job must recheck digests inside the retained bundle")
+    _, pypi_publish = _named_action_step(
+        publish,
+        "Publish through the configured PyPI Trusted Publisher",
+        "pypa/gh-action-pypi-publish",
+        "PyPI publish job",
+    )
+    _require_options(
+        pypi_publish,
+        {
+            "packages-dir": "release-bundle/dist/",
+            "print-hash": "true",
+            "attestations": "true",
+        },
+        "PyPI Trusted Publisher action",
+    )
 
-    registry = _job(text, "verify-registry")
-    _require_pattern(
-        registry,
-        r"(?m)^    permissions:\n      contents: read$",
-        "registry verification permissions must be explicitly read-only",
-    )
-    _require(
-        registry,
-        "needs:\n      - build\n      - publish",
-        "registry verification must require the verified build and completed publication",
-    )
-    checkout = registry.find("- name: Check out the registry verification source")
-    download = registry.find("- name: Download the verified release bundle after checkout")
-    digest_guard = registry.find("run: test -f release-bundle/artifact-sha256.txt")
-    verification = registry.find("python scripts/check_registry_release.py")
-    if min(checkout, download, digest_guard, verification) < 0 or not (
-        checkout < download < digest_guard < verification
+    _require_permissions(registry, {"contents": "read"}, "registry verification job")
+    _require_needs(registry, ["build", "publish"], "registry verification job")
+    registry_step_names = [
+        step.get("name") for step in _workflow_steps(registry, "registry verification job")
+    ]
+    checkout_name = "Check out the registry verification source"
+    download_name = "Download the verified release bundle after checkout"
+    if (
+        checkout_name in registry_step_names
+        and download_name in registry_step_names
+        and registry_step_names.index(checkout_name) > registry_step_names.index(download_name)
     ):
         raise CheckError(
-            "registry verification must check out source before downloading and retain "
-            "digest evidence"
+            "registry verification must check out source before downloading the release bundle"
         )
-    for needle, message in (
-        (
-            "ref: ${{ needs.build.outputs.release-commit }}",
-            "registry verification must use the verified release commit",
-        ),
-        (
-            "--digest-file release-bundle/artifact-sha256.txt",
-            "registry verification must compare against the pre-publication digest manifest",
-        ),
-    ):
-        _require(registry, needle, message)
-    verifier_install = _step(registry, "Install the pinned provenance verifier")
-    for needle in (
-        'PIP_BUILD_CONSTRAINT: ""',
-        "PIP_CONFIG_FILE: /dev/null",
-        'PIP_CONSTRAINT: ""',
-        'PIP_EXTRA_INDEX_URL: ""',
-        'PIP_FIND_LINKS: ""',
-        'PIP_REQUIREMENT: ""',
-        "python -m pip --isolated install",
-        "--index-url https://pypi.org/simple/",
-        "--no-cache-dir",
+    _require_step_names(
+        registry,
+        [
+            checkout_name,
+            download_name,
+            "Require retained pre-publication digest evidence",
+            "Set up Python",
+            "Install the pinned provenance verifier",
+            "Verify public artifact identity, digests, and provenance",
+            "Install from public PyPI and run the isolated mocked-call smoke",
+        ],
+        "registry verification job",
+    )
+    _require_step_environments(
+        registry,
+        {
+            "Install the pinned provenance verifier": {
+                "PIP_BUILD_CONSTRAINT": "",
+                "PIP_CONFIG_FILE": "/dev/null",
+                "PIP_CONSTRAINT": "",
+                "PIP_EXTRA_INDEX_URL": "",
+                "PIP_FIND_LINKS": "",
+                "PIP_REQUIREMENT": "",
+            },
+            "Verify public artifact identity, digests, and provenance": {
+                "RELEASE_VERSION": "${{ needs.build.outputs.version }}"
+            },
+            "Install from public PyPI and run the isolated mocked-call smoke": {
+                "RELEASE_VERSION": "${{ needs.build.outputs.version }}"
+            },
+        },
+        "registry verification job",
+    )
+    _, registry_checkout = _named_action_step(
+        registry,
+        "Check out the registry verification source",
+        "actions/checkout",
+        "registry verification job",
+    )
+    _require_options(
+        registry_checkout,
+        {
+            "ref": "${{ needs.build.outputs.release-commit }}",
+            "persist-credentials": "false",
+        },
+        "registry verification checkout",
+    )
+    _, registry_download = _named_action_step(
+        registry,
+        "Download the verified release bundle after checkout",
+        "actions/download-artifact",
+        "registry verification job",
+    )
+    _require_options(
+        registry_download,
+        {
+            "name": "release-${{ needs.build.outputs.version }}",
+            "path": "release-bundle",
+        },
+        "registry release-bundle download",
+    )
+    _named_run_step(
+        registry,
+        "Require retained pre-publication digest evidence",
+        "test -f release-bundle/artifact-sha256.txt",
+        "registry verification job",
+    )
+    _, registry_setup = _named_action_step(
+        registry, "Set up Python", "actions/setup-python", "registry verification job"
+    )
+    _require_options(
+        registry_setup, {"python-version": "3.14"}, "registry verification Python setup"
+    )
+    _, verifier_install = _named_run_step(
+        registry,
+        "Install the pinned provenance verifier",
+        "python -m pip --isolated install --disable-pip-version-check "
+        "--index-url https://pypi.org/simple/ --no-cache-dir "
         '"pypi-attestations==0.0.29"',
-    ):
-        _require(
-            verifier_install,
-            needle,
-            "provenance-verifier bootstrap must retain its pinned isolated public-index setup",
-        )
-    public_install = _step(
-        registry, "Install from public PyPI and run the isolated mocked-call smoke"
+        "registry verification job",
     )
-    for needle in (
-        "python scripts/check_clean_install.py",
-        '--requirement "cometapi==$RELEASE_VERSION"',
-        "--index-url https://pypi.org/simple/",
-    ):
-        _require(
-            public_install,
-            needle,
-            "registry clean-install smoke must install the exact version from public PyPI",
-        )
-    if "id-token: write" in registry or "secrets.COMETAPI_KEY" in registry:
-        raise CheckError("registry verification must receive neither OIDC nor live credentials")
+    if _mapping(verifier_install.get("env"), "provenance verifier environment") != {
+        "PIP_BUILD_CONSTRAINT": "",
+        "PIP_CONFIG_FILE": "/dev/null",
+        "PIP_CONSTRAINT": "",
+        "PIP_EXTRA_INDEX_URL": "",
+        "PIP_FIND_LINKS": "",
+        "PIP_REQUIREMENT": "",
+    }:
+        raise CheckError("provenance verifier must ignore ambient package configuration")
+    _, registry_verification = _named_run_step(
+        registry,
+        "Verify public artifact identity, digests, and provenance",
+        'python scripts/check_registry_release.py --version "$RELEASE_VERSION" '
+        '--repository "https://github.com/${{ github.repository }}" '
+        "--digest-file release-bundle/artifact-sha256.txt "
+        "--download-directory registry-artifacts --attempts 12 --retry-delay 10",
+        "registry verification job",
+    )
+    if _mapping(registry_verification.get("env"), "registry verification environment") != {
+        "RELEASE_VERSION": "${{ needs.build.outputs.version }}"
+    }:
+        raise CheckError("registry verification must use the verified build version")
+    _, public_install = _named_run_step(
+        registry,
+        "Install from public PyPI and run the isolated mocked-call smoke",
+        'python scripts/check_clean_install.py --expected-version "$RELEASE_VERSION" '
+        '--requirement "cometapi==$RELEASE_VERSION" '
+        "--index-url https://pypi.org/simple/ --attempts 12 --retry-delay 10",
+        "registry verification job",
+    )
+    if _mapping(public_install.get("env"), "registry clean-install environment") != {
+        "RELEASE_VERSION": "${{ needs.build.outputs.version }}"
+    }:
+        raise CheckError("registry clean install must use the verified build version")
 
-    if text.count("secrets.COMETAPI_KEY") != 1:
+    if _secret_references(workflow) != ["${{ secrets.COMETAPI_KEY }}"]:
         raise CheckError("COMETAPI_KEY must appear only in the exact-release live-smoke job")
+
+
+def workflow_paths(directory: Path) -> list[Path]:
+    return sorted(path for path in directory.iterdir() if path.suffix in {".yaml", ".yml"})
 
 
 def main() -> int:
@@ -378,7 +1162,7 @@ def main() -> int:
     )
     check_release_please_workflow(args.release_please_workflow.read_text(encoding="utf-8"))
     check_ci_workflow(args.ci_workflow.read_text(encoding="utf-8"))
-    for path in sorted(args.ci_workflow.parent.glob("*.yml")):
+    for path in workflow_paths(args.ci_workflow.parent):
         check_action_pins(path.read_text(encoding="utf-8"), path.name)
     print("release workflow semantic checks passed")
     return 0
