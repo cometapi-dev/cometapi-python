@@ -41,6 +41,17 @@ def _scalar(value: object, label: str) -> str:
     return value
 
 
+def _require_exact_keys(mapping: dict[str, object], expected: set[str], label: str) -> None:
+    actual = set(mapping)
+    if actual != expected:
+        missing = ", ".join(sorted(expected - actual)) or "none"
+        unexpected = ", ".join(sorted(actual - expected)) or "none"
+        raise CheckError(
+            f"{label} keys do not match the reviewed contract "
+            f"(missing: {missing}; unexpected: {unexpected})"
+        )
+
+
 def _load_workflow(text: str, source: str) -> dict[str, object]:
     try:
         loaded: object = yaml.load(text, Loader=yaml.BaseLoader)
@@ -214,6 +225,22 @@ def _require_step_environments(
             raise CheckError(f"{label} {name!r} step must not override the environment")
 
 
+def _require_step_working_directories(
+    job: dict[str, object], expected: dict[str, str], label: str
+) -> None:
+    matched: set[str] = set()
+    for index, step in enumerate(_workflow_steps(job, label)):
+        name = _scalar(step.get("name"), f"{label} step {index} name")
+        if name in expected:
+            if step.get("working-directory") != expected[name]:
+                raise CheckError(f"{label} {name!r} step must use its reviewed working directory")
+            matched.add(name)
+        elif "working-directory" in step:
+            raise CheckError(f"{label} {name!r} step must run from the checked-out repository root")
+    if matched != set(expected):
+        raise CheckError(f"{label} reviewed working-directory steps are missing")
+
+
 def _action_references(workflow: dict[str, object], source: str) -> Iterator[tuple[str, str]]:
     jobs = _mapping(workflow.get("jobs"), f"{source} jobs")
     for job_name, value in jobs.items():
@@ -272,18 +299,45 @@ def check_ci_workflow(text: str) -> None:
     schedule = _sequence(triggers["schedule"], "CI schedule trigger")
     if schedule != [{"cron": "23 4 * * 1"}]:
         raise CheckError("CI latest-OpenAI canary must run on the reviewed weekly schedule")
+    concurrency = _mapping(workflow.get("concurrency"), "CI workflow concurrency")
+    if concurrency != {
+        "group": "ci-${{ github.workflow }}-${{ github.ref }}",
+        "cancel-in-progress": "true",
+    }:
+        raise CheckError("CI must retain reviewed per-ref cancellation")
+    _require_exact_keys(
+        workflow,
+        {"name", "on", "permissions", "concurrency", "env", "jobs"},
+        "CI workflow",
+    )
+    if _secret_references(workflow):
+        raise CheckError("credential-free CI must not reference repository secrets")
 
+    jobs = _mapping(workflow.get("jobs"), "CI workflow jobs")
+    expected_jobs = {
+        "quality",
+        "locked-runtime",
+        "minimum-openai",
+        "latest-openai",
+        "package",
+        "standalone",
+    }
+    if set(jobs) != expected_jobs:
+        raise CheckError("CI jobs must match the reviewed validation chain")
     quality = _workflow_job(workflow, "quality", "CI workflow")
     locked_runtime = _workflow_job(workflow, "locked-runtime", "CI workflow")
     minimum_openai = _workflow_job(workflow, "minimum-openai", "CI workflow")
     latest_openai = _workflow_job(workflow, "latest-openai", "CI workflow")
     package = _workflow_job(workflow, "package", "CI workflow")
     standalone = _workflow_job(workflow, "standalone", "CI workflow")
-    jobs = _mapping(workflow.get("jobs"), "CI workflow jobs")
-    for name, value in jobs.items():
-        job = _mapping(value, f"CI {name!r} job")
-        if "permissions" in job:
-            raise CheckError("CI jobs must not override credential-free workflow permissions")
+    expected_job_keys = {
+        "quality": {"name", "runs-on", "timeout-minutes", "steps"},
+        "locked-runtime": {"name", "runs-on", "timeout-minutes", "strategy", "steps"},
+        "minimum-openai": {"name", "runs-on", "timeout-minutes", "steps"},
+        "latest-openai": {"name", "if", "runs-on", "timeout-minutes", "steps"},
+        "package": {"name", "needs", "runs-on", "timeout-minutes", "steps"},
+        "standalone": {"name", "needs", "runs-on", "timeout-minutes", "steps"},
+    }
     for name, job in (
         ("quality", quality),
         ("locked-runtime", locked_runtime),
@@ -304,6 +358,9 @@ def check_ci_workflow(text: str) -> None:
         _require_unconditional(step, f"CI latest-openai step {index}")
         if "env" in step:
             raise CheckError("CI latest-OpenAI steps must not override the CI environment")
+    for name, value in jobs.items():
+        job = _mapping(value, f"CI {name!r} job")
+        _require_exact_keys(job, expected_job_keys[name], f"CI {name!r} job")
 
     _require_needs(
         package,
@@ -358,6 +415,67 @@ def check_ci_workflow(text: str) -> None:
         "package": package,
         "standalone": standalone,
     }
+    expected_step_names = {
+        "quality": [
+            "Check out the candidate",
+            "Set up Python",
+            "Install the pinned uv frontend",
+            "Check lock consistency",
+            "Reproduce the locked environment",
+            "Lint",
+            "Check formatting",
+            "Type check",
+            "Run offline unit and contract tests",
+            "Check release version agreement",
+            "Check canonical public content and identity",
+            "Scan for credentials and scope mistakes",
+            "Validate workflow syntax with checksum-pinned actionlint",
+            "Verify release-workflow trust semantics",
+        ],
+        "locked-runtime": [
+            "Check out the candidate",
+            "Set up Python",
+            "Install the pinned uv frontend",
+            "Reproduce the locked environment",
+            "Run offline tests",
+        ],
+        "minimum-openai": [
+            "Check out the candidate",
+            "Set up Python",
+            "Install the pinned uv frontend",
+            "Create the development environment",
+            "Select the minimum supported OpenAI dependency",
+            "Run offline tests without resyncing the lock",
+        ],
+        "latest-openai": [
+            "Check out the candidate",
+            "Set up Python",
+            "Install the pinned uv frontend",
+            "Create the development environment",
+            "Select latest OpenAI within the supported major",
+            "Run canary tests without resyncing the lock",
+        ],
+        "package": [
+            "Check out the candidate",
+            "Set up Python",
+            "Install the pinned uv frontend",
+            "Reproduce the locked environment",
+            "Build wheel and source distribution",
+            "Check package metadata rendering",
+            "Inspect artifact identity and shape",
+            "Install and smoke-test each exact artifact",
+            "Record immutable artifact digests",
+            "Retain verified artifacts",
+        ],
+        "standalone": [
+            "Check out the candidate",
+            "Set up Python",
+            "Install the pinned uv frontend",
+            "Verify from a copied standalone repository",
+            "Download the verified package artifacts",
+            "Recheck retained artifact digests",
+        ],
+    }
     expected_timeouts = {
         "quality": "20",
         "locked-runtime": "20",
@@ -382,6 +500,11 @@ def check_ci_workflow(text: str) -> None:
         _, setup_step = _named_action_step(
             job, "Set up Python", "actions/setup-python", f"CI {name} job"
         )
+        _, checkout_step = _named_action_step(
+            job, "Check out the candidate", "actions/checkout", f"CI {name} job"
+        )
+        if "with" in checkout_step:
+            raise CheckError(f"CI {name} checkout must use the triggering candidate defaults")
         _require_options(
             setup_step,
             {"python-version": expected_python[name]},
@@ -446,13 +569,27 @@ def check_ci_workflow(text: str) -> None:
             "CI must finish copied-checkout verification before downloading and "
             "rechecking retained artifacts"
         )
-    if _secret_references(workflow):
-        raise CheckError("credential-free CI must not reference repository secrets")
+    for name, job in required_jobs.items():
+        _require_step_names(job, expected_step_names[name], f"CI {name} job")
+        _require_step_working_directories(
+            job,
+            (
+                {"Recheck retained artifact digests": "verified-artifacts"}
+                if name == "standalone"
+                else {}
+            ),
+            f"CI {name} job",
+        )
 
 
 def check_release_please_workflow(text: str) -> None:
     """Require Release Please to remain explicitly disabled by default."""
     workflow = _load_workflow(text, "Release Please workflow")
+    _require_exact_keys(
+        workflow,
+        {"name", "on", "permissions", "concurrency", "jobs"},
+        "Release Please workflow",
+    )
     _require_permissions(workflow, {"contents": "read"}, "Release Please workflow")
     if "env" in workflow:
         raise CheckError("Release Please workflow must not override the action environment")
@@ -478,6 +615,11 @@ def check_release_please_workflow(text: str) -> None:
     if set(jobs) != {"release-please"}:
         raise CheckError("Release Please must contain only its gated release-please job")
     release_job = _workflow_job(workflow, "release-please", "Release Please workflow")
+    _require_exact_keys(
+        release_job,
+        {"name", "if", "runs-on", "timeout-minutes", "permissions", "steps"},
+        "Release Please job",
+    )
     if release_job.get("if") != "vars.RELEASE_PLEASE_ENABLED == 'true'":
         raise CheckError("Release Please must require RELEASE_PLEASE_ENABLED=true")
     if release_job.get("runs-on") != "ubuntu-latest":
@@ -503,6 +645,7 @@ def check_release_please_workflow(text: str) -> None:
         "Release Please job",
     )
     _require_step_environments(release_job, {}, "Release Please job")
+    _require_step_working_directories(release_job, {}, "Release Please job")
     _, release_step = _named_action_step(
         release_job,
         "Open or update the release PR, or create its approved release",
@@ -525,6 +668,16 @@ def check_publish_workflow(text: str, live_smoke_text: str) -> None:
     """Validate fail-closed publication, live, permission, and evidence ordering."""
     workflow = _load_workflow(text, "publish workflow")
     live_workflow = _load_workflow(live_smoke_text, "live-smoke workflow")
+    _require_exact_keys(
+        workflow,
+        {"name", "on", "permissions", "concurrency", "env", "jobs"},
+        "publish workflow",
+    )
+    _require_exact_keys(
+        live_workflow,
+        {"name", "on", "permissions", "concurrency", "env", "jobs"},
+        "live-smoke workflow",
+    )
 
     publish_triggers = _mapping(workflow.get("on"), "publish workflow triggers")
     if set(publish_triggers) != {"release"}:
@@ -582,6 +735,11 @@ def check_publish_workflow(text: str, live_smoke_text: str) -> None:
             raise CheckError("release gates must not override command execution")
 
     monitoring_job = _workflow_job(live_workflow, "smoke", "live-smoke workflow")
+    _require_exact_keys(
+        monitoring_job,
+        {"name", "if", "runs-on", "timeout-minutes", "environment", "steps"},
+        "monitoring live-smoke job",
+    )
     monitoring_condition = " ".join(
         _scalar(monitoring_job.get("if"), "monitoring live-smoke condition").split()
     )
@@ -630,6 +788,7 @@ def check_publish_workflow(text: str, live_smoke_text: str) -> None:
         },
         "monitoring live-smoke job",
     )
+    _require_step_working_directories(monitoring_job, {}, "monitoring live-smoke job")
     _, monitoring_checkout = _named_action_step(
         monitoring_job,
         "Check out the trusted default branch",
@@ -683,6 +842,49 @@ def check_publish_workflow(text: str, live_smoke_text: str) -> None:
     release_live = _workflow_job(workflow, "release-live-smoke", "publish workflow")
     publish = _workflow_job(workflow, "publish", "publish workflow")
     registry = _workflow_job(workflow, "verify-registry", "publish workflow")
+    expected_release_job_keys = {
+        "build": {"name", "runs-on", "timeout-minutes", "outputs", "permissions", "steps"},
+        "release-live-smoke": {
+            "name",
+            "needs",
+            "concurrency",
+            "runs-on",
+            "timeout-minutes",
+            "permissions",
+            "environment",
+            "env",
+            "steps",
+        },
+        "publish": {
+            "name",
+            "needs",
+            "runs-on",
+            "timeout-minutes",
+            "environment",
+            "permissions",
+            "steps",
+        },
+        "verify-registry": {
+            "name",
+            "needs",
+            "runs-on",
+            "timeout-minutes",
+            "permissions",
+            "steps",
+        },
+    }
+    for name, job in (
+        ("build", build),
+        ("release-live-smoke", release_live),
+        ("publish", publish),
+        ("verify-registry", registry),
+    ):
+        _require_exact_keys(job, expected_release_job_keys[name], f"release {name} job")
+        _require_step_working_directories(
+            job,
+            ({"Recheck immutable artifact digests": "release-bundle"} if name == "publish" else {}),
+            f"release {name} job",
+        )
     for name, job, timeout in (
         ("build", build, "25"),
         ("release-live-smoke", release_live, "10"),
@@ -1133,6 +1335,20 @@ def workflow_paths(directory: Path) -> list[Path]:
     return sorted(path for path in directory.iterdir() if path.suffix in {".yaml", ".yml"})
 
 
+def check_workflow_inventory(directory: Path) -> list[Path]:
+    paths = workflow_paths(directory)
+    expected = {"ci.yml", "live-smoke.yml", "publish.yml", "release-please.yml"}
+    actual = {path.name for path in paths}
+    if actual != expected:
+        missing = ", ".join(sorted(expected - actual)) or "none"
+        unexpected = ", ".join(sorted(actual - expected)) or "none"
+        raise CheckError(
+            "workflow inventory does not match the reviewed contract "
+            f"(missing: {missing}; unexpected: {unexpected})"
+        )
+    return paths
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
@@ -1156,13 +1372,14 @@ def main() -> int:
         default=PROJECT_ROOT / ".github" / "workflows" / "ci.yml",
     )
     args = parser.parse_args()
+    paths = check_workflow_inventory(args.ci_workflow.parent)
     check_publish_workflow(
         args.publish_workflow.read_text(encoding="utf-8"),
         args.live_smoke_workflow.read_text(encoding="utf-8"),
     )
     check_release_please_workflow(args.release_please_workflow.read_text(encoding="utf-8"))
     check_ci_workflow(args.ci_workflow.read_text(encoding="utf-8"))
-    for path in workflow_paths(args.ci_workflow.parent):
+    for path in paths:
         check_action_pins(path.read_text(encoding="utf-8"), path.name)
     print("release workflow semantic checks passed")
     return 0
