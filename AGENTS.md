@@ -6,22 +6,22 @@ Python SDK repository. Treat this directory as the repository root.
 ## Repository authority
 
 Repository-local source, tests, documentation, metadata, fixtures, and workflow
-definitions may be changed and verified locally. The current milestone may also
-create the empty private canonical repository, initialize and push its sanitized
-history, and observe credential-free GitHub Actions only when a maintainer has
-explicitly authorized those remote actions. Changing repository visibility,
-configuring secrets or environments, making live API requests, creating tags or
-releases, publishing to PyPI, and changing registry settings remain outside the
-current milestone.
+definitions may be changed and verified locally. The current milestone may use
+private pull requests and credential-free GitHub Actions to complete the
+remaining pre-visibility work. Changing repository visibility, configuring
+secrets or environments, making live API requests, creating tags or releases,
+publishing to PyPI, and changing registry settings remain outside the current
+authorized pre-visibility scope.
 
 A local build, mocked test, statically valid workflow, or private remote CI run
 proves only its own evidence layer. Never invent or mock missing evidence.
 
-## Current milestone: Private Remote Validation
+## Current milestone: Public Preview
 
-Complete Private Remote Validation and stop before changing repository
-visibility. A session starting in this repository must be able to finish this
-milestone without instructions outside the repository.
+Private Remote Validation is complete. Prepare the private canonical repository
+for a future explicitly authorized visibility change, and stop before changing
+visibility. A session starting in this repository must be able to finish the
+remaining pre-visibility work without instructions outside the repository.
 
 The accepted identity is:
 
@@ -37,30 +37,22 @@ The accepted identity is:
 | Support and conduct | `support@cometapi.com` |
 | Security | `https://github.com/cometapi-dev/cometapi-python/security/advisories/new` |
 
-Before the first remote push:
+Before changing repository visibility:
 
-1. Apply the accepted identity to package metadata and public documents.
-2. Remove `.github/CODEOWNERS` and every check, fixture, test, or document that
-   requires it. Do not replace it with an individual owner.
-3. Refactor the Public Preview document gate to collect and report all
-   violations in one run while returning non-zero if any violation exists.
-   Keep checks for canonical identity, contacts, repository metadata, public-
-   safe language, and standalone content.
-4. Gate scheduled and manually dispatched live smoke with a
-   `LIVE_SMOKE_ENABLED` repository variable. An unset or non-true value must
-   prevent live execution. Keep
-   `RELEASE_PLEASE_ENABLED` disabled through the initial manual alpha.
-5. Make the release live-model setting use `gpt-5.4` when
-   `COMETAPI_LIVE_MODEL` is unset or empty; never allow an empty model value.
-6. Run every local offline, package, self-containment, public-content, secret,
-   and workflow-static-validation gate.
-
-When authorized, create an empty private repository without generated files,
-make the sanitized repository content its first commit, push the default
-branch, and wait for credential-free CI. Do not configure branch or tag rules,
-Private Vulnerability Reporting, secrets, protected environments, Trusted
-Publishing, or live smoke during the private stage. Record the real CI result
-and stop before any visibility change, even when all checks pass.
+1. Resolve or explicitly defer every open dependency pull request that is not
+   ready to merge. Dependabot PR #2 must not merge while its credential-free CI
+   is failing; record its disposition in `ROADMAP.md`.
+2. Keep `.github/CODEOWNERS` absent until a real multi-maintainer model exists.
+3. Keep scheduled and manually dispatched live smoke fail-closed behind
+   `LIVE_SMOKE_ENABLED=true`, and keep `RELEASE_PLEASE_ENABLED` disabled through
+   the initial manual alpha.
+4. Run every local offline, package, self-containment, public-content, secret,
+   and workflow-static-validation gate, then deliver the pre-visibility changes
+   through a private pull request with successful credential-free CI.
+5. Confirm the canonical repository is still private and stop. Visibility,
+   branch or tag rules, Private Vulnerability Reporting, secrets, protected
+   environments, Trusted Publishing, live API calls, tags, releases, and
+   publication require separate authorization after this stop point.
 
 ## Repository independence
 
