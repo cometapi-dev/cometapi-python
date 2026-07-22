@@ -114,7 +114,47 @@ Pre-visibility dependency disposition:
 
 | Item | Disposition | Evidence and required action |
 | --- | --- | --- |
-| Dependabot [PR #2](https://github.com/cometapi-dev/cometapi-python/pull/2): `actions/checkout` 4.2.2 to 7.0.1 | Deferred; must not merge as-is | Credential-free [CI run 29796719306](https://github.com/cometapi-dev/cometapi-python/actions/runs/29796719306) failed in every test lane because the mutable-action-reference regression test hard-codes the previous v4 checkout SHA and no longer exercises its replacement; dependent artifact and copied-checkout jobs were skipped. Revisit only with version-independent regression coverage and a completely successful replacement CI run. The failed run is not upgrade evidence. |
+| Dependabot [PR #1](https://github.com/cometapi-dev/cometapi-python/pull/1): `actions/download-artifact` 4.3.0 to 8.0.1 | Superseded by private [PR #9](https://github.com/cometapi-dev/cometapi-python/pull/9) | PR #9 applies the reviewed SHA pin throughout the release workflow and adds a credential-free CI artifact download plus SHA256 round trip. Its current-base [CI run 29907523251](https://github.com/cometapi-dev/cometapi-python/actions/runs/29907523251) passed. Close PR #1 after PR #9 merges; do not merge both. |
+| Dependabot [PR #2](https://github.com/cometapi-dev/cometapi-python/pull/2): `actions/checkout` 4.2.2 to 7.0.1 | Superseded by private [PR #9](https://github.com/cometapi-dev/cometapi-python/pull/9); must not merge as-is | PR #2's [CI run 29796719306](https://github.com/cometapi-dev/cometapi-python/actions/runs/29796719306) failed because its regression test hard-coded the previous checkout SHA. PR #9 instead validates parsed action references independently of version and passed current-base CI run 29907523251. Close PR #2 after PR #9 merges; the failed PR #2 run remains negative evidence only. |
+| Dependabot [PR #3](https://github.com/cometapi-dev/cometapi-python/pull/3): `pypa/gh-action-pypi-publish` 1.14.0 to 1.14.1 | Deferred; keep out of `main` | Pull-request CI does not execute the release-triggered OIDC publish action or prove PyPI publication, provenance, or registry installation. Revisit with an authorized release-path review and the separately required protected release evidence; credential-free CI success alone is insufficient. |
+| Dependabot [PR #4](https://github.com/cometapi-dev/cometapi-python/pull/4): `actions/upload-artifact` 4.6.2 to 7.0.1 | Superseded by private [PR #9](https://github.com/cometapi-dev/cometapi-python/pull/9) | PR #9 applies the reviewed SHA pin in CI and release builds, requires missing artifacts to fail, retains digest evidence, and passed current-base CI run 29907523251. Close PR #4 after PR #9 merges; do not merge both. |
+| Dependabot [PR #5](https://github.com/cometapi-dev/cometapi-python/pull/5): `googleapis/release-please-action` 4.4.1 to 5.0.0 | Deferred; keep out of `main` | `RELEASE_PLEASE_ENABLED` remains disabled, and pull-request CI does not execute the gated write-capable Release Please action. Revisit only after its real config, manifest, permissions, and release behavior can be reviewed without treating a skipped action as execution evidence. |
+| Dependabot [PR #6](https://github.com/cometapi-dev/cometapi-python/pull/6): `actions/setup-python` 5.6.0 to 7.0.0 | Superseded by private [PR #9](https://github.com/cometapi-dev/cometapi-python/pull/9) | PR #9 applies the reviewed SHA pin across CI, monitoring, and release workflows and passed current-base CI run 29907523251 on Python 3.10 through 3.14, the minimum OpenAI lane, package builds, and copied-checkout verification. Close PR #6 after PR #9 merges; do not merge both. |
+
+Recorded pre-visibility replacement evidence on 2026-07-22:
+
+- Local commit `97a14ac6087db3c9205e66bcfbcc890dc23a7ca7` passed
+  `git diff --check`, `uv lock --check`, `uv sync --locked`,
+  `uv run ruff check src tests scripts`,
+  `uv run ruff format --check src tests scripts`, `uv run pyright`,
+  `uv run pytest -m "not live"`, both documented version checks,
+  `uv run python scripts/check_secrets.py`, and
+  `uv run python scripts/check_workflows.py`. The offline suite reported 173
+  passed and one separately marked live test deselected.
+- A clean `uv build` produced the `0.1.0a1` wheel and source distribution.
+  `uv run twine check dist/*`,
+  `uv run python scripts/check_artifacts.py dist/*`, and
+  `uv run python scripts/check_clean_install.py dist/*` passed for both exact
+  artifacts, including SHA256 digest generation and comparison.
+- `uv run python scripts/check_repository_independence.py` passed after copying
+  the candidate into an empty temporary parent and rerunning its complete
+  offline, workflow, build, artifact, and two-artifact clean-install gates.
+  `uv run python scripts/run_actionlint.py` and the same command with
+  `--offline` both passed with checksum-pinned actionlint 1.7.12.
+- An independent 76-case adversarial workflow review found no remaining accepted
+  hostile case after checking trigger filters, secret-context access, runner and
+  environment overrides, arbitrary privileged actions, mutable refs, no-op and
+  failure-swallowing commands, artifact ordering, and release-ref decoys.
+- Private PR #9's credential-free CI run 29907523251 passed quality, Python 3.10
+  through 3.14, minimum OpenAI, package, exact-artifact clean install, retained
+  artifact digest, and copied-checkout jobs. The PR-only latest-within-major
+  canary skipped as designed; scheduled or Dependabot execution remains separate
+  evidence.
+- The live smoke, Release Please, immutable-release publish, PyPI OIDC,
+  provenance, and public-registry verification paths were not executed. No live
+  API request, visibility change, secret or environment configuration, tag,
+  release, publication, or repository-protection change was made. The canonical
+  repository was confirmed private after the successful replacement run.
 
 Changing the repository to public begins a short configuration interval; it
 does not establish Public Preview readiness by itself. The preview is ready
