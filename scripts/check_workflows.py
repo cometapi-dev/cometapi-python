@@ -1346,6 +1346,9 @@ def check_workflow_inventory(directory: Path) -> list[Path]:
             "workflow inventory does not match the reviewed contract "
             f"(missing: {missing}; unexpected: {unexpected})"
         )
+    for path in paths:
+        if path.is_symlink() or not path.is_file():
+            raise CheckError(f"{path.name}: reviewed workflows must be regular, non-symlink files")
     return paths
 
 

@@ -1166,6 +1166,19 @@ def test_workflow_inventory_rejects_unreviewed_workflow(tmp_path: Path) -> None:
         check_workflow_inventory(tmp_path)
 
 
+def test_workflow_inventory_rejects_expected_name_symlink(tmp_path: Path) -> None:
+    workflow_root = tmp_path / "workflows"
+    workflow_root.mkdir()
+    for name in ("live-smoke.yml", "publish.yml", "release-please.yml"):
+        (workflow_root / name).write_text("name: reviewed\n", encoding="utf-8")
+    outside = tmp_path / "outside-ci.yml"
+    outside.write_text("name: outside\n", encoding="utf-8")
+    (workflow_root / "ci.yml").symlink_to(outside)
+
+    with pytest.raises(RuntimeError, match="regular, non-symlink files"):
+        check_workflow_inventory(workflow_root)
+
+
 def test_secret_scope_scan_includes_yaml_workflows(tmp_path: Path) -> None:
     workflow_root = tmp_path / ".github/workflows"
     workflow_root.mkdir(parents=True)
