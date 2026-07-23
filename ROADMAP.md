@@ -231,10 +231,6 @@ Failed or unavailable checks:
   not replacement evidence for PR #9. An earlier intentional offline actionlint
   probe in a fresh detached worktree failed closed before the verified cache was
   populated; it is not final-candidate validation evidence.
-- The execution environment rejected `rm -rf dist` before it ran, so no file was
-  removed. The final candidate instead used the newly created empty
-  `dist/previsibility-20260723` directory and completed the equivalent clean
-  build, inspection, and two-artifact install gates there.
 
 Remote evidence:
 
