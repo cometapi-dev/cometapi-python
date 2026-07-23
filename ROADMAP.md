@@ -1,7 +1,7 @@
 # CometAPI Python SDK Roadmap
 
 Status: `0.1.0a1` in progress
-Last updated: 2026-07-22
+Last updated: 2026-07-23
 Repository contract: this roadmap is self-contained.
 
 ## Product target
@@ -114,12 +114,12 @@ Pre-visibility dependency disposition:
 
 | Item | Disposition | Evidence and required action |
 | --- | --- | --- |
-| Dependabot [PR #1](https://github.com/cometapi-dev/cometapi-python/pull/1): `actions/download-artifact` 4.3.0 to 8.0.1 | Superseded by private [PR #9](https://github.com/cometapi-dev/cometapi-python/pull/9) | PR #9 applies the reviewed SHA pin throughout the release workflow and adds a credential-free CI artifact download plus SHA256 round trip. Its initial code-bearing [CI run 29907523251](https://github.com/cometapi-dev/cometapi-python/actions/runs/29907523251) passed. Close PR #1 after PR #9 merges; do not merge both. |
-| Dependabot [PR #2](https://github.com/cometapi-dev/cometapi-python/pull/2): `actions/checkout` 4.2.2 to 7.0.1 | Superseded by private [PR #9](https://github.com/cometapi-dev/cometapi-python/pull/9); must not merge as-is | PR #2's [CI run 29796719306](https://github.com/cometapi-dev/cometapi-python/actions/runs/29796719306) failed because its regression test hard-coded the previous checkout SHA. PR #9 instead validates parsed action references independently of version and passed initial code-bearing CI run 29907523251. Close PR #2 after PR #9 merges; the failed PR #2 run remains negative evidence only. |
+| Dependabot [PR #1](https://github.com/cometapi-dev/cometapi-python/pull/1): `actions/download-artifact` 4.3.0 to 8.0.1 | Closed unmerged; superseded by merged private [PR #9](https://github.com/cometapi-dev/cometapi-python/pull/9) | PR #9 applies the reviewed SHA pin throughout the release workflow and adds a credential-free CI artifact download plus SHA256 round trip. Its final [CI run 29916685839](https://github.com/cometapi-dev/cometapi-python/actions/runs/29916685839) passed, PR #9 squash-merged as `72b212dd72e66bbde9c6714329f72071cc1ca129`, and PR #1 was closed without merging. |
+| Dependabot [PR #2](https://github.com/cometapi-dev/cometapi-python/pull/2): `actions/checkout` 4.2.2 to 7.0.1 | Closed unmerged; superseded by merged private [PR #9](https://github.com/cometapi-dev/cometapi-python/pull/9) | PR #2's [CI run 29796719306](https://github.com/cometapi-dev/cometapi-python/actions/runs/29796719306) failed because its regression test hard-coded the previous checkout SHA. PR #9 instead validates parsed action references independently of version, passed final CI run 29916685839, and squash-merged as `72b212dd72e66bbde9c6714329f72071cc1ca129`; PR #2 was closed without merging, and its failed run remains negative evidence only. |
 | Dependabot [PR #3](https://github.com/cometapi-dev/cometapi-python/pull/3): `pypa/gh-action-pypi-publish` 1.14.0 to 1.14.1 | Deferred; keep out of `main` | Pull-request CI does not execute the release-triggered OIDC publish action or prove PyPI publication, provenance, or registry installation. Revisit with an authorized release-path review and the separately required protected release evidence; credential-free CI success alone is insufficient. |
-| Dependabot [PR #4](https://github.com/cometapi-dev/cometapi-python/pull/4): `actions/upload-artifact` 4.6.2 to 7.0.1 | Superseded by private [PR #9](https://github.com/cometapi-dev/cometapi-python/pull/9) | PR #9 applies the reviewed SHA pin in CI and release builds, requires missing artifacts to fail, retains digest evidence, and passed initial code-bearing CI run 29907523251. Close PR #4 after PR #9 merges; do not merge both. |
+| Dependabot [PR #4](https://github.com/cometapi-dev/cometapi-python/pull/4): `actions/upload-artifact` 4.6.2 to 7.0.1 | Closed unmerged; superseded by merged private [PR #9](https://github.com/cometapi-dev/cometapi-python/pull/9) | PR #9 applies the reviewed SHA pin in CI and release builds, requires missing artifacts to fail, retains digest evidence, passed final CI run 29916685839, and squash-merged as `72b212dd72e66bbde9c6714329f72071cc1ca129`; PR #4 was closed without merging. |
 | Dependabot [PR #5](https://github.com/cometapi-dev/cometapi-python/pull/5): `googleapis/release-please-action` 4.4.1 to 5.0.0 | Deferred; keep out of `main` | `RELEASE_PLEASE_ENABLED` remains disabled, and pull-request CI does not execute the gated write-capable Release Please action. Revisit only after its real config, manifest, permissions, and release behavior can be reviewed without treating a skipped action as execution evidence. |
-| Dependabot [PR #6](https://github.com/cometapi-dev/cometapi-python/pull/6): `actions/setup-python` 5.6.0 to 7.0.0 | Superseded by private [PR #9](https://github.com/cometapi-dev/cometapi-python/pull/9) | PR #9 applies the reviewed SHA pin across CI, monitoring, and release workflows and passed initial code-bearing CI run 29907523251 on Python 3.10 through 3.14, the minimum OpenAI lane, package builds, and copied-checkout verification. Close PR #6 after PR #9 merges; do not merge both. |
+| Dependabot [PR #6](https://github.com/cometapi-dev/cometapi-python/pull/6): `actions/setup-python` 5.6.0 to 7.0.0 | Closed unmerged; superseded by merged private [PR #9](https://github.com/cometapi-dev/cometapi-python/pull/9) | PR #9 applies the reviewed SHA pin across CI, monitoring, and release workflows, passed final CI run 29916685839 on every blocking lane, and squash-merged as `72b212dd72e66bbde9c6714329f72071cc1ca129`; PR #6 was closed without merging. |
 
 Recorded pre-visibility replacement evidence on 2026-07-22:
 
@@ -198,24 +198,75 @@ Final workflow-inventory hardening evidence at commit
   inspection, and independent clean installs of the wheel and source
   distribution.
 
+Final pre-visibility refresh evidence on 2026-07-23:
+
+- `git diff --check`, `uv lock --check`, and `uv sync --locked` passed.
+- `uv run ruff check src tests scripts`,
+  `uv run ruff format --check src tests scripts`, and `uv run pyright` passed.
+- `uv run pytest -m "not live"` passed with 200 tests passed and one separately
+  marked live test deselected.
+- `uv run python scripts/check_version.py --expected 0.1.0a1 --require-changelog`,
+  `uv run python scripts/check_version.py --require-public-preview-docs`,
+  `uv run python scripts/check_secrets.py`, and
+  `uv run python scripts/check_workflows.py` passed.
+- `uv build --out-dir dist/previsibility-20260723` built exactly the
+  `0.1.0a1` wheel and source distribution in a newly created empty directory.
+  `uv run twine check dist/previsibility-20260723/*`,
+  `uv run python scripts/check_artifacts.py dist/previsibility-20260723/*`, and
+  `uv run python scripts/check_clean_install.py dist/previsibility-20260723/*`
+  passed for both exact artifacts.
+- `uv run python scripts/check_repository_independence.py` passed the complete
+  copied-checkout gate, including its 200 offline tests, workflow validation,
+  package build, artifact inspection, and independent clean installs of both
+  artifacts.
+- `uv run python scripts/run_actionlint.py` and
+  `uv run python scripts/run_actionlint.py --offline` passed with
+  checksum-pinned actionlint 1.7.12.
+
 Failed or unavailable checks:
 
-- None of the recorded final-candidate checks failed or were unavailable.
+- None of the executed final-candidate validation checks failed or were
+  unavailable.
   Dependabot PR #2's failed run remains separate negative evidence for that PR,
   not replacement evidence for PR #9. An earlier intentional offline actionlint
   probe in a fresh detached worktree failed closed before the verified cache was
   populated; it is not final-candidate validation evidence.
+- The execution environment rejected `rm -rf dist` before it ran, so no file was
+  removed. The final candidate instead used the newly created empty
+  `dist/previsibility-20260723` directory and completed the equivalent clean
+  build, inspection, and two-artifact install gates there.
 
 Remote evidence:
 
-- Private PR #9's credential-free initial code-bearing CI run 29907523251 passed
-  quality, Python 3.10 through 3.14, minimum OpenAI, package, exact-artifact
-  clean install, retained artifact digest, and copied-checkout jobs. The PR-only
-  latest-within-major canary skipped as designed; scheduled or Dependabot
-  execution remains unverified.
-- The canonical repository was confirmed private after the successful
-  replacement run. No visibility, secret, environment, or
-  repository-protection change was made.
+- Private PR #9's final-head
+  [CI run 29916685839](https://github.com/cometapi-dev/cometapi-python/actions/runs/29916685839)
+  passed quality, Python 3.10 through 3.14, minimum OpenAI, package,
+  exact-artifact clean install, retained artifact digest, and copied-checkout
+  jobs for `5db7f012a1470564f4f60fe343b9a0799b58987d`; the PR-only
+  latest-within-major canary skipped as designed. PR #9 then squash-merged as
+  `72b212dd72e66bbde9c6714329f72071cc1ca129`, and its credential-free
+  [default-branch CI run 29916919999](https://github.com/cometapi-dev/cometapi-python/actions/runs/29916919999)
+  passed. Superseded PRs #1, #2, #4, and #6 were closed without merging.
+- Private PR #10's
+  [CI run 29978262916](https://github.com/cometapi-dev/cometapi-python/actions/runs/29978262916)
+  passed the same blocking lanes for
+  `debd7c1d12c72219ee37de0baa58be119d135ae0`; its PR-only canary skipped as
+  designed. PR #10 squash-merged as
+  `7d9a3d70714b38b4815d8a8f82a7177d1bcea857`, and its
+  [default-branch CI run 29978384862](https://github.com/cometapi-dev/cometapi-python/actions/runs/29978384862)
+  passed. The corresponding
+  [Release Please run 29978384858](https://github.com/cometapi-dev/cometapi-python/actions/runs/29978384858)
+  skipped as required while `RELEASE_PLEASE_ENABLED` remains disabled.
+- The final merged workflow's latest-within-major canary remains unverified
+  under its scheduled and Dependabot paths.
+- The canonical repository was confirmed private after these runs.
+  Repository-level variables and Actions secrets, environments, tags, releases,
+  and publish runs were absent when checked; `main` reported
+  `protected: false`. Organization-level variables and secrets were unavailable
+  to the current credential; detailed protection and ruleset APIs were
+  unavailable under the current private-repository plan. They do not provide
+  additional evidence. No visibility, secret, environment, protection, live,
+  tag, release, registry, or publication change was made.
 
 Live evidence:
 
