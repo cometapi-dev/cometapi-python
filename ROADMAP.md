@@ -3,6 +3,7 @@
 Status: `0.1.0a1` in progress
 Last updated: 2026-07-23
 Repository contract: this roadmap is self-contained.
+Current gate: Public Preview pre-visibility complete; visibility change awaiting explicit authorization.
 
 ## Product target
 
@@ -10,11 +11,13 @@ The SDK provides the shortest reliable path from an OpenAI Python integration
 to CometAPI while preserving official request, response, error, retry, timeout,
 sync, async, and streaming behavior.
 
-Private Remote Validation is complete for the sanitized repository, which
-remains private. The current pre-visibility phase stops before any visibility
-change. Public Preview and the functional `0.1.0a1` prerelease remain separate
-evidence gates. Support and release claims remain limited to the evidence
-defined in this roadmap and `COMPATIBILITY.md`.
+Private Remote Validation and the Public Preview pre-visibility closeout are
+complete for the sanitized repository, which remains private. Public Preview is
+not ready: the next external action is a separately authorized visibility
+change, followed by the required public configuration and protected evidence.
+Public Preview and the functional `0.1.0a1` prerelease remain separate evidence
+gates. Support and release claims remain limited to the evidence defined in
+this roadmap and `COMPATIBILITY.md`.
 
 ## Milestones
 
@@ -22,7 +25,7 @@ defined in this roadmap and `COMPATIBILITY.md`.
 | --- | --- | --- |
 | Repository foundation | Complete | Public files, offline gates, packaging checks, and self-containment are complete. |
 | Private Remote Validation | Complete | The sanitized private repository passes real credential-free default-branch CI; public-only controls and live tests remain disabled. |
-| Public Preview | In progress | Pre-visibility work is delivered through private pull requests; after an authorized visibility change, the public repository must establish blocking CI, repository rules, security reporting, protected environments, and authorized live-smoke evidence before it claims preview readiness. |
+| Public Preview | Awaiting visibility authorization | Pre-visibility work is complete. After a separately authorized visibility change, the public repository must establish blocking CI, repository rules, security reporting, protected environments, and authorized live-smoke evidence before it claims preview readiness. |
 | `0.1.0a1` Registry Alpha | Planned | Early adopters can install a functional prerelease from PyPI. |
 | `0.1.0` stable | Planned | Complete runtime, release-PR, example, provenance, and registry gates pass. |
 | `0.2.0` provider-native text | Planned | Optional official Anthropic and Gemini adapters. |
@@ -57,12 +60,15 @@ Exit criteria:
 
 ### Private Remote Validation
 
-Before Public Preview, maintainers create a private repository from a
-sanitized first commit and verify real GitHub behavior. The complete history
-must already be suitable for future public visibility and contain only durable
-product, contribution, maintenance, compatibility, and release material.
+Private Remote Validation was the one-time initialization stage for the
+canonical repository. Maintainers created an empty private repository from a
+sanitized first commit and verified real GitHub behavior. The complete history
+was required to be suitable for future public visibility and contain only
+durable product, contribution, maintenance, compatibility, and release
+material. This stage is complete and must not be repeated for the current
+canonical repository.
 
-Exit criteria:
+Recorded exit criteria:
 
 - Canonical repository metadata, `CometAPI` authorship,
   `Copyright (c) 2026 CometAPI`, `support@cometapi.com`, and the repository's
@@ -77,9 +83,9 @@ Exit criteria:
   environments, registry publisher, live credential, tag, release, or package
   publication is configured or exercised during this private stage.
 
-The private repository is created empty, without generated starter files, so
-the sanitized local content becomes its first history. This stage ends after
-real credential-free default-branch CI is recorded. It does not change
+The private repository was created empty, without generated starter files, so
+the sanitized local content became its first history. The stage ended after
+real credential-free default-branch CI was recorded. It did not change
 visibility or publish to a private or public registry.
 
 Recorded evidence on 2026-07-21:
@@ -97,20 +103,22 @@ Recorded evidence on 2026-07-21:
 
 ## Public Preview
 
-Public Preview is in progress at the pre-visibility stage. Before requesting a
-visibility change:
+Public Preview pre-visibility complete; visibility change awaiting explicit authorization.
 
-- Deliver all remaining documentation and workflow changes through private pull
-  requests with credential-free CI.
-- Review every open dependency pull request. Fix and merge only updates with
-  complete successful CI; otherwise record an explicit deferral and keep the PR
-  out of `main`.
-- Rerun the complete local gate and private pull-request CI, confirm the
-  canonical repository remains private, and stop for explicit visibility-change
-  authorization. Do not configure public-only controls, secrets, environments,
-  live smoke, releases, or publication before that stop point.
+There is no remaining pre-visibility implementation task. Do not create another
+closeout pull request without a new, explicit maintainer request. The recorded
+dependency dispositions below remain authoritative for the listed pull
+requests. Newly opened dependency pull requests remain pending until a current
+maintainer request explicitly authorizes their normal maintenance; they must
+not cause closed or superseded dispositions to be described as unfinished.
 
-Pre-visibility dependency disposition:
+Public Preview is not ready. The repository must remain private until a
+visibility change is explicitly authorized. After that change, repository
+rules, Private Vulnerability Reporting, protected environments,
+default-branch CI, the public-content gate, and authorized protected live smoke
+must pass before the milestone can be marked ready.
+
+Recorded pre-visibility dependency dispositions:
 
 | Item | Disposition | Evidence and required action |
 | --- | --- | --- |

@@ -3,49 +3,60 @@
 This file is the self-contained engineering contract for the public CometAPI
 Python SDK repository. Treat this directory as the repository root.
 
-## Repository authority
+## Repository authority and remote permissions
 
-Repository-local source, tests, documentation, metadata, fixtures, and workflow
-definitions may be changed and verified locally. The current milestone may use
-private pull requests and credential-free GitHub Actions to complete the
-remaining pre-visibility work. Changing repository visibility, configuring
-secrets or environments, making live API requests, creating tags or releases,
-publishing to PyPI, and changing registry settings remain outside the current
-authorized pre-visibility scope.
+Repository documents define permitted workflows and safety boundaries; they do
+not grant standing permission to change local tracked content or remote state.
+Any push, pull-request creation or update, merge, comment, or other remote
+mutation requires explicit authorization in the current maintainer request.
+Without new explicit authorization, limit work to local read-only inspection or
+validation and do not create another pre-visibility closeout pull request.
+
+Repository visibility, settings, branch or tag rules, Private Vulnerability
+Reporting, secrets, variables, environments, live API requests, tags, releases,
+PyPI operations, and other registry operations each require separate explicit
+authorization. Authorization for one action does not authorize another.
 
 A local build, mocked test, statically valid workflow, or private remote CI run
 proves only its own evidence layer. Never invent or mock missing evidence.
 
 ## Git branch lifecycle
 
-- Use a dedicated short-lived topic branch for each task. `dev` is the clean
-  local landing branch between tasks; do not commit task changes directly to
-  `dev`.
+- Start every authorized task from a clean worktree. Fetch `origin`, switch to
+  local `main`, require `main` to be an ancestor of `origin/main`, and run
+  `git merge --ff-only origin/main`. Require the worktree to remain clean and
+  `main` to equal `origin/main` after the fast-forward.
+- If local `dev` does not exist, create it with `git switch -c dev` only while
+  the synchronized, clean `main` is checked out. If local `dev` exists, require
+  `dev` to be an ancestor of `main`, switch to `dev`, and run
+  `git merge --ff-only main`. Require `dev` to equal `main` after either path.
+- Only after those startup checks pass may an authorized task create its
+  dedicated short-lived topic branch from synchronized `dev`. Do not commit
+  task changes directly to `dev`.
 - Treat a topic branch lifecycle as closed only after its required pull-request
   checks pass and its squash merge is present on `origin/main`. Any alternate
   disposition requires explicit user authorization and must not advance `dev`
   until the accepted commit is present on `origin/main`.
-- With a clean worktree, fetch `origin`, switch to `main`, and fast-forward it
-  with `git merge --ff-only origin/main`. Require the worktree to remain clean
-  and `main` to equal `origin/main` before handling `dev`. If local `dev`
-  exists, require it to be an ancestor of `main`, switch to it, and fast-forward
-  it with `git merge --ff-only main`; if it does not exist, create it with
-  `git switch -c dev` only from that checked-out, clean, synchronized `main`.
-  Finish with `dev` checked out. Cleanup is complete only when the worktree is
-  clean and `HEAD`, local `main`, local `dev`, and `origin/main` resolve to the
-  same commit.
-- Never reset, discard work, force-update refs, delete branches, or push `dev`.
-  If fetching fails, the worktree is dirty, `main` cannot fast-forward to
-  `origin/main`, an existing `dev` cannot fast-forward to `main`, or the four
-  final refs differ, stop and report the exact state instead of forcing
-  synchronization.
+- After merge and required verification, start from a clean worktree, fetch
+  `origin`, switch to `main`, require it to be an ancestor of `origin/main`, and
+  fast-forward it with `git merge --ff-only origin/main`. Require `main` to
+  equal `origin/main`, require `dev` to be an ancestor of `main`, switch to
+  `dev`, and fast-forward it with `git merge --ff-only main`. Finish on a clean
+  `dev` with `HEAD`, local `main`, local `dev`, and `origin/main` all equal.
+- Any dirty worktree, fetch failure, ahead or divergent local branch, failed
+  ancestry check, failed fast-forward, or final ref mismatch must fail closed.
+  Never reset, rebase, discard work, force-update refs, delete or recreate an
+  existing `dev`, or push `dev` to recover. Report the exact state instead.
 
 ## Current milestone: Public Preview
 
-Private Remote Validation is complete. Prepare the private canonical repository
-for a future explicitly authorized visibility change, and stop before changing
-visibility. A session starting in this repository must be able to finish the
-remaining pre-visibility work without instructions outside the repository.
+Public Preview pre-visibility complete; visibility change awaiting explicit authorization.
+
+Private Remote Validation is complete. The sanitized first history, empty
+private repository creation, initial push, and pre-visibility closeout are
+completed historical steps and must not be repeated. The canonical repository
+remains private at the visibility authorization gate. Public Preview is not
+ready, and no pre-visibility implementation task remains.
 
 The accepted identity is:
 
@@ -61,22 +72,22 @@ The accepted identity is:
 | Support and conduct | `support@cometapi.com` |
 | Security | `https://github.com/cometapi-dev/cometapi-python/security/advisories/new` |
 
-Before changing repository visibility:
+At the visibility authorization gate:
 
-1. Resolve or explicitly defer every dependency disposition that `ROADMAP.md`
-   still records as unresolved; its pre-visibility dependency disposition table
-   is the durable source of truth.
+1. Treat the dependency dispositions recorded in `ROADMAP.md` as authoritative
+   for the listed pull requests. Process newly opened dependency pull requests
+   through normal maintenance only when a current maintainer request explicitly
+   authorizes that work, without reopening completed dispositions.
 2. Keep `.github/CODEOWNERS` absent until a real multi-maintainer model exists.
 3. Keep scheduled and manually dispatched live smoke fail-closed behind
    `LIVE_SMOKE_ENABLED=true`, and keep `RELEASE_PLEASE_ENABLED` disabled through
    the initial manual alpha.
-4. Run every local offline, package, self-containment, public-content, secret,
-   and workflow-static-validation gate, then deliver the pre-visibility changes
-   through a private pull request with successful credential-free CI.
-5. Confirm the canonical repository is still private and stop. Visibility,
-   branch or tag rules, Private Vulnerability Reporting, secrets, protected
-   environments, Trusted Publishing, live API calls, tags, releases, and
-   publication require separate authorization after this stop point.
+4. Do not create another pre-visibility closeout pull request unless a current
+   maintainer request explicitly authorizes a new, scoped change.
+5. Stop before changing visibility. After an explicitly authorized visibility
+   change, repository rules, Private Vulnerability Reporting, protected
+   environments, default-branch CI, and authorized protected live smoke must
+   pass before Public Preview can be marked ready.
 
 ## Repository independence
 
@@ -226,7 +237,7 @@ committed.
   with shipped behavior. Use currently supported model IDs.
 - All repository documentation is written in English.
 
-Before Public Preview, run
+Before marking Public Preview ready, run
 `uv run python scripts/check_version.py --require-public-preview-docs`. The
 gate must report every detected violation and fail until canonical identity,
 contacts, repository metadata, and durable public-facing content are complete.
