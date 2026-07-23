@@ -18,11 +18,14 @@ upload is evidence only for its own layer.
 
 ## Private Remote Validation
 
-Before Public Preview, initialize an empty private repository from a sanitized
-first commit. Do not ask GitHub to generate a README, license, or ignore file.
-The complete history must already be suitable for public visibility.
+The canonical repository has completed Private Remote Validation. This section
+records its one-time initialization history; it is not an instruction to
+recreate the repository, rewrite the sanitized first history, or repeat the
+initial push. The repository was initialized empty from a sanitized first
+commit, without a generated README, license, or ignore file, and the complete
+history was required to be suitable for public visibility.
 
-Apply these canonical values before the first push:
+The one-time initialization used these canonical values before the first push:
 
 | Field | Required value |
 | --- | --- |
@@ -35,24 +38,28 @@ Apply these canonical values before the first push:
 | Support and conduct | `support@cometapi.com` |
 | Security | `https://github.com/cometapi-dev/cometapi-python/security/advisories/new` |
 
-The package manifest uses `authors = [{ name = "CometAPI" }]`. Remove
-`.github/CODEOWNERS` and its validation dependencies; it is not required while
-the project has one active maintainer.
+The package manifest uses `authors = [{ name = "CometAPI" }]`.
+`.github/CODEOWNERS` and its validation dependencies were absent from the
+completed private initialization and remain unnecessary while the project has
+one active maintainer.
 
-Before the first push, require `LIVE_SMOKE_ENABLED=true` for scheduled and
-manually dispatched live execution, and keep `RELEASE_PLEASE_ENABLED` disabled
-through the initial manual alpha. An unset or non-true value prevents the
-corresponding gated job from executing. The release live-model configuration
-resolves an unset or empty `COMETAPI_LIVE_MODEL` to `gpt-5.4`.
+Before the historical first push, scheduled and manually dispatched live
+execution was required to fail closed unless `LIVE_SMOKE_ENABLED=true`, and
+`RELEASE_PLEASE_ENABLED` was kept disabled through the initial manual alpha. An
+unset or non-true value prevents the corresponding gated job from executing.
+The release live-model configuration resolves an unset or empty
+`COMETAPI_LIVE_MODEL` to `gpt-5.4`.
 
-The private stage validates sanitized history, the complete local gate, and
-real credential-free default-branch CI only. Do not configure or exercise
-branch or tag rules, Private Vulnerability Reporting, secrets, protected
-environments, Trusted Publishing, live API calls, tags, releases, or registry
-publication. Record the CI result and stop before changing visibility.
+The completed private stage validated sanitized history, the complete local
+gate, and real credential-free default-branch CI only. It did not configure or
+exercise branch or tag rules, Private Vulnerability Reporting, secrets,
+protected environments, Trusted Publishing, live API calls, tags, releases, or
+registry publication. Its recorded CI result is historical evidence, not a
+reason to repeat initialization.
 
-Run the fail-closed content and identity gate before the first remote push and
-again before changing repository visibility:
+The fail-closed content and identity gate was required before the historical
+first remote push. Run it again before an explicitly authorized visibility
+change and before marking Public Preview ready:
 
 ```bash
 uv run python scripts/check_version.py --require-public-preview-docs
@@ -91,6 +98,10 @@ Record every command, outcome, skipped check, and unavailable tool in the
 verification record.
 
 ## Final post-merge evidence
+
+This procedure grants no standing permission for remote writes. Run it only
+when the current maintainer request explicitly authorizes the pull-request
+lifecycle and its final timeline comment.
 
 After a pre-visibility pull request is squash-merged, complete its evidence
 record against the resulting default-branch commit:
@@ -183,19 +194,24 @@ Arbitrary-branch and manual publication are forbidden.
 
 ## Alpha release checklist
 
-Maintainers execute this sequence in order:
+For the current canonical repository, the private initialization and
+pre-visibility closeout are completed historical prerequisites. The next
+external action is a visibility change, and it requires separate explicit
+authorization. This checklist defines dependency order, not standing
+permission: every remote mutation, live request, release action, and registry
+action must be explicitly authorized in the current maintainer request; stop
+otherwise. Maintainers execute authorized steps in order:
 
-1. Complete the canonical identity table, replace unresolved public status
-   text, remove `CODEOWNERS` and its checks, and run the local content,
-   self-containment, package, secret, and workflow gates.
-2. Create the empty private repository, push the sanitized first history, wait
-   for real credential-free default-branch CI, record its result, and stop for
-   explicit visibility-change authorization.
-3. After the repository becomes public, require pull requests and blocking CI
-   for `main` with zero required approvals, block force pushes and deletion,
-   reserve administrator bypass for emergencies, protect version tags from
-   updates and deletion, enable immutable releases and Private Vulnerability
-   Reporting, and rerun default-branch CI.
+1. Confirm the recorded canonical identity, absent `CODEOWNERS`, local gates,
+   sanitized first history, initial private push, credential-free CI, and
+   pre-visibility closeout. Do not recreate or repeat those historical steps.
+2. Obtain explicit authorization for the visibility change and stop if it is
+   absent.
+3. After the authorized repository visibility change, require pull requests and
+   blocking CI for `main` with zero required approvals, block force pushes and
+   deletion, reserve administrator bypass for emergencies, protect version tags
+   from updates and deletion, enable immutable releases and Private
+   Vulnerability Reporting, and rerun default-branch CI.
 4. Configure `live-smoke` with no required reviewer and `pypi` with approval by
    the current release approver and self-review allowed. Set
    `LIVE_SMOKE_ENABLED=true`, provide the authorized key, and run the protected
