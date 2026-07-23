@@ -16,6 +16,25 @@ authorized pre-visibility scope.
 A local build, mocked test, statically valid workflow, or private remote CI run
 proves only its own evidence layer. Never invent or mock missing evidence.
 
+## Git branch lifecycle
+
+- Use a dedicated short-lived topic branch for each task. `dev` is the clean
+  local landing branch between tasks; do not commit task changes directly to
+  `dev`.
+- Treat a topic branch lifecycle as closed only after its required pull-request
+  checks pass and its squash merge is present on `origin/main`. Any alternate
+  disposition requires explicit user authorization and must not advance `dev`
+  until the accepted commit is present on `origin/main`.
+- With a clean worktree, fetch `origin`, switch to `main`, fast-forward it with
+  `git merge --ff-only origin/main`, switch to `dev`, fast-forward it with
+  `git merge --ff-only main`, and finish with `dev` checked out. Cleanup is
+  complete only when the worktree is clean and local `main`, local `dev`, and
+  `origin/main` resolve to the same commit.
+- Never reset, discard work, force-update refs, delete branches, or push `dev`
+  merely to complete this cleanup. If fetching fails, the worktree is dirty,
+  either fast-forward is impossible, or the three final refs differ, stop and
+  report the exact state instead of forcing synchronization.
+
 ## Current milestone: Public Preview
 
 Private Remote Validation is complete. Prepare the private canonical repository
