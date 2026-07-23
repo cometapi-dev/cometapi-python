@@ -25,15 +25,20 @@ proves only its own evidence layer. Never invent or mock missing evidence.
   checks pass and its squash merge is present on `origin/main`. Any alternate
   disposition requires explicit user authorization and must not advance `dev`
   until the accepted commit is present on `origin/main`.
-- With a clean worktree, fetch `origin`, switch to `main`, fast-forward it with
-  `git merge --ff-only origin/main`, switch to `dev`, fast-forward it with
-  `git merge --ff-only main`, and finish with `dev` checked out. Cleanup is
-  complete only when the worktree is clean and local `main`, local `dev`, and
-  `origin/main` resolve to the same commit.
-- Never reset, discard work, force-update refs, delete branches, or push `dev`
-  merely to complete this cleanup. If fetching fails, the worktree is dirty,
-  either fast-forward is impossible, or the three final refs differ, stop and
-  report the exact state instead of forcing synchronization.
+- With a clean worktree, fetch `origin`, switch to `main`, and fast-forward it
+  with `git merge --ff-only origin/main`. Require the worktree to remain clean
+  and `main` to equal `origin/main` before handling `dev`. If local `dev`
+  exists, require it to be an ancestor of `main`, switch to it, and fast-forward
+  it with `git merge --ff-only main`; if it does not exist, create it with
+  `git switch -c dev` only from that checked-out, clean, synchronized `main`.
+  Finish with `dev` checked out. Cleanup is complete only when the worktree is
+  clean and `HEAD`, local `main`, local `dev`, and `origin/main` resolve to the
+  same commit.
+- Never reset, discard work, force-update refs, delete branches, or push `dev`.
+  If fetching fails, the worktree is dirty, `main` cannot fast-forward to
+  `origin/main`, an existing `dev` cannot fast-forward to `main`, or the four
+  final refs differ, stop and report the exact state instead of forcing
+  synchronization.
 
 ## Current milestone: Public Preview
 
@@ -58,9 +63,9 @@ The accepted identity is:
 
 Before changing repository visibility:
 
-1. Resolve or explicitly defer every open dependency pull request that is not
-   ready to merge. Dependabot PR #2 must not merge while its credential-free CI
-   is failing; record its disposition in `ROADMAP.md`.
+1. Resolve or explicitly defer every dependency disposition that `ROADMAP.md`
+   still records as unresolved; its pre-visibility dependency disposition table
+   is the durable source of truth.
 2. Keep `.github/CODEOWNERS` absent until a real multi-maintainer model exists.
 3. Keep scheduled and manually dispatched live smoke fail-closed behind
    `LIVE_SMOKE_ENABLED=true`, and keep `RELEASE_PLEASE_ENABLED` disabled through

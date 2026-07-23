@@ -90,6 +90,37 @@ and an offline mocked call.
 Record every command, outcome, skipped check, and unavailable tool in the
 verification record.
 
+## Final post-merge evidence
+
+After a pre-visibility pull request is squash-merged, complete its evidence
+record against the resulting default-branch commit:
+
+1. Fetch `origin`, obtain the pull request's squash-merge SHA, verify that it is
+   an ancestor of `origin/main`, and capture the current `origin/main` commit as
+   the final `main` SHA.
+2. Wait for the credential-free default-branch `CI` run for that final `main`
+   SHA and require every blocking job to pass. Record the run URL; pull-request
+   CI is not a substitute for this post-merge run.
+3. Perform a read-only authorization-boundary audit. Record the repository's
+   observed current visibility and other relevant observable state separately
+   from the lifecycle attestation that this workflow made no visibility,
+   settings, rules, secrets, or environments mutation and performed no live API,
+   tag, release, or PyPI operation. Do not treat state hidden by permissions as
+   affirmative evidence.
+4. Follow the `AGENTS.md` branch lifecycle using only fast-forward updates, then
+   require a clean worktree on `dev` with `HEAD`, local `main`, local `dev`, and
+   `origin/main` equal to the final `main` SHA. Never push `dev`.
+5. Add a timeline comment to the merged pull request containing its squash-merge
+   SHA, the verified ancestry from that commit to the final `main` SHA, the final
+   `main` SHA, default-branch CI result and URL, observed boundary-audit state,
+   lifecycle attestation, and local worktree and ref state. Use that comment as
+   the durable final evidence record and retain its URL.
+
+If any required evidence fails or is unavailable, stop and report the exact
+state instead of claiming completion. A commit cannot truthfully record its own
+future squash-merge SHA, post-merge CI, or final comment URL; do not create
+another commit to chase that circular record.
+
 ## Workflow validation
 
 The repository wrapper pins `actionlint` 1.7.12 and verifies the release
