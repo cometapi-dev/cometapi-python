@@ -315,7 +315,8 @@ Public Preview readiness evidence on 2026-07-27:
   `LIVE_SMOKE_ENABLED` opt-in was reset to `false` after the run.
 - No tag, GitHub release, Trusted Publisher, PyPI OIDC publication, provenance,
   or public-registry installation was created or claimed. Release Please remains
-  disabled through the initial manual alpha.
+  disabled until a separately reviewed and tested `last-release-sha` bridge
+  establishes the recovery alpha as its previous-release boundary.
 
 Public Preview remains ready only while:
 
@@ -383,6 +384,13 @@ A mock never satisfies a live gate, static workflow validation never proves a
 remote run, and a successful upload never proves registry installation.
 PyPI publication is OIDC-only; Python has no token-bootstrap exception.
 
+The first immutable release reached PyPI OIDC publication but Warehouse
+rejected its non-HTTPS Support project URL before accepting any distribution.
+GitHub permanently reserved the deleted `v0.1.0-alpha.1` release identity. The
+approved recovery release therefore uses
+`v0.1.0-alpha.1+recovery.1`, whose SemVer build suffix leaves the PyPI package
+version at the required first public artifact `0.1.0a1`.
+
 ## `0.1.0`: OpenAI protocol foundation
 
 Stable 0.1 retains the alpha surface. Its additional exit criteria are:
@@ -437,9 +445,11 @@ successfully in the canonical GitHub repository.
 Scheduled and manually dispatched live smoke must require
 `LIVE_SMOKE_ENABLED=true`; an unset or other value prevents live execution.
 Release Please requires
-`RELEASE_PLEASE_ENABLED=true` and remains disabled through the initial manual
-alpha. Release jobs must resolve an unset or empty `COMETAPI_LIVE_MODEL` to
-`gpt-5.4` rather than attempt a request with an empty model.
+`RELEASE_PLEASE_ENABLED=true` and remains disabled after the recovery alpha
+until a separate reviewed and tested `last-release-sha` bridge establishes its
+previous-release boundary. Release jobs must resolve an unset or empty
+`COMETAPI_LIVE_MODEL` to `gpt-5.4` rather than attempt a request with an empty
+model.
 
 ## Maintenance cadence
 

@@ -62,7 +62,12 @@ def _artifact_version(path: Path) -> str:
     return match.group(1)
 
 
-def _require_canonical_tag(tag: str, project_version: str) -> None:
+APPROVED_RECOVERY_TAGS = {
+    "0.1.0a1": "v0.1.0-alpha.1+recovery.1",
+}
+
+
+def _require_canonical_tag(tag: str, project_version: str) -> str:
     normalized = normalize_version(project_version)
     alpha = re.fullmatch(r"(?P<base>\d+\.\d+\.\d+)a(?P<number>\d+)", normalized)
     expected = (
@@ -70,10 +75,13 @@ def _require_canonical_tag(tag: str, project_version: str) -> None:
         if alpha is not None
         else f"v{normalized}"
     )
-    if tag != expected:
+    recovery = APPROVED_RECOVERY_TAGS.get(normalized)
+    allowed = {recovery} if recovery is not None else {expected}
+    if tag not in allowed:
         raise CheckError(
-            f"release tag must use canonical SemVer spelling {expected!r}, got {tag!r}"
+            f"release tag must use an approved spelling {sorted(allowed)!r}, got {tag!r}"
         )
+    return normalized
 
 
 PUBLIC_DOCUMENTS = (
@@ -302,8 +310,7 @@ def main() -> int:
     if args.expected:
         versions.append(("expected", args.expected))
     if args.tag:
-        _require_canonical_tag(args.tag, project)
-        versions.append(("tag", args.tag))
+        versions.append(("tag", _require_canonical_tag(args.tag, project)))
     for value in args.artifacts:
         path = Path(value)
         if not path.is_file():

@@ -1250,6 +1250,21 @@ def test_release_trust_accepts_exact_immutable_default_branch_commit(
     )
 
 
+def test_release_trust_accepts_approved_recovery_tag(
+    release_repository: tuple[Path, str], tmp_path: Path
+) -> None:
+    repository, release_commit = release_repository
+    recovery_tag = "v0.1.0-alpha.1+recovery.1"
+    _git(repository, "tag", recovery_tag, release_commit)
+    _git(repository, "checkout", "--detach", recovery_tag)
+    result = _verify_trust(repository, tmp_path, tag=recovery_tag)
+
+    assert result.returncode == 0, result.stderr
+    assert (tmp_path / "github-output.txt").read_text(encoding="utf-8") == (
+        f"release-commit={release_commit}\n"
+    )
+
+
 def test_release_trust_rejects_non_immutable_release(
     release_repository: tuple[Path, str], tmp_path: Path
 ) -> None:

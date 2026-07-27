@@ -125,6 +125,17 @@ protected exact-release live job. OIDC permission is exposed only to the
 protected publish job. Missing credentials, environments, approvals, or
 remote configuration block publication.
 
+The initial alpha has one release-identity exception. GitHub's immutable
+release tombstone permanently reserves `v0.1.0-alpha.1`, so the reviewed
+recovery release uses SemVer build metadata in
+`v0.1.0-alpha.1+recovery.1`. The build suffix does not change the package
+artifact identity: the PyPI version remains `0.1.0a1`.
+
+Release Please remains disabled after this recovery release because its
+manifest version does not include the recovery build metadata. A later,
+separately reviewed change must establish the previous-release boundary with a
+tested `last-release-sha` bridge before enabling automated release PRs.
+
 ## Rejected 0.1 approaches
 
 - Hand-written HTTP, SSE, retry, timeout, or protocol model layers duplicate
