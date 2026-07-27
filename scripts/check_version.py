@@ -132,6 +132,9 @@ def _check_project_identity(violations: list[str]) -> None:
     urls = project.get("urls")
     url_values = cast(dict[str, object], urls) if isinstance(urls, dict) else {}
     for label, expected in CANONICAL_PROJECT_URLS.items():
+        parsed = urlsplit(expected)
+        if parsed.scheme != "https" or not parsed.netloc:
+            violations.append(f"canonical Project-URL {label} must use HTTPS: {expected!r}")
         actual = url_values.get(label)
         if actual != expected:
             violations.append(f"pyproject.toml: [project.urls].{label} must equal {expected!r}")

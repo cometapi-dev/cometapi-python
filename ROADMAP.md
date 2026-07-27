@@ -41,8 +41,9 @@ Deliverables:
 - Standalone documentation, MIT licensing, contribution and conduct guidance,
   security and support policies, architecture, release guide, changelog,
   compatibility matrix, and issue and pull-request templates.
-- Normalized package metadata, a reproducible development lock, Ruff, Pyright,
-  pytest, metadata, artifact, clean-install, secret, and version checks.
+- Normalized package metadata with HTTPS-only project URLs and a public support
+  document link, a reproducible development lock, Ruff, Pyright, pytest,
+  metadata, artifact, clean-install, secret, and version checks.
 - Offline CI, trusted live-smoke definition, release-PR automation, OIDC
   publishing definition, and dependency update automation.
 - A repository-independence gate that copies the candidate into an empty

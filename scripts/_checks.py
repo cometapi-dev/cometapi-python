@@ -28,7 +28,7 @@ CANONICAL_PROJECT_URLS = {
     "Documentation": "https://apidoc.cometapi.com/",
     "Repository": CANONICAL_REPOSITORY,
     "Issues": f"{CANONICAL_REPOSITORY}/issues",
-    "Support": f"mailto:{CANONICAL_SUPPORT}",
+    "Support": f"{CANONICAL_REPOSITORY}/blob/main/SUPPORT.md",
     "Security": CANONICAL_SECURITY,
 }
 

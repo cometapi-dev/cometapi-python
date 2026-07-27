@@ -234,6 +234,9 @@ committed.
 - Manual or arbitrary-branch publication is forbidden.
 - A successful build or upload is not a release. Registry installation,
   import, mocked-call smoke, and provenance must be verified separately.
+- Every distribution `Project-URL` must use HTTPS. The canonical Support URL
+  is `https://github.com/cometapi-dev/cometapi-python/blob/main/SUPPORT.md`;
+  `support@cometapi.com` remains the support and conduct contact.
 - Keep third-party Actions pinned to full commit SHAs and grant
   `id-token: write` only to the publishing job.
 - Keep README, roadmap, compatibility matrix, examples, and changelog aligned
