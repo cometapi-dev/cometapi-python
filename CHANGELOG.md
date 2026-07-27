@@ -6,7 +6,10 @@ automation.
 
 ## [Unreleased]
 
-No user-visible changes are currently recorded beyond the initial alpha scope.
+### Changed
+
+- Release documentation now records completed Registry Alpha publication,
+  provenance, digest, clean-install, import, and mocked-call verification.
 
 ## [0.1.0a1] - 2026-07-27
 

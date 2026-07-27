@@ -1,7 +1,7 @@
 # CometAPI Python SDK
 
-> **Pre-release:** `0.1.0a1` is approved for PyPI publication. Its API may
-> change before `0.1.0`.
+> **Pre-release:** `0.1.0a1` is available from PyPI. Its API may change before
+> `0.1.0`.
 
 `cometapi` is a thin Python adapter over the official OpenAI SDK for the
 OpenAI-compatible CometAPI endpoint. It changes the default API key and base
@@ -36,9 +36,10 @@ Install the exact alpha from PyPI with:
 python -m pip install --pre 'cometapi==0.1.0a1'
 ```
 
-Check the repository releases and
-[PyPI project page](https://pypi.org/project/cometapi/) for current package
-availability.
+See the immutable
+[GitHub prerelease](https://github.com/cometapi-dev/cometapi-python/releases/tag/v0.1.0-alpha.1%2Brecovery.1)
+and exact [PyPI release](https://pypi.org/project/cometapi/0.1.0a1/) for the
+published artifact.
 
 ## Authentication and configuration
 

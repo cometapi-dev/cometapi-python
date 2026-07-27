@@ -61,7 +61,7 @@ reason to repeat initialization.
 
 The fail-closed content and identity gate was required before the historical
 first remote push and passed again before Public Preview readiness. Keep running
-it before Registry Alpha preparation and after public-document changes:
+it before later releases and after public-document changes:
 
 ```bash
 uv run python scripts/check_version.py --require-public-preview-docs
@@ -201,38 +201,31 @@ read-only by default; only the publishing job receives `id-token: write`.
 Publishing uses a protected `pypi` environment and concurrency control.
 Arbitrary-branch and manual publication are forbidden.
 
-## Alpha release checklist
+## Alpha release checklist (completed)
 
 For the current canonical repository, private initialization, pre-visibility
 closeout, public visibility, repository protection, environments, public
-default-branch CI, and the one-time Public Preview live smoke are completed
-historical prerequisites. Do not recreate or repeat them. The next external
-actions prepare Registry Alpha and require separate explicit authorization.
-This checklist defines dependency order, not standing permission: every remote
-mutation, live request, release action, and registry action must be explicitly
-authorized in the current maintainer request; stop otherwise.
+default-branch CI, the one-time Public Preview live smoke, and Registry Alpha
+are completed historical steps. Do not recreate or repeat them. This checklist
+records the dependency order that was executed; it grants no standing
+permission for later remote mutations, live requests, release actions, or
+registry actions.
 
-Before continuing, re-audit the recorded Public Preview invariants: protected
-`main` and version tags, immutable releases, Private Vulnerability Reporting,
-the `live-smoke` and `pypi` environment boundaries, `LIVE_SMOKE_ENABLED=false`,
-absent `CODEOWNERS`, and disabled Release Please. Maintainers then execute the
-remaining authorized steps in order:
+The recorded Public Preview invariants were re-audited before release:
+protected `main` and version tags, immutable releases, Private Vulnerability
+Reporting, the `live-smoke` and `pypi` environment boundaries,
+`LIVE_SMOKE_ENABLED=false`, absent `CODEOWNERS`, and disabled Release Please.
+Maintainers then completed these steps in order:
 
-1. Confirm that the company-managed PyPI identity `dev@cometapi.com` owns or can
-   create the unscoped PyPI package `cometapi`, and configure the
-   Trusted Publisher for the exact repository, workflow, and `pypi`
-   environment.
-2. Confirm the protected `COMETAPI_KEY`, the approved `COMETAPI_LIVE_MODEL`,
-   and explicit authorization for the documented four-request, 16-token, 30-second,
-   concurrency-one, stop-on-failure budget before creating the GitHub
-   prerelease.
-3. Replace the pre-release availability notice and source-installation text in
-   `README.md` with the release-neutral, maintainer-confirmed sentence
-   “`0.1.0a1` is approved for PyPI publication.” Date the `0.1.0a1` heading in
-   `CHANGELOG.md`, remove its candidate/unpublished wording, and rerun every
+1. Confirmed company-managed PyPI ownership and configured the Trusted
+   Publisher for the exact repository, workflow, and `pypi` environment.
+2. Confirmed the protected `COMETAPI_KEY`, approved live model, and explicit
+   authorization for the documented four-request, 16-token, 30-second,
+   concurrency-one, stop-on-failure budget.
+3. Finalized the dated changelog and prerelease documentation and reran every
    candidate verification gate, including
    `uv run python scripts/check_version.py --expected 0.1.0a1 --require-changelog --require-releasable-docs`.
-4. Review the exact candidate and create the immutable SemVer recovery tag
+4. Reviewed the exact candidate and created the immutable SemVer recovery tag
    `v0.1.0-alpha.1+recovery.1` and corresponding GitHub prerelease. GitHub
    permanently reserved `v0.1.0-alpha.1` after its immutable release reached
    OIDC publication but failed before PyPI accepted any distribution. The
@@ -241,12 +234,11 @@ remaining authorized steps in order:
    for later releases. Keep Release Please disabled until a separate reviewed
    and tested `last-release-sha` bridge establishes this recovery commit as its
    previous-release boundary.
-5. Allow the release workflow to prove `immutable=true`, resolve the tag to the
-   checked-out commit, verify that commit is reachable from the protected
-   default branch, and run the bounded protected live suite against that exact
-   commit. Only successful completion makes the protected PyPI approval
-   eligible; approve that job after reviewing its retained artifact digests.
-6. Verify publication, provenance, public artifact identity and digest, clean
+5. The release workflow proved `immutable=true`, resolved the tag to the
+   checked-out commit, verified that commit was reachable from the protected
+   default branch, and ran the bounded protected live suite against that exact
+   commit before the protected PyPI approval was granted.
+6. Verified publication, provenance, public artifact identity and digest, clean
    installation, import, and the public-registry mocked-call smoke.
 
 Missing credentials, model/budget approval, environments, publisher
@@ -260,6 +252,28 @@ PyPI.
 The version checker must normalize the SemVer tag and PEP 440 package spelling
 to the same `0.1.0a1` value across the tag, release manifest, package metadata,
 changelog, GitHub release, wheel, and source distribution.
+
+### Completed Registry Alpha evidence
+
+- Metadata [PR #16](https://github.com/cometapi-dev/cometapi-python/pull/16)
+  merged as `6344c2d0e2e975360b42c887275c1950b82918ee`; recovery contract
+  [PR #17](https://github.com/cometapi-dev/cometapi-python/pull/17) merged as
+  release commit `31b68904141489ca04932edbf305ccf88af09372`.
+- Annotated tag `v0.1.0-alpha.1+recovery.1` has tag object
+  `fdc4a6cce31f4534f83903f3f95e7757a4d4049f`, peels to the release commit,
+  and identifies the
+  [immutable GitHub prerelease](https://github.com/cometapi-dev/cometapi-python/releases/tag/v0.1.0-alpha.1%2Brecovery.1).
+- [Release workflow run 30261746138](https://github.com/cometapi-dev/cometapi-python/actions/runs/30261746138)
+  passed the exact artifact gates, authorized protected live smoke, protected
+  environment approval, PyPI OIDC Trusted Publishing, provenance check, public
+  digest comparison, clean registry installation, imports, and mocked-call
+  smoke.
+- The exact [PyPI release](https://pypi.org/project/cometapi/0.1.0a1/) has wheel
+  SHA256 `a6820347317943ca22f7632acbe354dd992f31a122a6172dfe45b57960e3a093`
+  and source-distribution SHA256
+  `98d86829ef14771e8b7ec180d452c6638289f49c14a39b7207be5c47cb64cde7`.
+- `LIVE_SMOKE_ENABLED=false`. Release Please remains disabled until a separate
+  reviewed and tested `last-release-sha` bridge is merged.
 
 ## Stable release sequence
 

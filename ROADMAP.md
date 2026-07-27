@@ -1,9 +1,9 @@
 # CometAPI Python SDK Roadmap
 
-Status: `0.1.0a1` in progress
+Status: `0.1.0a1` released
 Last updated: 2026-07-27
 Repository contract: this roadmap is self-contained.
-Current gate: Public Preview ready; `0.1.0a1` Registry Alpha awaiting explicit authorization.
+Current gate: `0.1.0a1` Registry Alpha complete; `0.1.0` stable planned.
 
 ## Product target
 
@@ -11,13 +11,12 @@ The SDK provides the shortest reliable path from an OpenAI Python integration
 to CometAPI while preserving official request, response, error, retry, timeout,
 sync, async, and streaming behavior.
 
-Private Remote Validation and Public Preview are complete for the sanitized
-public repository. Protected repository configuration, public default-branch
-CI, and an authorized live smoke establish preview readiness. Public Preview
-and the functional `0.1.0a1` prerelease remain separate evidence gates; the next
-external actions require separate Registry Alpha authorization. Support and
-release claims remain limited to the evidence defined in this roadmap and
-`COMPATIBILITY.md`.
+Private Remote Validation, Public Preview, and the functional `0.1.0a1`
+Registry Alpha are complete for the sanitized public repository. Protected
+repository configuration, public default-branch CI, exact-release live smoke,
+PyPI OIDC publication, provenance, digest comparison, and public-registry smoke
+provide separate evidence layers. Support and release claims remain limited to
+the evidence defined in this roadmap and `COMPATIBILITY.md`.
 
 ## Milestones
 
@@ -26,7 +25,7 @@ release claims remain limited to the evidence defined in this roadmap and
 | Repository foundation | Complete | Public files, offline gates, packaging checks, and self-containment are complete. |
 | Private Remote Validation | Complete | The sanitized private repository passes real credential-free default-branch CI; public-only controls and live tests remain disabled. |
 | Public Preview | Complete | The public repository has blocking CI, repository rules, security reporting, protected environments, immutable releases, and authorized live-smoke evidence. |
-| `0.1.0a1` Registry Alpha | Awaiting authorization | Early adopters can install a functional prerelease from PyPI after every release and registry gate passes. |
+| `0.1.0a1` Registry Alpha | Complete | Early adopters can install the functional prerelease from PyPI; every release and registry gate passed. |
 | `0.1.0` stable | Planned | Complete runtime, release-PR, example, provenance, and registry gates pass. |
 | `0.2.0` provider-native text | Planned | Optional official Anthropic and Gemini adapters. |
 | `0.3.0` CometAPI resources | Planned | First schema-backed typed CometAPI-specific resource. |
@@ -117,8 +116,8 @@ described as unfinished.
 The milestone was established only after repository rules, Private
 Vulnerability Reporting, immutable releases, protected environments,
 public default-branch CI, the public-content gate, and an authorized protected
-live smoke passed. Registry Alpha remains a separate authorization and evidence
-gate.
+live smoke passed. Registry Alpha remained a separate authorization and
+evidence gate and was completed later the same day.
 
 Recorded pre-visibility dependency dispositions:
 
@@ -313,8 +312,9 @@ Public Preview readiness evidence on 2026-07-27:
   `gpt-5.4` within the four-request, 16-output-token, 30-second-per-request,
   concurrency-one, zero-retry, stop-on-first-failure budget. The
   `LIVE_SMOKE_ENABLED` opt-in was reset to `false` after the run.
-- No tag, GitHub release, Trusted Publisher, PyPI OIDC publication, provenance,
-  or public-registry installation was created or claimed. Release Please remains
+- At this Public Preview checkpoint, no tag, GitHub release, Trusted Publisher,
+  PyPI OIDC publication, provenance, or public-registry installation existed.
+  Those later Registry Alpha actions are recorded below. Release Please remains
   disabled until a separately reviewed and tested `last-release-sha` bridge
   establishes the recovery alpha as its previous-release boundary.
 
@@ -337,6 +337,8 @@ Public Preview remains ready only while:
   budget.
 
 ## `0.1.0a1`: Registry Alpha
+
+Registry Alpha completed on 2026-07-27.
 
 ### User-visible scope
 
@@ -369,16 +371,16 @@ Public Preview remains ready only while:
 - CLI or Go SDK changes.
 - `CometClient` or `AsyncCometClient` compatibility aliases.
 
-### Release gates
+### Completed release gates
 
-Before the alpha may be called released, maintainers must confirm package
-ownership and PyPI pending Trusted Publisher configuration, authorize a
-budgeted live smoke run, and review the release documentation. The release
-workflow must then prove that the immutable tag target is the checked-out
-commit and belongs to the protected default branch, run the protected live
-suite against that exact commit, and only then make protected PyPI approval
-eligible. Public artifact identity, digest, provenance, import, clean install,
-and mocked calls remain separate post-publication evidence.
+The alpha was not called released until maintainers confirmed package ownership
+and PyPI Trusted Publisher configuration, authorized the budgeted live smoke,
+and reviewed the release documentation. The release workflow proved that the
+immutable tag target was the checked-out commit and belonged to the protected
+default branch, ran the protected live suite against that exact commit, and
+only then made protected PyPI approval eligible. Public artifact identity,
+digest, provenance, import, clean install, and mocked calls were verified as
+separate post-publication evidence.
 
 A mock never satisfies a live gate, static workflow validation never proves a
 remote run, and a successful upload never proves registry installation.
@@ -390,6 +392,32 @@ GitHub permanently reserved the deleted `v0.1.0-alpha.1` release identity. The
 approved recovery release therefore uses
 `v0.1.0-alpha.1+recovery.1`, whose SemVer build suffix leaves the PyPI package
 version at the required first public artifact `0.1.0a1`.
+
+Accepted release evidence:
+
+- Metadata fix [PR #16](https://github.com/cometapi-dev/cometapi-python/pull/16)
+  merged as `6344c2d0e2e975360b42c887275c1950b82918ee`; recovery contract
+  [PR #17](https://github.com/cometapi-dev/cometapi-python/pull/17) merged as
+  release commit `31b68904141489ca04932edbf305ccf88af09372`. Final
+  [default-branch CI run 30261497883](https://github.com/cometapi-dev/cometapi-python/actions/runs/30261497883)
+  passed.
+- Annotated tag `v0.1.0-alpha.1+recovery.1` has tag object
+  `fdc4a6cce31f4534f83903f3f95e7757a4d4049f` and peels to the release
+  commit. The corresponding
+  [immutable GitHub prerelease](https://github.com/cometapi-dev/cometapi-python/releases/tag/v0.1.0-alpha.1%2Brecovery.1)
+  is release `360377046`.
+- [Release workflow run 30261746138](https://github.com/cometapi-dev/cometapi-python/actions/runs/30261746138)
+  passed exact artifact construction and validation, the authorized four-request
+  protected live smoke, protected `pypi` approval, OIDC Trusted Publishing,
+  provenance verification, public digest comparison, clean PyPI installation,
+  imports, and the public-registry mocked-call smoke.
+- The exact [PyPI release](https://pypi.org/project/cometapi/0.1.0a1/) is public.
+  Its wheel SHA256 is
+  `a6820347317943ca22f7632acbe354dd992f31a122a6172dfe45b57960e3a093` and
+  its source-distribution SHA256 is
+  `98d86829ef14771e8b7ec180d452c6638289f49c14a39b7207be5c47cb64cde7`.
+- `LIVE_SMOKE_ENABLED=false`. Release Please remains disabled pending a
+  separately reviewed and tested `last-release-sha` bridge.
 
 ## `0.1.0`: OpenAI protocol foundation
 
