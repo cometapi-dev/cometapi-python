@@ -48,17 +48,31 @@ proves only its own evidence layer. Never invent or mock missing evidence.
   Never reset, rebase, discard work, force-update refs, delete or recreate an
   existing `dev`, or push `dev` to recover. Report the exact state instead.
 
-## Current milestone: Public Preview
+## Current milestone: Registry Alpha
 
-Public Preview ready; `0.1.0a1` Registry Alpha awaits explicit authorization.
+Registry Alpha is complete: `cometapi==0.1.0a1` is publicly available and its
+release and registry trust chain has been verified.
 
 Private Remote Validation, the sanitized first history, private initialization,
-pre-visibility closeout, public visibility configuration, and Public Preview
-readiness are completed historical steps and must not be repeated. The
-canonical repository is public with protected branch and version-tag rules,
-Private Vulnerability Reporting, immutable releases, protected environments,
-public default-branch CI, and one authorized protected live-smoke result. No
-tag, release, PyPI publication, or Registry Alpha claim exists.
+pre-visibility closeout, public visibility configuration, Public Preview, and
+the first Registry Alpha release are completed historical steps and must not be
+repeated. The canonical repository is public with protected branch and
+version-tag rules, Private Vulnerability Reporting, immutable releases,
+protected environments, public default-branch CI, and protected release and
+registry evidence.
+
+The accepted release evidence is:
+
+| Field | Value |
+| --- | --- |
+| Release commit | `31b68904141489ca04932edbf305ccf88af09372` |
+| Recovery tag | `v0.1.0-alpha.1+recovery.1` |
+| Tag object | `fdc4a6cce31f4534f83903f3f95e7757a4d4049f` |
+| GitHub release | `https://github.com/cometapi-dev/cometapi-python/releases/tag/v0.1.0-alpha.1%2Brecovery.1` |
+| Release workflow | `https://github.com/cometapi-dev/cometapi-python/actions/runs/30261746138` |
+| PyPI release | `https://pypi.org/project/cometapi/0.1.0a1/` |
+| Wheel SHA256 | `a6820347317943ca22f7632acbe354dd992f31a122a6172dfe45b57960e3a093` |
+| Source SHA256 | `98d86829ef14771e8b7ec180d452c6638289f49c14a39b7207be5c47cb64cde7` |
 
 The accepted identity is:
 
@@ -74,7 +88,7 @@ The accepted identity is:
 | Support and conduct | `support@cometapi.com` |
 | Security | `https://github.com/cometapi-dev/cometapi-python/security/advisories/new` |
 
-At the Registry Alpha authorization gate:
+Post-alpha invariants:
 
 1. Treat the dependency dispositions recorded in `ROADMAP.md` as authoritative
    for the listed pull requests. Process newly opened dependency pull requests
@@ -88,10 +102,13 @@ At the Registry Alpha authorization gate:
 4. Treat the recorded public rules, security reporting, immutable releases, and
    protected environments as readiness invariants. Any drift invalidates the
    readiness claim until it is explicitly authorized, restored, and verified.
-5. Stop before configuring the PyPI Trusted Publisher, changing release
-   documentation, enabling Release Please, creating a tag or release, making a
-   live release request, or publishing to PyPI unless the current maintainer
-   request separately authorizes the applicable action.
+5. Keep the `pypi` environment approval assigned to the current release
+   approver with self-review allowed; the reviewer is GitHub configuration and
+   must not be hardcoded in repository files.
+6. Treat the recovery tag, GitHub release, and PyPI distributions as immutable.
+   Any later live request, tag, release, Trusted Publisher change, publication,
+   or other registry mutation requires separate explicit maintainer
+   authorization.
 
 ## Repository independence
 
@@ -259,14 +276,13 @@ passing. The gate must report every detected violation and fail until canonical
 identity, contacts, repository metadata, and durable public-facing content are
 complete.
 
-Before preparing Registry Alpha, re-audit that `main` still requires pull
+Before preparing any later release, re-audit that `main` still requires pull
 requests and blocking CI with zero required approvals, force pushes and deletion
 remain blocked, administrator bypass remains emergency-only, version tags remain
 protected, immutable releases and Private Vulnerability Reporting remain
 enabled, and the `live-smoke` and `pypi` environments retain their reviewed
-protection boundaries. The one-time Public Preview live opt-in was reset to
-false after its successful run; enable it again only for a separately authorized
-monitoring request.
+protection boundaries. `LIVE_SMOKE_ENABLED` is `false`; enable it only for a
+separately authorized monitoring request.
 
 Verification reports must list exact commands and outcomes, failed or
 unavailable checks, and unverified remote, live, and registry evidence as

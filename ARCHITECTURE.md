@@ -119,6 +119,14 @@ local mocked/package evidence
     -> public registry digest, provenance, install, import, and mocked smoke
 ```
 
+This complete trust chain executed successfully in
+[release workflow run 30261746138](https://github.com/cometapi-dev/cometapi-python/actions/runs/30261746138)
+for release commit `31b68904141489ca04932edbf305ccf88af09372`, recovery tag
+`v0.1.0-alpha.1+recovery.1`, and PyPI version `0.1.0a1`. The public wheel and
+source distribution matched the retained pre-publication digests, Trusted
+Publisher provenance was verified, and the clean registry install/import/mocked
+smoke passed.
+
 The scheduled/manual default-branch smoke is an operational canary only; it
 does not prove the release commit. `COMETAPI_KEY` is exposed only to the
 protected exact-release live job. OIDC permission is exposed only to the
