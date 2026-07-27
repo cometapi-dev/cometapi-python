@@ -37,6 +37,8 @@ No user-visible changes are currently recorded beyond the initial alpha scope.
   language, and standalone content.
 - Scheduled live smoke requires the explicit repository opt-in, and release
   live smoke defaults an unset or empty model setting to `gpt-5.4`.
+- Distribution metadata now exposes Support as an HTTPS link to `SUPPORT.md`;
+  release checks reject non-HTTPS canonical project URLs.
 
 ### Removed
 

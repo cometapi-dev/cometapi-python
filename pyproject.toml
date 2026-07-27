@@ -27,7 +27,7 @@ Homepage = "https://www.cometapi.com"
 Documentation = "https://apidoc.cometapi.com/"
 Repository = "https://github.com/cometapi-dev/cometapi-python"
 Issues = "https://github.com/cometapi-dev/cometapi-python/issues"
-Support = "mailto:support@cometapi.com"
+Support = "https://github.com/cometapi-dev/cometapi-python/blob/main/SUPPORT.md"
 Security = "https://github.com/cometapi-dev/cometapi-python/security/advisories/new"
 
 [dependency-groups]

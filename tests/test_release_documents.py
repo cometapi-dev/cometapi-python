@@ -121,6 +121,16 @@ def test_public_preview_documents_accept_durable_public_content(
     require_public_preview_docs()
 
 
+def test_public_preview_documents_reject_non_https_canonical_project_url(
+    releasable_documents: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setitem(CANONICAL_PROJECT_URLS, "Support", f"mailto:{CANONICAL_SUPPORT}")
+
+    with pytest.raises(CheckError, match="canonical Project-URL Support must use HTTPS"):
+        require_public_preview_docs()
+
+
 def test_public_preview_documents_reject_codeowners(releasable_documents: Path) -> None:
     codeowners = releasable_documents / ".github/CODEOWNERS"
     codeowners.parent.mkdir(parents=True, exist_ok=True)

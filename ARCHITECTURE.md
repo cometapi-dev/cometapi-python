@@ -76,6 +76,11 @@ separate `resources/` and `types/` packages. Provider-native adapters belong to
 a later milestone and use the official provider SDKs as optional dependencies.
 Empty placeholders are not part of 0.1.
 
+Distribution `Project-URL` metadata uses HTTPS for every entry so registries
+can validate and render it consistently. The Support entry links to the public
+`SUPPORT.md` document; `support@cometapi.com` remains the support and conduct
+contact published inside that document.
+
 ## Dependency policy
 
 The installable OpenAI range is `openai>=2.45.0,<3.0.0`. End users resolve

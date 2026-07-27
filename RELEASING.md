@@ -94,6 +94,11 @@ exact artifact must be installed independently outside the source tree; the
 check must assert installed metadata, public exports, absence of legacy aliases,
 and an offline mocked call.
 
+Every canonical `[project.urls]` value must use HTTPS. In particular, Support
+must resolve to
+`https://github.com/cometapi-dev/cometapi-python/blob/main/SUPPORT.md`; the
+email address in that document remains the canonical support contact.
+
 Record every command, outcome, skipped check, and unavailable tool in the
 verification record.
 
