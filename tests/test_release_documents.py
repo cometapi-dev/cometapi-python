@@ -231,3 +231,66 @@ def test_public_preview_cli_reports_aggregated_violations_and_fails(
     assert result.returncode != 0
     assert "[project].authors" in result.stderr
     assert "SECURITY.md: missing canonical public value" in result.stderr
+
+
+def test_release_version_cli_accepts_approved_initial_alpha_recovery_tag(
+    releasable_documents: Path,
+) -> None:
+    result = subprocess.run(
+        [
+            sys.executable,
+            str(VERSION_SCRIPT),
+            "--tag",
+            "v0.1.0-alpha.1+recovery.1",
+            "--require-changelog",
+        ],
+        cwd=releasable_documents,
+        text=True,
+        check=False,
+        capture_output=True,
+    )
+
+    assert result.returncode == 0, result.stderr
+    assert "version agreement passed: 0.1.0a1" in result.stdout
+
+
+def test_release_version_cli_rejects_tombstoned_initial_alpha_tag(
+    releasable_documents: Path,
+) -> None:
+    result = subprocess.run(
+        [
+            sys.executable,
+            str(VERSION_SCRIPT),
+            "--tag",
+            "v0.1.0-alpha.1",
+            "--require-changelog",
+        ],
+        cwd=releasable_documents,
+        text=True,
+        check=False,
+        capture_output=True,
+    )
+
+    assert result.returncode != 0
+    assert "release tag must use an approved spelling" in result.stderr
+
+
+def test_release_version_cli_rejects_unapproved_recovery_tag(
+    releasable_documents: Path,
+) -> None:
+    result = subprocess.run(
+        [
+            sys.executable,
+            str(VERSION_SCRIPT),
+            "--tag",
+            "v0.1.0-alpha.1+recovery.2",
+            "--require-changelog",
+        ],
+        cwd=releasable_documents,
+        text=True,
+        check=False,
+        capture_output=True,
+    )
+
+    assert result.returncode != 0
+    assert "release tag must use an approved spelling" in result.stderr

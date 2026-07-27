@@ -39,6 +39,11 @@ No user-visible changes are currently recorded beyond the initial alpha scope.
   live smoke defaults an unset or empty model setting to `gpt-5.4`.
 - Distribution metadata now exposes Support as an HTTPS link to `SUPPORT.md`;
   release checks reject non-HTTPS canonical project URLs.
+- The initial GitHub prerelease uses the one-time recovery tag
+  `v0.1.0-alpha.1+recovery.1` because GitHub permanently reserved the failed
+  immutable release tag; the PyPI package version remains `0.1.0a1`.
+- Release Please remains disabled until a separately reviewed and tested
+  previous-release boundary bridges the recovery tag's build metadata.
 
 ### Removed
 

@@ -82,8 +82,9 @@ At the Registry Alpha authorization gate:
    authorizes that work, without reopening completed dispositions.
 2. Keep `.github/CODEOWNERS` absent until a real multi-maintainer model exists.
 3. Keep scheduled and manually dispatched live smoke fail-closed behind
-   `LIVE_SMOKE_ENABLED=true`, and keep `RELEASE_PLEASE_ENABLED` disabled through
-   the initial manual alpha.
+   `LIVE_SMOKE_ENABLED=true`, and keep `RELEASE_PLEASE_ENABLED` disabled until
+   a separate reviewed and tested `last-release-sha` bridge establishes the
+   recovery alpha as Release Please's previous-release boundary.
 4. Treat the recorded public rules, security reporting, immutable releases, and
    protected environments as readiness invariants. Any drift invalidates the
    readiness claim until it is explicitly authorized, restored, and verified.
@@ -237,6 +238,15 @@ committed.
 - Every distribution `Project-URL` must use HTTPS. The canonical Support URL
   is `https://github.com/cometapi-dev/cometapi-python/blob/main/SUPPORT.md`;
   `support@cometapi.com` remains the support and conduct contact.
+- GitHub permanently reserved `v0.1.0-alpha.1` after its immutable release
+  reached OIDC publication but failed before any PyPI distribution was
+  accepted. The sole approved recovery tag is
+  `v0.1.0-alpha.1+recovery.1`, which maps to package version `0.1.0a1`.
+  Later releases must use their ordinary canonical tag spelling.
+- Keep Release Please disabled after the recovery alpha. Its manifest cannot
+  infer the previous-release boundary from the recovery tag's build metadata;
+  enabling it requires a separate reviewed and tested `last-release-sha`
+  bridge.
 - Keep third-party Actions pinned to full commit SHAs and grant
   `id-token: write` only to the publishing job.
 - Keep README, roadmap, compatibility matrix, examples, and changelog aligned

@@ -44,9 +44,11 @@ completed private initialization and remain unnecessary while the project has
 one active maintainer.
 
 Before the historical first push, scheduled and manually dispatched live
-execution was required to fail closed unless `LIVE_SMOKE_ENABLED=true`, and
-`RELEASE_PLEASE_ENABLED` was kept disabled through the initial manual alpha. An
-unset or non-true value prevents the corresponding gated job from executing.
+execution was required to fail closed unless `LIVE_SMOKE_ENABLED=true`.
+`RELEASE_PLEASE_ENABLED` was kept disabled and remains disabled until a
+separately reviewed and tested `last-release-sha` bridge establishes the
+recovery alpha as the previous-release boundary. An unset or non-true value
+prevents the corresponding gated job from executing.
 The release live-model configuration resolves an unset or empty
 `COMETAPI_LIVE_MODEL` to `gpt-5.4`.
 
@@ -179,9 +181,11 @@ violations in one run and still returns non-zero when any violation exists.
   `LIVE_SMOKE_ENABLED=true`.
 - `release-please.yml` maintains a human-reviewed version and changelog pull
   request from Conventional Commits after maintainers enable the
-  `RELEASE_PLEASE_ENABLED` repository variable. Keep it disabled until the
-  initial `v0.1.0-alpha.1` tag exists because the checked-in manifest seeds the
-  next release from the equivalent package version `0.1.0a1`.
+  `RELEASE_PLEASE_ENABLED` repository variable. Keep it disabled after the
+  initial `v0.1.0-alpha.1+recovery.1` release: the checked-in manifest version
+  lacks the recovery tag's build metadata and cannot safely infer the previous
+  release boundary. Enable it only after a separate reviewed change configures
+  and tests an explicit `last-release-sha` bridge.
 - `publish.yml` runs only for a published immutable GitHub release. It resolves
   the tag to the checked-out commit, fetches the protected default branch, and
   rejects a commit that is not reachable from that branch. A protected
@@ -228,11 +232,15 @@ remaining authorized steps in order:
    `CHANGELOG.md`, remove its candidate/unpublished wording, and rerun every
    candidate verification gate, including
    `uv run python scripts/check_version.py --expected 0.1.0a1 --require-changelog --require-releasable-docs`.
-4. Review the exact candidate and create the immutable SemVer tag
-   `v0.1.0-alpha.1` and corresponding GitHub prerelease. The package and Python
-   metadata use the equivalent PEP 440 version `0.1.0a1`. This is the canonical
-   tag spelling; do not use `v0.1.0a1`. After this initial alpha exists, enable
-   Release Please for later reviewed release pull requests.
+4. Review the exact candidate and create the immutable SemVer recovery tag
+   `v0.1.0-alpha.1+recovery.1` and corresponding GitHub prerelease. GitHub
+   permanently reserved `v0.1.0-alpha.1` after its immutable release reached
+   OIDC publication but failed before PyPI accepted any distribution. The
+   recovery build suffix preserves the equivalent PEP 440 package version
+   `0.1.0a1`; it is a one-time exception and must not be incremented or reused
+   for later releases. Keep Release Please disabled until a separate reviewed
+   and tested `last-release-sha` bridge establishes this recovery commit as its
+   previous-release boundary.
 5. Allow the release workflow to prove `immutable=true`, resolve the tag to the
    checked-out commit, verify that commit is reachable from the protected
    default branch, and run the bounded protected live suite against that exact
