@@ -8,7 +8,7 @@ automation.
 
 No user-visible changes are currently recorded beyond the initial alpha scope.
 
-## [0.1.0a1] - Unreleased
+## [0.1.0a1] - 2026-07-27
 
 ### Added
 
