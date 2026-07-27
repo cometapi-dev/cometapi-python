@@ -58,8 +58,8 @@ registry publication. Its recorded CI result is historical evidence, not a
 reason to repeat initialization.
 
 The fail-closed content and identity gate was required before the historical
-first remote push. Run it again before an explicitly authorized visibility
-change and before marking Public Preview ready:
+first remote push and passed again before Public Preview readiness. Keep running
+it before Registry Alpha preparation and after public-document changes:
 
 ```bash
 uv run python scripts/check_version.py --require-public-preview-docs
@@ -194,54 +194,47 @@ Arbitrary-branch and manual publication are forbidden.
 
 ## Alpha release checklist
 
-For the current canonical repository, the private initialization and
-pre-visibility closeout are completed historical prerequisites. The next
-external action is a visibility change, and it requires separate explicit
-authorization. This checklist defines dependency order, not standing
-permission: every remote mutation, live request, release action, and registry
-action must be explicitly authorized in the current maintainer request; stop
-otherwise. Maintainers execute authorized steps in order:
+For the current canonical repository, private initialization, pre-visibility
+closeout, public visibility, repository protection, environments, public
+default-branch CI, and the one-time Public Preview live smoke are completed
+historical prerequisites. Do not recreate or repeat them. The next external
+actions prepare Registry Alpha and require separate explicit authorization.
+This checklist defines dependency order, not standing permission: every remote
+mutation, live request, release action, and registry action must be explicitly
+authorized in the current maintainer request; stop otherwise.
 
-1. Confirm the recorded canonical identity, absent `CODEOWNERS`, local gates,
-   sanitized first history, initial private push, credential-free CI, and
-   pre-visibility closeout. Do not recreate or repeat those historical steps.
-2. Obtain explicit authorization for the visibility change and stop if it is
-   absent.
-3. After the authorized repository visibility change, require pull requests and
-   blocking CI for `main` with zero required approvals, block force pushes and
-   deletion, reserve administrator bypass for emergencies, protect version tags
-   from updates and deletion, enable immutable releases and Private
-   Vulnerability Reporting, and rerun default-branch CI.
-4. Configure `live-smoke` with no required reviewer and `pypi` with approval by
-   the current release approver and self-review allowed. Set
-   `LIVE_SMOKE_ENABLED=true`, provide the authorized key, and run the protected
-   budgeted live smoke. Record Public Preview readiness only after the public
-   content gate and this live run pass.
-5. Confirm ownership of the unscoped PyPI package `cometapi` and configure the
+Before continuing, re-audit the recorded Public Preview invariants: protected
+`main` and version tags, immutable releases, Private Vulnerability Reporting,
+the `live-smoke` and `pypi` environment boundaries, `LIVE_SMOKE_ENABLED=false`,
+absent `CODEOWNERS`, and disabled Release Please. Maintainers then execute the
+remaining authorized steps in order:
+
+1. Confirm that the company-managed PyPI identity `dev@cometapi.com` owns or can
+   create the unscoped PyPI package `cometapi`, and configure the
    Trusted Publisher for the exact repository, workflow, and `pypi`
    environment.
-6. Supply `COMETAPI_KEY`, the approved `COMETAPI_LIVE_MODEL`, and explicit
-   authorization for the documented four-request, 16-token, 30-second,
+2. Confirm the protected `COMETAPI_KEY`, the approved `COMETAPI_LIVE_MODEL`,
+   and explicit authorization for the documented four-request, 16-token, 30-second,
    concurrency-one, stop-on-failure budget before creating the GitHub
    prerelease.
-7. Replace the pre-release availability notice and source-installation text in
+3. Replace the pre-release availability notice and source-installation text in
    `README.md` with the release-neutral, maintainer-confirmed sentence
    “`0.1.0a1` is approved for PyPI publication.” Date the `0.1.0a1` heading in
    `CHANGELOG.md`, remove its candidate/unpublished wording, and rerun every
    candidate verification gate, including
    `uv run python scripts/check_version.py --expected 0.1.0a1 --require-changelog --require-releasable-docs`.
-8. Review the exact candidate and create the immutable SemVer tag
+4. Review the exact candidate and create the immutable SemVer tag
    `v0.1.0-alpha.1` and corresponding GitHub prerelease. The package and Python
    metadata use the equivalent PEP 440 version `0.1.0a1`. This is the canonical
    tag spelling; do not use `v0.1.0a1`. After this initial alpha exists, enable
    Release Please for later reviewed release pull requests.
-9. Allow the release workflow to prove `immutable=true`, resolve the tag to the
+5. Allow the release workflow to prove `immutable=true`, resolve the tag to the
    checked-out commit, verify that commit is reachable from the protected
    default branch, and run the bounded protected live suite against that exact
    commit. Only successful completion makes the protected PyPI approval
    eligible; approve that job after reviewing its retained artifact digests.
-10. Verify publication, provenance, public artifact identity and digest, clean
-    installation, import, and the public-registry mocked-call smoke.
+6. Verify publication, provenance, public artifact identity and digest, clean
+   installation, import, and the public-registry mocked-call smoke.
 
 Missing credentials, model/budget approval, environments, publisher
 configuration, protection, or approval block the publication dependency chain

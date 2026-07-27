@@ -50,13 +50,15 @@ proves only its own evidence layer. Never invent or mock missing evidence.
 
 ## Current milestone: Public Preview
 
-Public Preview pre-visibility complete; visibility change awaiting explicit authorization.
+Public Preview ready; `0.1.0a1` Registry Alpha awaits explicit authorization.
 
-Private Remote Validation is complete. The sanitized first history, empty
-private repository creation, initial push, and pre-visibility closeout are
-completed historical steps and must not be repeated. The canonical repository
-remains private at the visibility authorization gate. Public Preview is not
-ready, and no pre-visibility implementation task remains.
+Private Remote Validation, the sanitized first history, private initialization,
+pre-visibility closeout, public visibility configuration, and Public Preview
+readiness are completed historical steps and must not be repeated. The
+canonical repository is public with protected branch and version-tag rules,
+Private Vulnerability Reporting, immutable releases, protected environments,
+public default-branch CI, and one authorized protected live-smoke result. No
+tag, release, PyPI publication, or Registry Alpha claim exists.
 
 The accepted identity is:
 
@@ -72,7 +74,7 @@ The accepted identity is:
 | Support and conduct | `support@cometapi.com` |
 | Security | `https://github.com/cometapi-dev/cometapi-python/security/advisories/new` |
 
-At the visibility authorization gate:
+At the Registry Alpha authorization gate:
 
 1. Treat the dependency dispositions recorded in `ROADMAP.md` as authoritative
    for the listed pull requests. Process newly opened dependency pull requests
@@ -82,12 +84,13 @@ At the visibility authorization gate:
 3. Keep scheduled and manually dispatched live smoke fail-closed behind
    `LIVE_SMOKE_ENABLED=true`, and keep `RELEASE_PLEASE_ENABLED` disabled through
    the initial manual alpha.
-4. Do not create another pre-visibility closeout pull request unless a current
-   maintainer request explicitly authorizes a new, scoped change.
-5. Stop before changing visibility. After an explicitly authorized visibility
-   change, repository rules, Private Vulnerability Reporting, protected
-   environments, default-branch CI, and authorized protected live smoke must
-   pass before Public Preview can be marked ready.
+4. Treat the recorded public rules, security reporting, immutable releases, and
+   protected environments as readiness invariants. Any drift invalidates the
+   readiness claim until it is explicitly authorized, restored, and verified.
+5. Stop before configuring the PyPI Trusted Publisher, changing release
+   documentation, enabling Release Please, creating a tag or release, making a
+   live release request, or publishing to PyPI unless the current maintainer
+   request separately authorizes the applicable action.
 
 ## Repository independence
 
@@ -237,21 +240,20 @@ committed.
   with shipped behavior. Use currently supported model IDs.
 - All repository documentation is written in English.
 
-Before marking Public Preview ready, run
-`uv run python scripts/check_version.py --require-public-preview-docs`. The
-gate must report every detected violation and fail until canonical identity,
-contacts, repository metadata, and durable public-facing content are complete.
+The Public Preview readiness record requires
+`uv run python scripts/check_version.py --require-public-preview-docs` to keep
+passing. The gate must report every detected violation and fail until canonical
+identity, contacts, repository metadata, and durable public-facing content are
+complete.
 
-The private repository becoming public begins a short configuration interval;
-it does not by itself establish Public Preview readiness. After visibility
-changes, require pull requests and blocking CI for `main`, with zero required
-approvals, blocked force pushes and deletion, and administrator bypass reserved
-for emergencies. Protect version tags from updates and deletion, enable
-immutable releases and Private Vulnerability Reporting, configure `live-smoke`
-without a required reviewer, and configure `pypi` with approval by the current
-release approver and self-review allowed. Rerun CI and the authorized protected
-live smoke before recording Public Preview readiness or preparing Registry
-Alpha.
+Before preparing Registry Alpha, re-audit that `main` still requires pull
+requests and blocking CI with zero required approvals, force pushes and deletion
+remain blocked, administrator bypass remains emergency-only, version tags remain
+protected, immutable releases and Private Vulnerability Reporting remain
+enabled, and the `live-smoke` and `pypi` environments retain their reviewed
+protection boundaries. The one-time Public Preview live opt-in was reset to
+false after its successful run; enable it again only for a separately authorized
+monitoring request.
 
 Verification reports must list exact commands and outcomes, failed or
 unavailable checks, and unverified remote, live, and registry evidence as

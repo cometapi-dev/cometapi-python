@@ -1,9 +1,9 @@
 # CometAPI Python SDK Roadmap
 
 Status: `0.1.0a1` in progress
-Last updated: 2026-07-23
+Last updated: 2026-07-27
 Repository contract: this roadmap is self-contained.
-Current gate: Public Preview pre-visibility complete; visibility change awaiting explicit authorization.
+Current gate: Public Preview ready; `0.1.0a1` Registry Alpha awaiting explicit authorization.
 
 ## Product target
 
@@ -11,13 +11,13 @@ The SDK provides the shortest reliable path from an OpenAI Python integration
 to CometAPI while preserving official request, response, error, retry, timeout,
 sync, async, and streaming behavior.
 
-Private Remote Validation and the Public Preview pre-visibility closeout are
-complete for the sanitized repository, which remains private. Public Preview is
-not ready: the next external action is a separately authorized visibility
-change, followed by the required public configuration and protected evidence.
-Public Preview and the functional `0.1.0a1` prerelease remain separate evidence
-gates. Support and release claims remain limited to the evidence defined in
-this roadmap and `COMPATIBILITY.md`.
+Private Remote Validation and Public Preview are complete for the sanitized
+public repository. Protected repository configuration, public default-branch
+CI, and an authorized live smoke establish preview readiness. Public Preview
+and the functional `0.1.0a1` prerelease remain separate evidence gates; the next
+external actions require separate Registry Alpha authorization. Support and
+release claims remain limited to the evidence defined in this roadmap and
+`COMPATIBILITY.md`.
 
 ## Milestones
 
@@ -25,8 +25,8 @@ this roadmap and `COMPATIBILITY.md`.
 | --- | --- | --- |
 | Repository foundation | Complete | Public files, offline gates, packaging checks, and self-containment are complete. |
 | Private Remote Validation | Complete | The sanitized private repository passes real credential-free default-branch CI; public-only controls and live tests remain disabled. |
-| Public Preview | Awaiting visibility authorization | Pre-visibility work is complete. After a separately authorized visibility change, the public repository must establish blocking CI, repository rules, security reporting, protected environments, and authorized live-smoke evidence before it claims preview readiness. |
-| `0.1.0a1` Registry Alpha | Planned | Early adopters can install a functional prerelease from PyPI. |
+| Public Preview | Complete | The public repository has blocking CI, repository rules, security reporting, protected environments, immutable releases, and authorized live-smoke evidence. |
+| `0.1.0a1` Registry Alpha | Awaiting authorization | Early adopters can install a functional prerelease from PyPI after every release and registry gate passes. |
 | `0.1.0` stable | Planned | Complete runtime, release-PR, example, provenance, and registry gates pass. |
 | `0.2.0` provider-native text | Planned | Optional official Anthropic and Gemini adapters. |
 | `0.3.0` CometAPI resources | Planned | First schema-backed typed CometAPI-specific resource. |
@@ -103,20 +103,21 @@ Recorded evidence on 2026-07-21:
 
 ## Public Preview
 
-Public Preview pre-visibility complete; visibility change awaiting explicit authorization.
+Public Preview ready as of 2026-07-27.
 
-There is no remaining pre-visibility implementation task. Do not create another
-closeout pull request without a new, explicit maintainer request. The recorded
-dependency dispositions below remain authoritative for the listed pull
-requests. Newly opened dependency pull requests remain pending until a current
-maintainer request explicitly authorizes their normal maintenance; they must
-not cause closed or superseded dispositions to be described as unfinished.
+Private initialization, pre-visibility work, the visibility change, public
+configuration, and preview evidence are completed historical steps and must not
+be repeated. The recorded dependency dispositions below remain authoritative
+for the listed pull requests. Newly opened dependency pull requests remain
+pending until a current maintainer request explicitly authorizes their normal
+maintenance; they must not cause closed or superseded dispositions to be
+described as unfinished.
 
-Public Preview is not ready. The repository must remain private until a
-visibility change is explicitly authorized. After that change, repository
-rules, Private Vulnerability Reporting, protected environments,
-default-branch CI, the public-content gate, and authorized protected live smoke
-must pass before the milestone can be marked ready.
+The milestone was established only after repository rules, Private
+Vulnerability Reporting, immutable releases, protected environments,
+public default-branch CI, the public-content gate, and an authorized protected
+live smoke passed. Registry Alpha remains a separate authorization and evidence
+gate.
 
 Recorded pre-visibility dependency dispositions:
 
@@ -240,7 +241,7 @@ Failed or unavailable checks:
   probe in a fresh detached worktree failed closed before the verified cache was
   populated; it is not final-candidate validation evidence.
 
-Remote evidence:
+Recorded pre-visibility remote evidence:
 
 - Private PR #9's final-head
   [CI run 29916685839](https://github.com/cometapi-dev/cometapi-python/actions/runs/29916685839)
@@ -272,20 +273,50 @@ Remote evidence:
   additional evidence. No visibility, secret, environment, protection, live,
   tag, release, registry, or publication change was made.
 
-Live evidence:
+Recorded pre-visibility live evidence:
 
 - The live-smoke path was not executed, and no live API request was made.
   Transport success and provider behavior therefore remain unverified.
 
-Registry and release evidence:
+Recorded pre-visibility registry and release evidence:
 
 - Release Please, immutable-release publishing, PyPI OIDC, provenance, and
   public-registry installation were not executed. No tag, release, or
   publication was created.
 
-Changing the repository to public begins a short configuration interval; it
-does not establish Public Preview readiness by itself. The preview is ready
-only when:
+Public Preview readiness evidence on 2026-07-27:
+
+- The complete local readiness gate passed on 2026-07-27 with all three
+  readiness-document changes present: lock reproduction, Ruff, formatting,
+  Pyright, 200 non-live tests, public-content, secret, workflow, actionlint,
+  exact wheel and source-distribution, clean-install, and copied
+  standalone-repository checks all succeeded.
+- The canonical repository became public. Active rulesets require pull
+  requests and the nine blocking CI contexts on `main`, block force pushes and
+  deletion with organization-administrator emergency bypass, permit only squash
+  merges, and protect `refs/tags/v*` from updates and deletion.
+- Immutable releases and Private Vulnerability Reporting were enabled. The
+  `live-smoke` environment has no required reviewer; the `pypi` environment
+  requires the current release approver and permits self-review. The live key
+  exists only as an environment secret.
+- Public scheduled
+  [CI run 30248141487](https://github.com/cometapi-dev/cometapi-python/actions/runs/30248141487)
+  passed quality, Python 3.10 through 3.14, minimum and latest-within-major
+  OpenAI compatibility, package, exact-artifact, retained-digest, and copied
+  standalone-repository jobs for `fa32e962f7a35dd9e183f7b201bd9117590654a9`.
+  A manually requested rerun was superseded by this scheduled run through the
+  reviewed concurrency group and was not used as final evidence.
+- Explicitly authorized protected
+  [live-smoke run 30248383703](https://github.com/cometapi-dev/cometapi-python/actions/runs/30248383703)
+  passed all four sequential Chat Completions and Responses modes against
+  `gpt-5.4` within the four-request, 16-output-token, 30-second-per-request,
+  concurrency-one, zero-retry, stop-on-first-failure budget. The
+  `LIVE_SMOKE_ENABLED` opt-in was reset to `false` after the run.
+- No tag, GitHub release, Trusted Publisher, PyPI OIDC publication, provenance,
+  or public-registry installation was created or claimed. Release Please remains
+  disabled through the initial manual alpha.
+
+Public Preview remains ready only while:
 
 - `main` requires pull requests and blocking CI with zero required approvals;
   force pushes and deletion are blocked, and administrator bypass is reserved
