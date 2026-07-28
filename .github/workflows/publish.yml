@@ -1,15 +1,17 @@
 name: Publish immutable release
 
 on:
-  workflow_call:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
     inputs:
       release-tag:
+        description: Exact immutable GitHub release tag
         required: true
         type: string
       release-sha:
-        required: true
-        type: string
-      default-branch:
+        description: Exact commit resolved by the release tag
         required: true
         type: string
 
@@ -24,9 +26,188 @@ env:
   UV_VERSION: 0.11.8
 
 jobs:
+  release-please:
+    name: Maintain the reviewed release PR and release
+    if: >-
+      github.run_attempt == 1 &&
+      github.event_name == 'push' &&
+      vars.RELEASE_PLEASE_ENABLED == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    outputs:
+      release-created: ${{ steps.release.outputs.release_created }}
+      release-sha: ${{ steps.verify-release.outputs.release-sha }}
+      release-tag: ${{ steps.verify-release.outputs.release-tag }}
+      release-verified: ${{ steps.verify-release.outputs.release-verified }}
+    permissions:
+      contents: write
+      pull-requests: write
+    steps:
+      - name: Open or update the release PR, or create its approved release
+        id: release
+        uses: googleapis/release-please-action@5c625bfb5d1ff62eadeeb3772007f7f66fdcf071 # v4.4.1
+        with:
+          config-file: release-please-config.json
+          manifest-file: .release-please-manifest.json
+      - name: Verify the immutable release created by Release Please
+        id: verify-release
+        if: steps.release.outputs.release_created == 'true'
+        env:
+          EXPECTED_SHA: ${{ steps.release.outputs.sha }}
+          EXPECTED_TAG: ${{ steps.release.outputs.tag_name }}
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          test -n "$EXPECTED_TAG"
+          test -n "$EXPECTED_SHA"
+          release=""
+          for attempt in $(seq 1 12); do
+            release=$(gh api "repos/${{ github.repository }}/releases/tags/$EXPECTED_TAG") || true
+            if test -n "$release" && test "$(jq -r .immutable <<<"$release")" = "true"; then
+              break
+            fi
+            if test "$attempt" -ge 12; then
+              echo "release did not become immutable" >&2
+              exit 1
+            fi
+            sleep 5
+          done
+          test "$(jq -r .tag_name <<<"$release")" = "$EXPECTED_TAG"
+          test "$(jq -r .draft <<<"$release")" = "false"
+          test "$(jq -r .prerelease <<<"$release")" = "false"
+          test "$(jq -r .immutable <<<"$release")" = "true"
+          ref=$(gh api "repos/${{ github.repository }}/git/ref/tags/$EXPECTED_TAG")
+          tag_type=$(jq -r .object.type <<<"$ref")
+          tag_sha=$(jq -r .object.sha <<<"$ref")
+          if test "$tag_type" = "tag"; then
+            tag_sha=$(gh api "repos/${{ github.repository }}/git/tags/$tag_sha" --jq .object.sha)
+          else
+            test "$tag_type" = "commit"
+          fi
+          test "$tag_sha" = "$EXPECTED_SHA"
+          {
+            echo "release-tag=$EXPECTED_TAG"
+            echo "release-sha=$EXPECTED_SHA"
+            echo "release-verified=true"
+          } >> "$GITHUB_OUTPUT"
+
+  verify-recovery:
+    name: Verify the authorized immutable release recovery
+    if: >-
+      github.run_attempt == 1 &&
+      github.event_name == 'workflow_dispatch' &&
+      github.ref == format('refs/heads/{0}', github.event.repository.default_branch) &&
+      vars.RELEASE_RECOVERY_TAG == inputs.release-tag &&
+      vars.RELEASE_RECOVERY_SHA == inputs.release-sha
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      release-sha: ${{ steps.verify-release.outputs.release-sha }}
+      release-tag: ${{ steps.verify-release.outputs.release-tag }}
+    permissions:
+      contents: read
+    steps:
+      - name: Verify the immutable release selected for recovery
+        id: verify-release
+        env:
+          EXPECTED_SHA: ${{ inputs.release-sha }}
+          EXPECTED_TAG: ${{ inputs.release-tag }}
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          test -n "$EXPECTED_TAG"
+          test -n "$EXPECTED_SHA"
+          release=""
+          for attempt in $(seq 1 12); do
+            release=$(gh api "repos/${{ github.repository }}/releases/tags/$EXPECTED_TAG") || true
+            if test -n "$release" && test "$(jq -r .immutable <<<"$release")" = "true"; then
+              break
+            fi
+            if test "$attempt" -ge 12; then
+              echo "release did not become immutable" >&2
+              exit 1
+            fi
+            sleep 5
+          done
+          test "$(jq -r .tag_name <<<"$release")" = "$EXPECTED_TAG"
+          test "$(jq -r .draft <<<"$release")" = "false"
+          test "$(jq -r .prerelease <<<"$release")" = "false"
+          test "$(jq -r .immutable <<<"$release")" = "true"
+          ref=$(gh api "repos/${{ github.repository }}/git/ref/tags/$EXPECTED_TAG")
+          tag_type=$(jq -r .object.type <<<"$ref")
+          tag_sha=$(jq -r .object.sha <<<"$ref")
+          if test "$tag_type" = "tag"; then
+            tag_sha=$(gh api "repos/${{ github.repository }}/git/tags/$tag_sha" --jq .object.sha)
+          else
+            test "$tag_type" = "commit"
+          fi
+          test "$tag_sha" = "$EXPECTED_SHA"
+          {
+            echo "release-tag=$EXPECTED_TAG"
+            echo "release-sha=$EXPECTED_SHA"
+            echo "release-verified=true"
+          } >> "$GITHUB_OUTPUT"
+
+  select-release:
+    name: Select one independently verified release identity
+    needs:
+      - release-please
+      - verify-recovery
+    if: >-
+      always() &&
+      github.run_attempt == 1 &&
+      (
+        (
+          github.event_name == 'push' &&
+          needs.release-please.result == 'success' &&
+          needs.release-please.outputs.release-created == 'true' &&
+          needs.release-please.outputs.release-verified == 'true'
+        ) ||
+        (
+          github.event_name == 'workflow_dispatch' &&
+          needs.verify-recovery.result == 'success'
+        )
+      )
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      release-sha: ${{ steps.select.outputs.release-sha }}
+      release-tag: ${{ steps.select.outputs.release-tag }}
+    permissions:
+      contents: read
+    steps:
+      - name: Select the independently verified release identity
+        id: select
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          RECOVERY_SHA: ${{ needs.verify-recovery.outputs.release-sha }}
+          RECOVERY_TAG: ${{ needs.verify-recovery.outputs.release-tag }}
+          RELEASE_PLEASE_SHA: ${{ needs.release-please.outputs.release-sha }}
+          RELEASE_PLEASE_TAG: ${{ needs.release-please.outputs.release-tag }}
+        run: |
+          case "$EVENT_NAME" in
+            push)
+              release_sha=$RELEASE_PLEASE_SHA
+              release_tag=$RELEASE_PLEASE_TAG
+              ;;
+            workflow_dispatch)
+              release_sha=$RECOVERY_SHA
+              release_tag=$RECOVERY_TAG
+              ;;
+            *)
+              exit 1
+              ;;
+          esac
+          test -n "$release_sha"
+          test -n "$release_tag"
+          {
+            echo "release-sha=$release_sha"
+            echo "release-tag=$release_tag"
+          } >> "$GITHUB_OUTPUT"
+
   build:
     name: Verify and build the immutable default-branch release
     if: github.run_attempt == 1
+    needs:
+      - select-release
     runs-on: ubuntu-latest
     timeout-minutes: 25
     outputs:
@@ -38,16 +219,16 @@ jobs:
       - name: Check out the published release tag
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          ref: refs/tags/${{ inputs.release-tag }}
+          ref: refs/tags/${{ needs.select-release.outputs.release-tag }}
           fetch-depth: 0
           persist-credentials: false
       - name: Reject an untrusted release target
         id: trust
         env:
-          DEFAULT_BRANCH: ${{ inputs.default-branch }}
-          EXPECTED_RELEASE_SHA: ${{ inputs.release-sha }}
+          DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+          EXPECTED_RELEASE_SHA: ${{ needs.select-release.outputs.release-sha }}
           RELEASE_IMMUTABLE: "true"
-          RELEASE_TAG: ${{ inputs.release-tag }}
+          RELEASE_TAG: ${{ needs.select-release.outputs.release-tag }}
         run: bash scripts/verify_release_trust.sh
       - name: Set up Python
         uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
@@ -60,7 +241,7 @@ jobs:
       - name: Verify project, manifest, changelog, release docs, and tag agreement
         id: version
         env:
-          RELEASE_TAG: ${{ inputs.release-tag }}
+          RELEASE_TAG: ${{ needs.select-release.outputs.release-tag }}
         run: |
           version=$(uv run python scripts/check_version.py --tag "$RELEASE_TAG" --require-changelog --require-releasable-docs --print-version)
           echo "version=$version" >> "$GITHUB_OUTPUT"
@@ -72,7 +253,7 @@ jobs:
         run: uv build
       - name: Verify artifact versions against the tag
         env:
-          RELEASE_TAG: ${{ inputs.release-tag }}
+          RELEASE_TAG: ${{ needs.select-release.outputs.release-tag }}
         run: uv run python scripts/check_version.py --tag "$RELEASE_TAG" --require-changelog --require-releasable-docs dist/*
       - name: Check package metadata rendering
         run: uv run twine check dist/*

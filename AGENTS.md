@@ -112,6 +112,12 @@ Post-alpha invariants:
    Any later live request, tag, release, Trusted Publisher change, publication,
    or other registry mutation requires separate explicit maintainer
    authorization.
+7. Keep `pypa/gh-action-pypi-publish` in the top-level `publish.yml` workflow
+   that PyPI records as the Trusted Publisher. Do not move publication into a
+   reusable workflow or call it from another workflow: PyPI requires an
+   attestation's Build Config URI to match the workflow identity used for the
+   Trusted Publisher exchange. The workflow inventory and semantic tests must
+   fail if this single-publisher boundary changes.
 
 ## Repository independence
 
@@ -246,8 +252,9 @@ committed.
   and PyPI OIDC Trusted Publishing.
 - The release commit must equal the tag target and belong to the protected
   default branch. Release Please must independently confirm that the exact tag
-  and commit are immutable before directly calling the protected publication
-  workflow; do not rely on workflow-token release events to trigger it. A
+  and commit are immutable before the top-level publication workflow selects
+  them for downstream jobs; do not rely on workflow-token release events to
+  trigger it. A
   protected live-smoke job must check out that exact commit and succeed before
   the protected PyPI job can become eligible.
 - Scheduled/default-branch live smoke is monitoring evidence only and cannot
@@ -256,12 +263,12 @@ committed.
   publisher configuration, or approval blocks publication; no conditional
   skip or mock may bypass it.
 - Arbitrary-branch publication is forbidden. Manual publication is permitted
-  only through the reviewed `release-recovery.yml` workflow from the protected
-  default branch, with `RELEASE_RECOVERY_TAG` and `RELEASE_RECOVERY_SHA` equal
-  to its exact inputs, after separately verifying the existing immutable tag
-  and commit. The recovery and reusable publication jobs must reject every
-  workflow rerun. Delete both variables immediately after the recovery succeeds
-  or stops.
+  only through the reviewed `workflow_dispatch` path in `publish.yml` from the
+  protected default branch, with `RELEASE_RECOVERY_TAG` and
+  `RELEASE_RECOVERY_SHA` equal to its exact inputs, after separately verifying
+  the existing immutable tag and commit. Recovery verification, release
+  selection, and all downstream release jobs must reject every workflow rerun.
+  Delete both variables immediately after the recovery succeeds or stops.
 - A successful build or upload is not a release. Registry installation,
   import, mocked-call smoke, and provenance must be verified separately.
 - Every distribution `Project-URL` must use HTTPS. The canonical Support URL
@@ -277,13 +284,14 @@ committed.
   `last-release-sha` bridge because the recovery tag's build metadata could not
   be inferred from the manifest. The human-finalized stable release PR removed
   that bridge and its prerelease-versioning controls; keep them absent.
-- Keep third-party Actions pinned to full commit SHAs. Every local caller of
-  the reusable publication workflow must use `secrets: inherit`; GitHub-hosted
-  runners otherwise can resolve its job-level environment secret as empty.
-  Keep the semantic workflow checker's inheritance regression coverage. Grant
-  `id-token: write` only to a reviewed reusable publication caller and the
-  protected publishing job; callers pass this maximum permission and only the
-  publishing job uses the OIDC token.
+- Keep third-party Actions pinned to full commit SHAs. Keep release creation,
+  recovery, build, protected live smoke, OIDC publication, and registry
+  verification in the single top-level `publish.yml` workflow. Grant
+  `id-token: write` only to its protected publishing job, and keep
+  `COMETAPI_KEY` scoped only to the protected live credential preflight and
+  test. The semantic checker must reject reusable publication, split workflow
+  identities, additional OIDC consumers, and raw dispatch inputs downstream of
+  the verified release selector.
 - Keep README, roadmap, compatibility matrix, examples, and changelog aligned
   with shipped behavior. Use currently supported model IDs.
 - All repository documentation is written in English.

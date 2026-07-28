@@ -1,9 +1,10 @@
 # CometAPI Python SDK Roadmap
 
-Status: `0.1.0a1` released
-Last updated: 2026-07-27
+Status: `0.1.0a1` released; `0.1.0` recovery in progress
+Last updated: 2026-07-28
 Repository contract: this roadmap is self-contained.
-Current gate: `0.1.0a1` Registry Alpha complete; `0.1.0` stable planned.
+Current gate: land and remotely verify the single-workflow stable publisher,
+then complete the explicitly authorized `0.1.0` recovery.
 
 ## Product target
 
@@ -26,7 +27,7 @@ the evidence defined in this roadmap and `COMPATIBILITY.md`.
 | Private Remote Validation | Complete | The sanitized private repository passes real credential-free default-branch CI; public-only controls and live tests remain disabled. |
 | Public Preview | Complete | The public repository has blocking CI, repository rules, security reporting, protected environments, immutable releases, and authorized live-smoke evidence. |
 | `0.1.0a1` Registry Alpha | Complete | Early adopters can install the functional prerelease from PyPI; every release and registry gate passed. |
-| `0.1.0` stable | Planned | Complete runtime, release-PR, example, provenance, and registry gates pass. |
+| `0.1.0` stable | Recovery in progress | Complete runtime, release-PR, example, provenance, and registry gates pass. |
 | `0.2.0` provider-native text | Planned | Optional official Anthropic and Gemini adapters. |
 | `0.3.0` CometAPI resources | Planned | First schema-backed typed CometAPI-specific resource. |
 | Media and task APIs | Planned | Coherent task lifecycle precedes individual media helpers. |
@@ -442,12 +443,25 @@ The first stable publication attempt created immutable release `v0.1.0` at
 exact artifact construction, but [stopped before any live request](https://github.com/cometapi-dev/cometapi-python/actions/runs/30348177128)
 because the reusable workflow caller omitted `secrets: inherit` and GitHub
 resolved the `live-smoke` environment secret as empty. PyPI publication and
-registry verification were skipped. The permanent correction requires
-inheritance on every publish caller, checks the credential before any request,
-and provides a default-branch-only, explicitly enabled recovery of that exact
-immutable identity through the unchanged protected publication chain. Stable
-remains unreleased until the recovery live, OIDC, provenance, and registry gates
-pass.
+registry verification were skipped. [PR #21](https://github.com/cometapi-dev/cometapi-python/pull/21)
+added secret inheritance, a credential preflight, exact recovery identity
+gates, and rerun rejection.
+
+[Recovery run 30353657522](https://github.com/cometapi-dev/cometapi-python/actions/runs/30353657522)
+then passed exact release verification, artifact construction, the credential
+preflight, the bounded four-request live suite, and protected `pypi` approval.
+PyPI rejected the upload with HTTP 400 before accepting either distribution:
+the attestation certificate's Build Config URI named
+`release-recovery.yml@refs/heads/main`, while the configured Trusted Publisher
+expected `publish.yml`. This is a platform constraint: reusable workflows are
+[unsupported by the PyPA publisher action](https://github.com/pypa/gh-action-pypi-publish/issues/166),
+and [Warehouse requires the attestation identity to match the publisher](https://github.com/pypi/warehouse/issues/19814).
+The permanent correction consolidates release creation, recovery, selection,
+build, protected live smoke, direct PyPI publication, and registry verification
+in the single top-level `publish.yml` identity. It keeps attestations and the
+existing Trusted Publisher intact. Stable remains unreleased until this change
+passes pull-request CI, reaches `main`, and a newly authorized recovery passes
+OIDC, provenance, and registry gates.
 
 ## `0.2.0`: Provider-native text adapters
 
@@ -470,21 +484,20 @@ separated under `resources/` and `types/` when this milestone begins.
 
 ## CI/CD contract
 
-The repository maintains five independently auditable workflows:
+The repository maintains three independently auditable workflows:
 
 - `ci.yml`: offline lint, type, unit, contract, build, artifact, and clean
   install checks for pull requests and default-branch pushes.
 - `live-smoke.yml`: scheduled and manual default-branch monitoring capped at
   four requests, 16 output tokens per generation, a 30-second request timeout,
   concurrency one, a ten-minute workflow timeout, and stop on first failure.
-- `release-please.yml`: a human-reviewed version and changelog pull request,
-  followed by bounded API verification of the exact immutable release and a
-  direct call into the protected publication chain.
-- `release-recovery.yml`: an explicitly enabled, protected-default-branch-only
-  recovery of an independently verified existing immutable release.
-- `publish.yml`: reusable immutable-tag, commit, and default-branch ancestry
-  verification, exact-release protected live smoke, artifact rebuild and
-  verification, protected PyPI OIDC publication, provenance, and registry
+- `publish.yml`: the single top-level release and PyPI Trusted Publisher
+  identity. Its gated push path maintains the human-reviewed Release Please PR
+  and independently verifies a created release. Its explicitly enabled manual
+  path recovers an independently verified existing immutable release only from
+  the protected default branch. An exact selector feeds both paths into tag,
+  commit, and default-branch ancestry verification, artifact rebuild, protected
+  live smoke, direct PyPI OIDC publication, provenance, and registry
   verification.
 
 All workflow files must pass local `actionlint` 1.7.12. This is static
@@ -502,8 +515,10 @@ attempt a request with an empty model. Immutable-release recovery additionally
 requires `RELEASE_RECOVERY_TAG` and `RELEASE_RECOVERY_SHA` to equal the exact
 dispatch inputs; keep both variables absent except for one explicitly authorized
 identity and delete them immediately after success or failure. Recovery and
-publication jobs reject rerun attempts. Every reusable publish caller must use
-`secrets: inherit`.
+publication jobs reject rerun attempts. The PyPI action must execute directly in
+top-level `publish.yml`; workflow inventory, semantic checks, and mutation tests
+must reject reusable publishing, split publisher identities, additional OIDC
+consumers, or downstream use of raw dispatch inputs.
 
 ## Maintenance cadence
 

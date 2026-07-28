@@ -56,6 +56,54 @@ test "$tag_sha" = "$EXPECTED_SHA"
   echo "release-verified=true"
 } >> "$GITHUB_OUTPUT"
 """
+PUBLISH_JOB_NAMES = {
+    "release-please",
+    "verify-recovery",
+    "select-release",
+    "build",
+    "release-live-smoke",
+    "publish",
+    "verify-registry",
+}
+RELEASE_PLEASE_JOB_CONDITION = (
+    "github.run_attempt == 1 && github.event_name == 'push' && "
+    "vars.RELEASE_PLEASE_ENABLED == 'true'"
+)
+RECOVERY_JOB_CONDITION = (
+    "github.run_attempt == 1 && github.event_name == 'workflow_dispatch' && "
+    "github.ref == format('refs/heads/{0}', github.event.repository.default_branch) && "
+    "vars.RELEASE_RECOVERY_TAG == inputs.release-tag && "
+    "vars.RELEASE_RECOVERY_SHA == inputs.release-sha"
+)
+SELECT_RELEASE_CONDITION = (
+    "always() && github.run_attempt == 1 && "
+    "( ( github.event_name == 'push' && needs.release-please.result == 'success' && "
+    "needs.release-please.outputs.release-created == 'true' && "
+    "needs.release-please.outputs.release-verified == 'true' ) || "
+    "( github.event_name == 'workflow_dispatch' && "
+    "needs.verify-recovery.result == 'success' ) )"
+)
+SELECT_RELEASE_COMMAND = """\
+case "$EVENT_NAME" in
+  push)
+    release_sha=$RELEASE_PLEASE_SHA
+    release_tag=$RELEASE_PLEASE_TAG
+    ;;
+  workflow_dispatch)
+    release_sha=$RECOVERY_SHA
+    release_tag=$RECOVERY_TAG
+    ;;
+  *)
+    exit 1
+    ;;
+esac
+test -n "$release_sha"
+test -n "$release_tag"
+{
+  echo "release-sha=$release_sha"
+  echo "release-tag=$release_tag"
+} >> "$GITHUB_OUTPUT"
+"""
 
 
 def _mapping(value: object, label: str) -> dict[str, object]:
@@ -623,46 +671,71 @@ def check_ci_workflow(text: str) -> None:
         )
 
 
+def _check_publish_envelope(workflow: dict[str, object], source: str) -> None:
+    """Require one top-level workflow identity for release creation and publication."""
+    _require_exact_keys(
+        workflow,
+        {"name", "on", "permissions", "concurrency", "env", "jobs"},
+        source,
+    )
+    if workflow.get("name") != "Publish immutable release":
+        raise CheckError("publication must retain its canonical top-level workflow identity")
+    _require_permissions(workflow, {"contents": "read"}, source)
+    if "defaults" in workflow:
+        raise CheckError("publication workflow must not override command defaults")
+    triggers = _mapping(workflow.get("on"), f"{source} triggers")
+    if set(triggers) != {"push", "workflow_dispatch"}:
+        raise CheckError("publication must run only for main pushes or explicit recovery dispatch")
+    push = _mapping(triggers["push"], f"{source} push trigger")
+    if set(push) != {"branches"}:
+        raise CheckError("publication push trigger must not use path or tag filters")
+    branches = [
+        _scalar(item, "publication push branch")
+        for item in _sequence(push.get("branches"), "publication push branches")
+    ]
+    if branches != ["main"]:
+        raise CheckError("publication push trigger must use only main")
+    dispatch = _mapping(triggers["workflow_dispatch"], f"{source} recovery dispatch")
+    _require_exact_keys(dispatch, {"inputs"}, "publication recovery dispatch")
+    inputs = _mapping(dispatch["inputs"], "publication recovery inputs")
+    expected_descriptions = {
+        "release-tag": "Exact immutable GitHub release tag",
+        "release-sha": "Exact commit resolved by the release tag",
+    }
+    if set(inputs) != set(expected_descriptions):
+        raise CheckError("publication recovery must accept only the exact release identity")
+    for name, description in expected_descriptions.items():
+        if _mapping(inputs[name], f"publication recovery input {name}") != {
+            "description": description,
+            "required": "true",
+            "type": "string",
+        }:
+            raise CheckError(f"publication recovery input {name} must be an exact required string")
+    concurrency = _mapping(workflow.get("concurrency"), f"{source} concurrency")
+    if concurrency != {"group": "pypi-publish", "cancel-in-progress": "false"}:
+        raise CheckError("publication must serialize the complete release workflow")
+    if _mapping(workflow.get("env"), f"{source} environment") != {"UV_VERSION": "0.11.8"}:
+        raise CheckError("publication must retain its pinned uv frontend version")
+    jobs = _mapping(workflow.get("jobs"), f"{source} jobs")
+    if set(jobs) != PUBLISH_JOB_NAMES:
+        raise CheckError("publication jobs must match the reviewed top-level release chain")
+
+
 def check_release_please_workflow(text: str) -> None:
     """Require Release Please to remain explicitly disabled by default."""
     workflow = _load_workflow(text, "Release Please workflow")
-    _require_exact_keys(
-        workflow,
-        {"name", "on", "permissions", "concurrency", "jobs"},
-        "Release Please workflow",
-    )
-    _require_permissions(workflow, {"contents": "read"}, "Release Please workflow")
-    if "env" in workflow:
-        raise CheckError("Release Please workflow must not override the action environment")
-    triggers = _mapping(workflow.get("on"), "Release Please triggers")
-    if set(triggers) != {"push"}:
-        raise CheckError("Release Please must run only for default-branch pushes")
-    push = _mapping(triggers["push"], "Release Please push trigger")
-    if set(push) != {"branches"}:
-        raise CheckError("Release Please push trigger must not use path or tag filters")
-    branches = [
-        _scalar(item, "Release Please push branch")
-        for item in _sequence(push.get("branches"), "Release Please push branches")
-    ]
-    if branches != ["main"]:
-        raise CheckError("Release Please must run only for default-branch pushes")
-    concurrency = _mapping(workflow.get("concurrency"), "Release Please concurrency")
-    if concurrency != {
-        "group": "release-please-${{ github.ref }}",
-        "cancel-in-progress": "false",
-    }:
-        raise CheckError("Release Please must serialize updates per ref without cancellation")
-    jobs = _mapping(workflow.get("jobs"), "Release Please jobs")
-    if set(jobs) != {"release-please", "publish-release"}:
-        raise CheckError("Release Please must contain only its gated release and publish chain")
+    _check_publish_envelope(workflow, "Release Please workflow")
     release_job = _workflow_job(workflow, "release-please", "Release Please workflow")
     _require_exact_keys(
         release_job,
         {"name", "if", "runs-on", "timeout-minutes", "outputs", "permissions", "steps"},
         "Release Please job",
     )
-    if release_job.get("if") != "vars.RELEASE_PLEASE_ENABLED == 'true'":
-        raise CheckError("Release Please must require RELEASE_PLEASE_ENABLED=true")
+    release_condition = " ".join(_scalar(release_job.get("if"), "Release Please condition").split())
+    if release_condition != RELEASE_PLEASE_JOB_CONDITION:
+        raise CheckError(
+            "Release Please must require a first-attempt main push and RELEASE_PLEASE_ENABLED=true"
+        )
     if release_job.get("runs-on") != "ubuntu-latest":
         raise CheckError("Release Please must use the reviewed GitHub-hosted runner")
     if release_job.get("timeout-minutes") != "15":
@@ -742,87 +815,14 @@ def check_release_please_workflow(text: str) -> None:
         raise CheckError("Release Please must verify only the release it just created")
     if any(key in verify_step for key in ("continue-on-error", "shell", "working-directory")):
         raise CheckError("Release Please immutable-release verification must fail closed")
-
-    publish_job = _workflow_job(workflow, "publish-release", "Release Please workflow")
-    _require_exact_keys(
-        publish_job,
-        {"name", "needs", "if", "permissions", "uses", "with", "secrets"},
-        "Release Please publish caller",
-    )
-    expected_publish_condition = (
-        "needs.release-please.outputs.release-created == 'true' && "
-        "needs.release-please.outputs.release-verified == 'true'"
-    )
-    if (
-        publish_job["needs"] != "release-please"
-        or " ".join(_scalar(publish_job["if"], "Release Please publish condition").split())
-        != expected_publish_condition
-    ):
-        raise CheckError("protected publication must require a newly verified release")
-    _require_permissions(
-        publish_job,
-        {"contents": "read", "id-token": "write"},
-        "Release Please publish caller",
-    )
-    if publish_job["uses"] != "./.github/workflows/publish.yml":
-        raise CheckError("Release Please must call the reviewed protected publish workflow")
-    if publish_job["secrets"] != "inherit":
-        raise CheckError(
-            "Release Please publish caller must inherit environment secrets for the "
-            "reusable workflow"
-        )
-    if _mapping(publish_job["with"], "Release Please publish inputs") != {
-        "release-tag": "${{ needs.release-please.outputs.release-tag }}",
-        "release-sha": "${{ needs.release-please.outputs.release-sha }}",
-        "default-branch": "${{ github.event.repository.default_branch }}",
-    }:
-        raise CheckError("protected publication must receive only the verified release identity")
-    if _secret_references(workflow):
-        raise CheckError("Release Please must not depend on explicit repository credentials")
+    if _secret_references(release_job):
+        raise CheckError("Release Please must not depend on repository credentials")
 
 
 def check_release_recovery_workflow(text: str) -> None:
     """Require a default-branch-only, explicitly enabled immutable release recovery."""
     workflow = _load_workflow(text, "release recovery workflow")
-    _require_exact_keys(
-        workflow,
-        {"name", "on", "permissions", "concurrency", "jobs"},
-        "release recovery workflow",
-    )
-    _require_permissions(workflow, {"contents": "read"}, "release recovery workflow")
-    if "env" in workflow or "defaults" in workflow:
-        raise CheckError("release recovery workflow must not override execution context")
-
-    triggers = _mapping(workflow.get("on"), "release recovery triggers")
-    if set(triggers) != {"workflow_dispatch"}:
-        raise CheckError("release recovery must run only by explicit manual dispatch")
-    dispatch = _mapping(triggers["workflow_dispatch"], "release recovery dispatch")
-    _require_exact_keys(dispatch, {"inputs"}, "release recovery dispatch")
-    inputs = _mapping(dispatch["inputs"], "release recovery inputs")
-    if set(inputs) != {"release-tag", "release-sha"}:
-        raise CheckError("release recovery must accept only the exact release identity")
-    expected_descriptions = {
-        "release-tag": "Exact immutable GitHub release tag",
-        "release-sha": "Exact commit resolved by the release tag",
-    }
-    for name, description in expected_descriptions.items():
-        if _mapping(inputs[name], f"release recovery input {name}") != {
-            "description": description,
-            "required": "true",
-            "type": "string",
-        }:
-            raise CheckError(f"release recovery input {name} must be an exact required string")
-
-    concurrency = _mapping(workflow.get("concurrency"), "release recovery concurrency")
-    if concurrency != {
-        "group": "release-recovery",
-        "cancel-in-progress": "false",
-    }:
-        raise CheckError("release recovery must serialize all attempts without cancellation")
-
-    jobs = _mapping(workflow.get("jobs"), "release recovery jobs")
-    if set(jobs) != {"verify-recovery", "publish-release"}:
-        raise CheckError("release recovery must contain only verification and publication")
+    _check_publish_envelope(workflow, "release recovery workflow")
     verify = _workflow_job(workflow, "verify-recovery", "release recovery workflow")
     _require_exact_keys(
         verify,
@@ -837,18 +837,12 @@ def check_release_recovery_workflow(text: str) -> None:
         },
         "release recovery verification job",
     )
-    expected_condition = (
-        "github.run_attempt == 1 && "
-        "github.ref == format('refs/heads/{0}', github.event.repository.default_branch) && "
-        "vars.RELEASE_RECOVERY_TAG == inputs.release-tag && "
-        "vars.RELEASE_RECOVERY_SHA == inputs.release-sha"
-    )
     if " ".join(_scalar(verify["if"], "release recovery condition").split()) != (
-        expected_condition
+        RECOVERY_JOB_CONDITION
     ):
         raise CheckError(
-            "release recovery must require the first workflow attempt, protected default "
-            "branch, and exact authorized release tag and commit"
+            "release recovery must require an explicit first-attempt dispatch from the "
+            "protected default branch and the exact authorized release tag and commit"
         )
     if verify["runs-on"] != "ubuntu-latest" or verify["timeout-minutes"] != "5":
         raise CheckError("release recovery verification must use the reviewed bounded runner")
@@ -885,36 +879,61 @@ def check_release_recovery_workflow(text: str) -> None:
     if verify_step.get("id") != "verify-release":
         raise CheckError("release recovery verification must expose its exact outputs")
 
-    publish = _workflow_job(workflow, "publish-release", "release recovery workflow")
+    selector = _workflow_job(workflow, "select-release", "release recovery workflow")
     _require_exact_keys(
-        publish,
-        {"name", "needs", "if", "permissions", "uses", "with", "secrets"},
-        "release recovery publish caller",
+        selector,
+        {"name", "needs", "if", "runs-on", "timeout-minutes", "outputs", "permissions", "steps"},
+        "release identity selector",
     )
-    if publish["needs"] != "verify-recovery":
-        raise CheckError("release recovery publication must depend on immutable verification")
-    if publish["if"] != "github.run_attempt == 1":
-        raise CheckError("release recovery publication must run only on the first workflow attempt")
-    _require_permissions(
-        publish,
-        {"contents": "read", "id-token": "write"},
-        "release recovery publish caller",
+    _require_needs(
+        selector,
+        ["release-please", "verify-recovery"],
+        "release identity selector",
     )
-    if publish["uses"] != "./.github/workflows/publish.yml":
-        raise CheckError("release recovery must call the reviewed protected publish workflow")
-    if publish["secrets"] != "inherit":
+    selector_condition = " ".join(
+        _scalar(selector["if"], "release identity selector condition").split()
+    )
+    if selector_condition != SELECT_RELEASE_CONDITION:
         raise CheckError(
-            "release recovery publish caller must inherit environment secrets for the "
-            "reusable workflow"
+            "release identity selector must accept only one successfully verified path"
         )
-    if _mapping(publish["with"], "release recovery publish inputs") != {
-        "release-tag": "${{ needs.verify-recovery.outputs.release-tag }}",
-        "release-sha": "${{ needs.verify-recovery.outputs.release-sha }}",
-        "default-branch": "${{ github.event.repository.default_branch }}",
+    if selector["runs-on"] != "ubuntu-latest" or selector["timeout-minutes"] != "5":
+        raise CheckError("release identity selector must use the reviewed bounded runner")
+    _require_permissions(selector, {"contents": "read"}, "release identity selector")
+    if _mapping(selector["outputs"], "release identity selector outputs") != {
+        "release-sha": "${{ steps.select.outputs.release-sha }}",
+        "release-tag": "${{ steps.select.outputs.release-tag }}",
     }:
-        raise CheckError("release recovery publication must use only verified outputs")
-    if _secret_references(workflow):
-        raise CheckError("release recovery must not reference explicit repository credentials")
+        raise CheckError("release identity selector must expose only the selected tag and commit")
+    _require_step_names(
+        selector,
+        ["Select the independently verified release identity"],
+        "release identity selector",
+    )
+    _require_step_environments(
+        selector,
+        {
+            "Select the independently verified release identity": {
+                "EVENT_NAME": "${{ github.event_name }}",
+                "RECOVERY_SHA": "${{ needs.verify-recovery.outputs.release-sha }}",
+                "RECOVERY_TAG": "${{ needs.verify-recovery.outputs.release-tag }}",
+                "RELEASE_PLEASE_SHA": "${{ needs.release-please.outputs.release-sha }}",
+                "RELEASE_PLEASE_TAG": "${{ needs.release-please.outputs.release-tag }}",
+            }
+        },
+        "release identity selector",
+    )
+    _require_step_working_directories(selector, {}, "release identity selector")
+    _, selector_step = _named_run_step(
+        selector,
+        "Select the independently verified release identity",
+        SELECT_RELEASE_COMMAND,
+        "release identity selector",
+    )
+    if selector_step.get("id") != "select":
+        raise CheckError("release identity selector must expose its exact selected outputs")
+    if _secret_references(verify) or _secret_references(selector):
+        raise CheckError("release identity verification must not reference credentials")
 
 
 def check_release_please_config(text: str, manifest_text: str) -> None:
@@ -997,38 +1016,14 @@ def check_publish_workflow(text: str, live_smoke_text: str) -> None:
     """Validate fail-closed publication, live, permission, and evidence ordering."""
     workflow = _load_workflow(text, "publish workflow")
     live_workflow = _load_workflow(live_smoke_text, "live-smoke workflow")
-    _require_exact_keys(
-        workflow,
-        {"name", "on", "permissions", "concurrency", "env", "jobs"},
-        "publish workflow",
-    )
+    _check_publish_envelope(workflow, "publish workflow")
+    check_release_please_workflow(text)
+    check_release_recovery_workflow(text)
     _require_exact_keys(
         live_workflow,
         {"name", "on", "permissions", "concurrency", "env", "jobs"},
         "live-smoke workflow",
     )
-
-    publish_triggers = _mapping(workflow.get("on"), "publish workflow triggers")
-    if set(publish_triggers) != {"workflow_call"}:
-        raise CheckError("publication must run only through the verified reusable workflow call")
-    workflow_call = _mapping(publish_triggers["workflow_call"], "publish workflow call")
-    if set(workflow_call) != {"inputs"}:
-        raise CheckError("publication workflow call must accept only reviewed release inputs")
-    call_inputs = _mapping(workflow_call["inputs"], "publish workflow call inputs")
-    if set(call_inputs) != {"release-tag", "release-sha", "default-branch"}:
-        raise CheckError("publication workflow call inputs must match the verified identity")
-    for name in ("release-tag", "release-sha", "default-branch"):
-        if _mapping(call_inputs[name], f"publish workflow input {name}") != {
-            "required": "true",
-            "type": "string",
-        }:
-            raise CheckError(f"publication workflow input {name} must be a required string")
-    _require_permissions(workflow, {"contents": "read"}, "publish workflow")
-    concurrency = _mapping(workflow.get("concurrency"), "publish workflow concurrency")
-    if concurrency != {"group": "pypi-publish", "cancel-in-progress": "false"}:
-        raise CheckError("publication must serialize all releases without cancellation")
-    if _mapping(workflow.get("env"), "publish workflow environment") != {"UV_VERSION": "0.11.8"}:
-        raise CheckError("publish workflow must retain its pinned uv frontend version")
 
     live_triggers = _mapping(live_workflow.get("on"), "live-smoke triggers")
     if set(live_triggers) != {"schedule", "workflow_dispatch"}:
@@ -1058,20 +1053,25 @@ def check_publish_workflow(text: str, live_smoke_text: str) -> None:
     }:
         raise CheckError("monitoring live smoke must retain its bounded execution budget")
 
-    first_attempt_guards = 0
+    conditions: list[str] = []
     for mapping in _walk_mappings(workflow, "publish workflow"):
         if "if" in mapping:
-            if mapping["if"] != "github.run_attempt == 1":
-                raise CheckError(
-                    "release gates may be conditional only on the first workflow attempt"
-                )
-            first_attempt_guards += 1
+            conditions.append(" ".join(_scalar(mapping["if"], "release condition").split()))
         if "continue-on-error" in mapping:
             raise CheckError("release gates must not be allowed to continue on error")
         if "defaults" in mapping or "shell" in mapping:
             raise CheckError("release gates must not override command execution")
-    if first_attempt_guards != 4:
-        raise CheckError("every release job must reject workflow reruns")
+    expected_conditions = [
+        RELEASE_PLEASE_JOB_CONDITION,
+        "steps.release.outputs.release_created == 'true'",
+        RECOVERY_JOB_CONDITION,
+        SELECT_RELEASE_CONDITION,
+        *(["github.run_attempt == 1"] * 4),
+    ]
+    if sorted(conditions) != sorted(expected_conditions):
+        raise CheckError(
+            "publication must retain only the reviewed first-attempt release conditions"
+        )
 
     monitoring_job = _workflow_job(live_workflow, "smoke", "live-smoke workflow")
     _require_exact_keys(
@@ -1175,7 +1175,7 @@ def check_publish_workflow(text: str, live_smoke_text: str) -> None:
         raise CheckError("monitoring live smoke must use only its scoped COMETAPI_KEY")
 
     jobs = _mapping(workflow.get("jobs"), "publish workflow jobs")
-    if set(jobs) != {"build", "release-live-smoke", "publish", "verify-registry"}:
+    if set(jobs) != PUBLISH_JOB_NAMES:
         raise CheckError("publish workflow jobs must match the reviewed release chain")
     build = _workflow_job(workflow, "build", "publish workflow")
     release_live = _workflow_job(workflow, "release-live-smoke", "publish workflow")
@@ -1185,6 +1185,7 @@ def check_publish_workflow(text: str, live_smoke_text: str) -> None:
         "build": {
             "name",
             "if",
+            "needs",
             "runs-on",
             "timeout-minutes",
             "outputs",
@@ -1252,6 +1253,7 @@ def check_publish_workflow(text: str, live_smoke_text: str) -> None:
             raise CheckError(f"release {name} job must not override the workflow environment")
 
     _require_permissions(build, {"contents": "read"}, "release build job")
+    _require_needs(build, ["select-release"], "release build job")
     outputs = _mapping(build.get("outputs"), "release build outputs")
     if outputs != {
         "release-commit": "${{ steps.trust.outputs.release-commit }}",
@@ -1283,16 +1285,16 @@ def check_publish_workflow(text: str, live_smoke_text: str) -> None:
         build,
         {
             "Reject an untrusted release target": {
-                "DEFAULT_BRANCH": "${{ inputs.default-branch }}",
-                "EXPECTED_RELEASE_SHA": "${{ inputs.release-sha }}",
+                "DEFAULT_BRANCH": "${{ github.event.repository.default_branch }}",
+                "EXPECTED_RELEASE_SHA": "${{ needs.select-release.outputs.release-sha }}",
                 "RELEASE_IMMUTABLE": "true",
-                "RELEASE_TAG": "${{ inputs.release-tag }}",
+                "RELEASE_TAG": "${{ needs.select-release.outputs.release-tag }}",
             },
             "Verify project, manifest, changelog, release docs, and tag agreement": {
-                "RELEASE_TAG": "${{ inputs.release-tag }}"
+                "RELEASE_TAG": "${{ needs.select-release.outputs.release-tag }}"
             },
             "Verify artifact versions against the tag": {
-                "RELEASE_TAG": "${{ inputs.release-tag }}"
+                "RELEASE_TAG": "${{ needs.select-release.outputs.release-tag }}"
             },
         },
         "release build job",
@@ -1306,7 +1308,7 @@ def check_publish_workflow(text: str, live_smoke_text: str) -> None:
     _require_options(
         build_checkout,
         {
-            "ref": "refs/tags/${{ inputs.release-tag }}",
+            "ref": "refs/tags/${{ needs.select-release.outputs.release-tag }}",
             "fetch-depth": "0",
             "persist-credentials": "false",
         },
@@ -1322,10 +1324,10 @@ def check_publish_workflow(text: str, live_smoke_text: str) -> None:
         raise CheckError("release trust step must expose the trust output id")
     trust_environment = _mapping(trust_step.get("env"), "release trust environment")
     if trust_environment != {
-        "DEFAULT_BRANCH": "${{ inputs.default-branch }}",
-        "EXPECTED_RELEASE_SHA": "${{ inputs.release-sha }}",
+        "DEFAULT_BRANCH": "${{ github.event.repository.default_branch }}",
+        "EXPECTED_RELEASE_SHA": "${{ needs.select-release.outputs.release-sha }}",
         "RELEASE_IMMUTABLE": "true",
-        "RELEASE_TAG": "${{ inputs.release-tag }}",
+        "RELEASE_TAG": "${{ needs.select-release.outputs.release-tag }}",
     }:
         raise CheckError("release trust step must receive only the immutable release identity")
     _, build_setup = _named_action_step(
@@ -1365,7 +1367,7 @@ def check_publish_workflow(text: str, live_smoke_text: str) -> None:
     )
     if version_step.get("id") != "version" or _mapping(
         version_step.get("env"), "release version environment"
-    ) != {"RELEASE_TAG": "${{ inputs.release-tag }}"}:
+    ) != {"RELEASE_TAG": "${{ needs.select-release.outputs.release-tag }}"}:
         raise CheckError("release version step must expose the verified tag-derived version")
     _, artifact_upload = _named_action_step(
         build,
@@ -1718,8 +1720,6 @@ def check_workflow_inventory(directory: Path) -> list[Path]:
         "ci.yml",
         "live-smoke.yml",
         "publish.yml",
-        "release-please.yml",
-        "release-recovery.yml",
     }
     actual = {path.name for path in paths}
     if actual != expected:
@@ -1748,16 +1748,6 @@ def main() -> int:
         default=PROJECT_ROOT / ".github" / "workflows" / "live-smoke.yml",
     )
     parser.add_argument(
-        "--release-please-workflow",
-        type=Path,
-        default=PROJECT_ROOT / ".github" / "workflows" / "release-please.yml",
-    )
-    parser.add_argument(
-        "--release-recovery-workflow",
-        type=Path,
-        default=PROJECT_ROOT / ".github" / "workflows" / "release-recovery.yml",
-    )
-    parser.add_argument(
         "--ci-workflow",
         type=Path,
         default=PROJECT_ROOT / ".github" / "workflows" / "ci.yml",
@@ -1774,12 +1764,11 @@ def main() -> int:
     )
     args = parser.parse_args()
     paths = check_workflow_inventory(args.ci_workflow.parent)
+    publish_text = args.publish_workflow.read_text(encoding="utf-8")
     check_publish_workflow(
-        args.publish_workflow.read_text(encoding="utf-8"),
+        publish_text,
         args.live_smoke_workflow.read_text(encoding="utf-8"),
     )
-    check_release_please_workflow(args.release_please_workflow.read_text(encoding="utf-8"))
-    check_release_recovery_workflow(args.release_recovery_workflow.read_text(encoding="utf-8"))
     check_release_please_config(
         args.release_please_config.read_text(encoding="utf-8"),
         args.release_please_manifest.read_text(encoding="utf-8"),

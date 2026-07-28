@@ -8,8 +8,11 @@ automation.
 
 ### Fixed
 
-- Require environment-secret inheritance for every reusable publication caller
-  and add a fail-closed immutable-release recovery path.
+- Add a fail-closed immutable-release recovery path with an environment-secret
+  preflight before any live request.
+- Execute PyPI Trusted Publishing directly in the single top-level
+  `publish.yml` identity, and add regression gates that reject reusable
+  publication, split attestation identities, and unverified recovery inputs.
 
 ## [0.1.0] - 2026-07-28
 
