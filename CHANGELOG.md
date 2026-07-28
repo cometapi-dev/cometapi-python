@@ -6,7 +6,15 @@ automation.
 
 ## [Unreleased]
 
-### Changed
+## [0.1.0] - 2026-07-28
+
+### Features
+
+- Prepare the stable release ([#19](https://github.com/cometapi-dev/cometapi-python/issues/19)) ([2e5407c](https://github.com/cometapi-dev/cometapi-python/commit/2e5407c106b6bc557c51e629b4713012dbce3744)).
+
+### Documentation
+
+- Record Registry Alpha release evidence ([#18](https://github.com/cometapi-dev/cometapi-python/issues/18)) ([f39b4dc](https://github.com/cometapi-dev/cometapi-python/commit/f39b4dc9f2e18e91ab3cbac202246f85658f71fd)).
 
 - Release documentation now records completed Registry Alpha publication,
   provenance, digest, clean-install, import, and mocked-call verification.
@@ -53,3 +61,5 @@ automation.
 - Unsupported aliases `CometClient` and `AsyncCometClient`.
 - Account, balance, token, log, task, and platform helpers from the 0.1 scope.
 - The provisional single-maintainer `CODEOWNERS` requirement.
+
+[0.1.0]: https://github.com/cometapi-dev/cometapi-python/compare/v0.1.0-alpha.1%2Brecovery.1...v0.1.0

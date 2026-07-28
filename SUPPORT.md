@@ -2,8 +2,8 @@
 
 ## Project status
 
-The SDK is in pre-release development. Support is best-effort, and no response
-or resolution time is guaranteed.
+The SDK's supported 0.1 API surface is stable. Support is best-effort, and no
+response or resolution time is guaranteed.
 
 ## Supported SDK surface
 

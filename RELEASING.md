@@ -46,10 +46,11 @@ one active maintainer.
 Before the historical first push, scheduled and manually dispatched live
 execution was required to fail closed unless `LIVE_SMOKE_ENABLED=true`.
 `RELEASE_PLEASE_ENABLED` was kept disabled. The reviewed stable-readiness
-configuration now uses an explicit `last-release-sha` bridge to establish the
-recovery alpha as the previous-release boundary; the repository variable stays
-disabled until maintainers intentionally start the stable release sequence. An
-unset or non-true value prevents the corresponding gated job from executing.
+configuration later used an explicit `last-release-sha` bridge to establish the
+recovery alpha as the previous-release boundary. Maintainers enabled the
+repository variable only to start the stable release sequence, and human
+finalization removed the bridge. An unset or non-true variable prevents the
+corresponding gated job from executing.
 The release live-model configuration resolves an unset or empty
 `COMETAPI_LIVE_MODEL` to `gpt-5.4`.
 
@@ -182,14 +183,14 @@ violations in one run and still returns non-zero when any violation exists.
   `LIVE_SMOKE_ENABLED=true`.
 - `release-please.yml` maintains a human-reviewed version and changelog pull
   request from Conventional Commits after maintainers enable the
-  `RELEASE_PLEASE_ENABLED` repository variable. The checked-in stable-readiness
-  configuration establishes the recovery release boundary with the reviewed
-  `last-release-sha` bridge. Keep the variable disabled except while executing
-  an explicitly authorized release sequence. When it creates an approved
-  release with the GitHub workflow token, it polls the GitHub API until that
-  exact tag and commit are independently reported as immutable, then invokes
-  the protected publication chain directly; workflow-token release events do
-  not trigger a second workflow run.
+  `RELEASE_PLEASE_ENABLED` repository variable. A reviewed one-time
+  `last-release-sha` bridge established the recovery release boundary and was
+  removed during human finalization of the stable release PR. Keep the variable
+  disabled except while executing an explicitly authorized release sequence.
+  When it creates an approved release with the GitHub workflow token, it polls
+  the GitHub API until that exact tag and commit are independently reported as
+  immutable, then invokes the protected publication chain directly;
+  workflow-token release events do not trigger a second workflow run.
 - `publish.yml` is called only with the independently verified immutable tag,
   commit, and default branch. It resolves the tag to the checked-out commit,
   fetches the protected default branch, and rejects a commit that is not
@@ -238,9 +239,9 @@ Maintainers then completed these steps in order:
    OIDC publication but failed before PyPI accepted any distribution. The
    recovery build suffix preserves the equivalent PEP 440 package version
    `0.1.0a1`; it is a one-time exception and must not be incremented or reused
-   for later releases. Keep Release Please disabled until a separate reviewed
-   and tested `last-release-sha` bridge establishes this recovery commit as its
-   previous-release boundary.
+   for later releases. Release Please was kept disabled until a separate
+   reviewed and tested `last-release-sha` bridge established this recovery
+   commit as its previous-release boundary.
 5. The release workflow proved `immutable=true`, resolved the tag to the
    checked-out commit, verified that commit was reachable from the protected
    default branch, and ran the bounded protected live suite against that exact
@@ -280,8 +281,9 @@ changelog, GitHub release, wheel, and source distribution.
   and source-distribution SHA256
   `98d86829ef14771e8b7ec180d452c6638289f49c14a39b7207be5c47cb64cde7`.
 - `LIVE_SMOKE_ENABLED=false`. Release Please remains disabled outside an
-  explicitly authorized release sequence; the reviewed `last-release-sha`
-  bridge is configured for the alpha-to-stable transition.
+  explicitly authorized release sequence. The reviewed `last-release-sha`
+  bridge generated the stable release PR and was removed during human
+  finalization.
 
 ## Stable release sequence
 

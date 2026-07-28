@@ -3,9 +3,6 @@
   "release-type": "python",
   "include-component-in-tag": false,
   "include-v-in-tag": true,
-  "last-release-sha": "31b68904141489ca04932edbf305ccf88af09372",
-  "prerelease": false,
-  "versioning": "prerelease",
   "packages": {
     ".": {
       "package-name": "cometapi",

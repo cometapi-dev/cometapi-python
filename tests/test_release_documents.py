@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import shutil
 import subprocess
 import sys
 from collections.abc import Callable
@@ -19,6 +20,14 @@ from scripts.check_version import require_public_preview_docs, require_releasabl
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 VERSION_SCRIPT = PROJECT_ROOT / "scripts" / "check_version.py"
+
+
+def _copy_version_checker(root: Path) -> Path:
+    scripts = root / "scripts"
+    scripts.mkdir(exist_ok=True)
+    for name in ("_checks.py", "check_version.py"):
+        shutil.copy2(PROJECT_ROOT / "scripts" / name, scripts / name)
+    return scripts / "check_version.py"
 
 
 def _write_release_documents(root: Path) -> None:
@@ -233,13 +242,33 @@ def test_public_preview_cli_reports_aggregated_violations_and_fails(
     assert "SECURITY.md: missing canonical public value" in result.stderr
 
 
-def test_release_version_cli_accepts_approved_initial_alpha_recovery_tag(
-    releasable_documents: Path,
-) -> None:
+def test_release_version_cli_accepts_current_stable_tag() -> None:
     result = subprocess.run(
         [
             sys.executable,
             str(VERSION_SCRIPT),
+            "--tag",
+            "v0.1.0",
+            "--require-changelog",
+        ],
+        cwd=PROJECT_ROOT,
+        text=True,
+        check=False,
+        capture_output=True,
+    )
+
+    assert result.returncode == 0, result.stderr
+    assert "version agreement passed: 0.1.0" in result.stdout
+
+
+def test_release_version_cli_accepts_approved_initial_alpha_recovery_tag(
+    releasable_documents: Path,
+) -> None:
+    version_script = _copy_version_checker(releasable_documents)
+    result = subprocess.run(
+        [
+            sys.executable,
+            str(version_script),
             "--tag",
             "v0.1.0-alpha.1+recovery.1",
             "--require-changelog",
@@ -254,38 +283,14 @@ def test_release_version_cli_accepts_approved_initial_alpha_recovery_tag(
     assert "version agreement passed: 0.1.0a1" in result.stdout
 
 
-def test_release_version_cli_rejects_tombstoned_initial_alpha_tag(
+@pytest.mark.parametrize("tag", ["v0.1.0-alpha.1", "v0.1.0-alpha.1+recovery.2"])
+def test_release_version_cli_rejects_unapproved_initial_alpha_tag(
     releasable_documents: Path,
+    tag: str,
 ) -> None:
+    version_script = _copy_version_checker(releasable_documents)
     result = subprocess.run(
-        [
-            sys.executable,
-            str(VERSION_SCRIPT),
-            "--tag",
-            "v0.1.0-alpha.1",
-            "--require-changelog",
-        ],
-        cwd=releasable_documents,
-        text=True,
-        check=False,
-        capture_output=True,
-    )
-
-    assert result.returncode != 0
-    assert "release tag must use an approved spelling" in result.stderr
-
-
-def test_release_version_cli_rejects_unapproved_recovery_tag(
-    releasable_documents: Path,
-) -> None:
-    result = subprocess.run(
-        [
-            sys.executable,
-            str(VERSION_SCRIPT),
-            "--tag",
-            "v0.1.0-alpha.1+recovery.2",
-            "--require-changelog",
-        ],
+        [sys.executable, str(version_script), "--tag", tag, "--require-changelog"],
         cwd=releasable_documents,
         text=True,
         check=False,

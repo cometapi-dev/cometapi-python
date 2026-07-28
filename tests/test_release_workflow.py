@@ -30,6 +30,19 @@ RELEASE_PLEASE_MANIFEST = PROJECT_ROOT / ".release-please-manifest.json"
 TRUST_SCRIPT = PROJECT_ROOT / "scripts" / "verify_release_trust.sh"
 
 
+def _reviewed_release_please_bridge_config() -> str:
+    stable = RELEASE_PLEASE_CONFIG.read_text(encoding="utf-8")
+    marker = '  "include-v-in-tag": true,\n'
+    if marker not in stable:
+        raise AssertionError("stable Release Please config lost its tag contract")
+    bridge = (
+        '  "last-release-sha": "31b68904141489ca04932edbf305ccf88af09372",\n'
+        '  "prerelease": false,\n'
+        '  "versioning": "prerelease",\n'
+    )
+    return stable.replace(marker, marker + bridge, 1)
+
+
 def _git(root: Path, *arguments: str, input_text: str | None = None) -> str:
     result = subprocess.run(
         ["git", *arguments],
@@ -746,10 +759,17 @@ def test_current_release_please_workflow_is_disabled_by_default() -> None:
     check_release_please_workflow(RELEASE_PLEASE_WORKFLOW.read_text(encoding="utf-8"))
 
 
-def test_current_release_please_config_has_reviewed_stable_bridge() -> None:
+def test_current_release_please_config_has_reviewed_stable_cleanup() -> None:
     check_release_please_config(
         RELEASE_PLEASE_CONFIG.read_text(encoding="utf-8"),
         RELEASE_PLEASE_MANIFEST.read_text(encoding="utf-8"),
+    )
+
+
+def test_release_please_config_accepts_reviewed_stable_bridge() -> None:
+    check_release_please_config(
+        _reviewed_release_please_bridge_config(),
+        '{".": "0.1.0-alpha.1"}\n',
     )
 
 
@@ -775,12 +795,12 @@ def test_current_release_please_config_has_reviewed_stable_bridge() -> None:
 def test_release_please_config_rejects_bridge_drift(
     needle: str, replacement: str, message: str
 ) -> None:
-    text = RELEASE_PLEASE_CONFIG.read_text(encoding="utf-8")
+    text = _reviewed_release_please_bridge_config()
     assert needle in text
     with pytest.raises(RuntimeError, match=message):
         check_release_please_config(
             text.replace(needle, replacement, 1),
-            RELEASE_PLEASE_MANIFEST.read_text(encoding="utf-8"),
+            '{".": "0.1.0-alpha.1"}\n',
         )
 
 
@@ -806,34 +826,26 @@ def test_release_please_config_rejects_manifest_drift() -> None:
 
 
 def test_release_please_config_accepts_exact_stable_cleanup() -> None:
-    config = RELEASE_PLEASE_CONFIG.read_text(encoding="utf-8")
-    for line in (
-        '  "last-release-sha": "31b68904141489ca04932edbf305ccf88af09372",\n',
-        '  "prerelease": false,\n',
-        '  "versioning": "prerelease",\n',
-    ):
-        config = config.replace(line, "", 1)
-    check_release_please_config(config, '{".": "0.1.0"}\n')
+    check_release_please_config(
+        RELEASE_PLEASE_CONFIG.read_text(encoding="utf-8"),
+        '{".": "0.1.0"}\n',
+    )
 
 
 def test_release_please_config_rejects_stable_manifest_with_bridge() -> None:
     with pytest.raises(RuntimeError, match="remove the one-time bridge"):
         check_release_please_config(
-            RELEASE_PLEASE_CONFIG.read_text(encoding="utf-8"),
+            _reviewed_release_please_bridge_config(),
             '{".": "0.1.0"}\n',
         )
 
 
 def test_release_please_config_rejects_bridge_cleanup_before_stable() -> None:
-    config = RELEASE_PLEASE_CONFIG.read_text(encoding="utf-8")
-    for line in (
-        '  "last-release-sha": "31b68904141489ca04932edbf305ccf88af09372",\n',
-        '  "prerelease": false,\n',
-        '  "versioning": "prerelease",\n',
-    ):
-        config = config.replace(line, "", 1)
     with pytest.raises(RuntimeError, match="only after stable"):
-        check_release_please_config(config, '{".": "0.1.0-alpha.1"}\n')
+        check_release_please_config(
+            RELEASE_PLEASE_CONFIG.read_text(encoding="utf-8"),
+            '{".": "0.1.0-alpha.1"}\n',
+        )
 
 
 @pytest.mark.parametrize(
