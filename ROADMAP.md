@@ -416,8 +416,10 @@ Accepted release evidence:
   `a6820347317943ca22f7632acbe354dd992f31a122a6172dfe45b57960e3a093` and
   its source-distribution SHA256 is
   `98d86829ef14771e8b7ec180d452c6638289f49c14a39b7207be5c47cb64cde7`.
-- `LIVE_SMOKE_ENABLED=false`. Release Please remains disabled pending a
-  separately reviewed and tested `last-release-sha` bridge.
+- `LIVE_SMOKE_ENABLED=false`. Release Please remains disabled outside an
+  explicitly authorized release sequence; the reviewed stable-readiness
+  configuration now establishes the recovery alpha boundary with
+  `last-release-sha`.
 
 ## `0.1.0`: OpenAI protocol foundation
 
@@ -425,6 +427,8 @@ Stable 0.1 retains the alpha surface. Its additional exit criteria are:
 
 - Blocking Python runtime matrix for every supported runtime.
 - Human-reviewed release PR with exact version and changelog agreement.
+- Stable documentation, classifier, and installation guidance finalized in the
+  release PR, with the one-time recovery bridge removed before merge.
 - Executed README examples against the built artifact.
 - Trusted live Chat Completions and Responses smoke evidence.
 - Immutable tag, GitHub release, wheel, source distribution, and changelog
@@ -461,10 +465,13 @@ The repository maintains four independently auditable workflows:
 - `live-smoke.yml`: scheduled and manual default-branch monitoring capped at
   four requests, 16 output tokens per generation, a 30-second request timeout,
   concurrency one, a ten-minute workflow timeout, and stop on first failure.
-- `release-please.yml`: a human-reviewed version and changelog pull request.
-- `publish.yml`: immutable-release and default-branch ancestry verification,
-  exact-release protected live smoke, artifact rebuild and verification,
-  protected PyPI OIDC publication, provenance, and registry verification.
+- `release-please.yml`: a human-reviewed version and changelog pull request,
+  followed by bounded API verification of the exact immutable release and a
+  direct call into the protected publication chain.
+- `publish.yml`: reusable immutable-tag, commit, and default-branch ancestry
+  verification, exact-release protected live smoke, artifact rebuild and
+  verification, protected PyPI OIDC publication, provenance, and registry
+  verification.
 
 All workflow files must pass local `actionlint` 1.7.12. This is static
 validation only. Remote behavior remains unverified until each workflow runs
@@ -472,10 +479,10 @@ successfully in the canonical GitHub repository.
 
 Scheduled and manually dispatched live smoke must require
 `LIVE_SMOKE_ENABLED=true`; an unset or other value prevents live execution.
-Release Please requires
-`RELEASE_PLEASE_ENABLED=true` and remains disabled after the recovery alpha
-until a separate reviewed and tested `last-release-sha` bridge establishes its
-previous-release boundary. Release jobs must resolve an unset or empty
+Release Please requires `RELEASE_PLEASE_ENABLED=true` and remains disabled
+outside an explicitly authorized release sequence. Its stable-readiness
+configuration uses the reviewed `last-release-sha` bridge for the recovery
+alpha boundary. Release jobs must resolve an unset or empty
 `COMETAPI_LIVE_MODEL` to `gpt-5.4` rather than attempt a request with an empty
 model.
 

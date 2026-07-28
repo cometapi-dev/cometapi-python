@@ -114,6 +114,7 @@ Release evidence is intentionally ordered:
 ```text
 local mocked/package evidence
     -> immutable tag commit equals checkout and belongs to protected default branch
+    -> release API and tag ref confirm the exact immutable identity
     -> protected live-smoke job checks that exact commit
     -> protected PyPI OIDC job publishes the previously verified artifact
     -> public registry digest, provenance, install, import, and mocked smoke
@@ -139,10 +140,10 @@ recovery release uses SemVer build metadata in
 `v0.1.0-alpha.1+recovery.1`. The build suffix does not change the package
 artifact identity: the PyPI version remains `0.1.0a1`.
 
-Release Please remains disabled after this recovery release because its
-manifest version does not include the recovery build metadata. A later,
-separately reviewed change must establish the previous-release boundary with a
-tested `last-release-sha` bridge before enabling automated release PRs.
+Release Please remains disabled outside an explicitly authorized release
+sequence. The stable-readiness configuration establishes the recovery commit
+as the previous-release boundary with a tested `last-release-sha` bridge, so
+the one-time build-metadata recovery tag cannot replay earlier history.
 
 ## Rejected 0.1 approaches
 

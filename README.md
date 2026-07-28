@@ -65,6 +65,7 @@ variable, then the default:
 
 ### Chat Completions
 
+<!-- cometapi-readme-example: sync-chat -->
 ```python
 from cometapi import CometAPI
 
@@ -78,6 +79,7 @@ with CometAPI() as client:
 
 Streaming uses the official OpenAI stream type:
 
+<!-- cometapi-readme-example: sync-chat-stream -->
 ```python
 from cometapi import CometAPI
 
@@ -93,6 +95,7 @@ with CometAPI() as client:
 
 ### Responses and Models
 
+<!-- cometapi-readme-example: sync-responses-models -->
 ```python
 from cometapi import CometAPI
 
@@ -109,6 +112,7 @@ print(models.data[0].id if models.data else "No models returned")
 
 ### Async client
 
+<!-- cometapi-readme-example: async-response -->
 ```python
 import asyncio
 
@@ -171,7 +175,7 @@ uv run ruff check src tests scripts
 uv run ruff format --check src tests scripts
 uv run pyright
 uv run pytest -m "not live"
-uv run python scripts/check_version.py --expected 0.1.0a1 --require-changelog
+uv run python scripts/check_version.py --require-changelog
 uv run python scripts/check_secrets.py
 uv run python scripts/check_workflows.py
 rm -rf dist

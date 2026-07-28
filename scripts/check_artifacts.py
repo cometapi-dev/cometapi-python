@@ -58,9 +58,11 @@ REQUIRED_SDIST_FILES = {
     "tests/live/__init__.py",
     "tests/live/test_live_smoke.py",
     "tests/test_client.py",
+    "tests/test_clean_install.py",
     "tests/test_contract.py",
     "tests/test_release_documents.py",
     "tests/test_release_workflow.py",
+    "tests/test_secrets.py",
     "tests/typing/constructor_contract.py",
 }
 OPTIONAL_SDIST_FILES = {".gitignore"}

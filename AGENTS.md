@@ -96,9 +96,10 @@ Post-alpha invariants:
    authorizes that work, without reopening completed dispositions.
 2. Keep `.github/CODEOWNERS` absent until a real multi-maintainer model exists.
 3. Keep scheduled and manually dispatched live smoke fail-closed behind
-   `LIVE_SMOKE_ENABLED=true`, and keep `RELEASE_PLEASE_ENABLED` disabled until
-   a separate reviewed and tested `last-release-sha` bridge establishes the
-   recovery alpha as Release Please's previous-release boundary.
+   `LIVE_SMOKE_ENABLED=true`, and keep `RELEASE_PLEASE_ENABLED` disabled outside
+   an explicitly authorized release sequence. The stable-readiness
+   configuration establishes the recovery alpha boundary with a reviewed and
+   tested `last-release-sha` bridge.
 4. Treat the recorded public rules, security reporting, immutable releases, and
    protected environments as readiness invariants. Any drift invalidates the
    readiness claim until it is explicitly authorized, restored, and verified.
@@ -205,7 +206,7 @@ uv run ruff check src tests scripts
 uv run ruff format --check src tests scripts
 uv run pyright
 uv run pytest -m "not live"
-uv run python scripts/check_version.py --expected 0.1.0a1 --require-changelog
+uv run python scripts/check_version.py --require-changelog
 uv run python scripts/check_secrets.py
 uv run python scripts/check_workflows.py
 rm -rf dist
@@ -242,8 +243,11 @@ committed.
 - Publication uses a reviewed immutable tag, a protected `pypi` environment,
   and PyPI OIDC Trusted Publishing.
 - The release commit must equal the tag target and belong to the protected
-  default branch. A protected live-smoke job must check out that exact commit
-  and succeed before the protected PyPI job can become eligible.
+  default branch. Release Please must independently confirm that the exact tag
+  and commit are immutable before directly calling the protected publication
+  workflow; do not rely on workflow-token release events to trigger it. A
+  protected live-smoke job must check out that exact commit and succeed before
+  the protected PyPI job can become eligible.
 - Scheduled/default-branch live smoke is monitoring evidence only and cannot
   satisfy the exact-release live gate.
 - Missing identity, credentials, environments, reviewers, protection,
@@ -260,12 +264,16 @@ committed.
   accepted. The sole approved recovery tag is
   `v0.1.0-alpha.1+recovery.1`, which maps to package version `0.1.0a1`.
   Later releases must use their ordinary canonical tag spelling.
-- Keep Release Please disabled after the recovery alpha. Its manifest cannot
-  infer the previous-release boundary from the recovery tag's build metadata;
-  enabling it requires a separate reviewed and tested `last-release-sha`
-  bridge.
-- Keep third-party Actions pinned to full commit SHAs and grant
-  `id-token: write` only to the publishing job.
+- Keep Release Please disabled outside an explicitly authorized release
+  sequence. Its stable-readiness configuration uses the reviewed and tested
+  `last-release-sha` bridge because the recovery tag's build metadata cannot be
+  inferred from the manifest. Remove the one-time bridge and prerelease
+  versioning controls in the human-finalized stable release PR before it is
+  merged.
+- Keep third-party Actions pinned to full commit SHAs. Grant `id-token: write`
+  only to the reusable publication caller and the protected publishing job;
+  the caller passes this maximum permission and only the publishing job uses
+  the OIDC token.
 - Keep README, roadmap, compatibility matrix, examples, and changelog aligned
   with shipped behavior. Use currently supported model IDs.
 - All repository documentation is written in English.
