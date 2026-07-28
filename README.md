@@ -1,7 +1,6 @@
 # CometAPI Python SDK
 
-> **Pre-release:** `0.1.0a1` is available from PyPI. Its API may change before
-> `0.1.0`.
+> **Stable release:** `0.1.0` is approved for PyPI publication.
 
 `cometapi` is a thin Python adapter over the official OpenAI SDK for the
 OpenAI-compatible CometAPI endpoint. It changes the default API key and base
@@ -30,15 +29,15 @@ Project links: [CometAPI](https://www.cometapi.com),
 
 ## Installation
 
-Install the exact alpha from PyPI with:
+Install the stable release from PyPI with:
 
 ```bash
-python -m pip install --pre 'cometapi==0.1.0a1'
+python -m pip install 'cometapi==0.1.0'
 ```
 
 See the immutable
-[GitHub prerelease](https://github.com/cometapi-dev/cometapi-python/releases/tag/v0.1.0-alpha.1%2Brecovery.1)
-and exact [PyPI release](https://pypi.org/project/cometapi/0.1.0a1/) for the
+[GitHub release](https://github.com/cometapi-dev/cometapi-python/releases/tag/v0.1.0)
+and exact [PyPI release](https://pypi.org/project/cometapi/0.1.0/) for the
 published artifact.
 
 ## Authentication and configuration
@@ -160,7 +159,7 @@ This is an interoperability option, not the primary `cometapi` experience.
 
 ## Explicit non-goals for 0.1
 
-The alpha does not add Anthropic or Gemini adapters, CometAPI account or
+The 0.1 release does not add Anthropic or Gemini adapters, CometAPI account or
 platform resources, media APIs, provider-neutral message translation, CLI
 behavior, or custom HTTP/SSE/retry implementations. There are no compatibility
 aliases named `CometClient` or `AsyncCometClient`.

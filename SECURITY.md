@@ -2,13 +2,13 @@
 
 ## Supported versions
 
-The SDK is in pre-release development. Published support claims begin only
-after a package is independently verified from PyPI.
+The SDK's supported 0.1 API surface is stable. Security support applies to
+packages that have been independently verified from PyPI.
 
 | Version | Status |
 | --- | --- |
-| `0.1.x` prereleases | Best-effort security fixes after verified publication |
-| `0.1.x` stable | Planned support after verified publication |
+| `0.1.x` stable | Supported |
+| `0.1.x` prereleases | Best-effort security fixes |
 | Older versions | Unsupported |
 
 ## Reporting a vulnerability
@@ -17,14 +17,13 @@ Do not disclose a suspected vulnerability, credential, customer data, or
 exploit details in a public issue.
 
 Use the repository's
-[private security advisory form](https://github.com/cometapi-dev/cometapi-python/security/advisories/new)
-when it is available. During private validation, before GitHub Private
-Vulnerability Reporting is enabled, email `support@cometapi.com` with the
-subject "Security report" and only the minimum details needed to establish a
+[private security advisory form](https://github.com/cometapi-dev/cometapi-python/security/advisories/new).
+If that form is unavailable, email `support@cometapi.com` with the subject
+"Security report" and only the minimum details needed to establish a
 confidential follow-up channel. Do not disclose sensitive details publicly.
 
 The maintainers will acknowledge and triage reports as soon as practical, but
-no response-time service-level agreement is promised for prereleases.
+no response-time service-level agreement is promised.
 Coordinated disclosure timing will be agreed with the reporter.
 
 ## Credential safety

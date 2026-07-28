@@ -15,7 +15,11 @@ from scripts._checks import (
     CANONICAL_SUPPORT,
     CheckError,
 )
-from scripts.check_version import require_public_preview_docs, require_releasable_docs
+from scripts.check_version import (
+    require_canonical_tag,
+    require_public_preview_docs,
+    require_releasable_docs,
+)
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 VERSION_SCRIPT = PROJECT_ROOT / "scripts" / "check_version.py"
@@ -233,64 +237,30 @@ def test_public_preview_cli_reports_aggregated_violations_and_fails(
     assert "SECURITY.md: missing canonical public value" in result.stderr
 
 
-def test_release_version_cli_accepts_approved_initial_alpha_recovery_tag(
-    releasable_documents: Path,
-) -> None:
+def test_release_version_cli_accepts_current_stable_tag() -> None:
     result = subprocess.run(
         [
             sys.executable,
             str(VERSION_SCRIPT),
             "--tag",
-            "v0.1.0-alpha.1+recovery.1",
+            "v0.1.0",
             "--require-changelog",
         ],
-        cwd=releasable_documents,
+        cwd=PROJECT_ROOT,
         text=True,
         check=False,
         capture_output=True,
     )
 
     assert result.returncode == 0, result.stderr
-    assert "version agreement passed: 0.1.0a1" in result.stdout
+    assert "version agreement passed: 0.1.0" in result.stdout
 
 
-def test_release_version_cli_rejects_tombstoned_initial_alpha_tag(
-    releasable_documents: Path,
-) -> None:
-    result = subprocess.run(
-        [
-            sys.executable,
-            str(VERSION_SCRIPT),
-            "--tag",
-            "v0.1.0-alpha.1",
-            "--require-changelog",
-        ],
-        cwd=releasable_documents,
-        text=True,
-        check=False,
-        capture_output=True,
-    )
-
-    assert result.returncode != 0
-    assert "release tag must use an approved spelling" in result.stderr
+def test_release_version_accepts_approved_initial_alpha_recovery_tag() -> None:
+    assert require_canonical_tag("v0.1.0-alpha.1+recovery.1", "0.1.0a1") == "0.1.0a1"
 
 
-def test_release_version_cli_rejects_unapproved_recovery_tag(
-    releasable_documents: Path,
-) -> None:
-    result = subprocess.run(
-        [
-            sys.executable,
-            str(VERSION_SCRIPT),
-            "--tag",
-            "v0.1.0-alpha.1+recovery.2",
-            "--require-changelog",
-        ],
-        cwd=releasable_documents,
-        text=True,
-        check=False,
-        capture_output=True,
-    )
-
-    assert result.returncode != 0
-    assert "release tag must use an approved spelling" in result.stderr
+@pytest.mark.parametrize("tag", ["v0.1.0-alpha.1", "v0.1.0-alpha.1+recovery.2"])
+def test_release_version_rejects_unapproved_initial_alpha_tag(tag: str) -> None:
+    with pytest.raises(CheckError, match="release tag must use an approved spelling"):
+        require_canonical_tag(tag, "0.1.0a1")

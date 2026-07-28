@@ -1,9 +1,8 @@
 # Contributing to the CometAPI Python SDK
 
-Thank you for helping improve the SDK. The repository has released the
-`0.1.0a1` Registry Alpha. Contributions must stay within the supported 0.1
-scope described in `README.md`, `ROADMAP.md`, and `COMPATIBILITY.md`. The
-canonical repository is
+Thank you for helping improve the SDK. The repository targets the stable 0.1
+contract. Contributions must stay within the supported 0.1 scope described in
+`README.md`, `ROADMAP.md`, and `COMPATIBILITY.md`. The canonical repository is
 <https://github.com/cometapi-dev/cometapi-python>.
 
 ## Development setup
@@ -79,7 +78,7 @@ Use Conventional Commit subjects where practical, for example:
 ```text
 feat: add a supported client option
 fix: preserve an upstream error type
-docs: clarify alpha installation
+docs: clarify installation
 test: cover async response streaming
 ```
 
