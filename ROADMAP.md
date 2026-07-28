@@ -1,10 +1,10 @@
 # CometAPI Python SDK Roadmap
 
-Status: `0.1.0a1` released; `0.1.0` recovery in progress
+Status: `0.1.0` stable released
 Last updated: 2026-07-28
 Repository contract: this roadmap is self-contained.
-Current gate: land and remotely verify the selector-descendant control-flow
-fix, then complete a newly authorized `0.1.0` recovery.
+Current gate: maintain the verified stable 0.1 surface. Begin 0.2 only after a
+separate maintainer request authorizes its provider schemas and live contracts.
 
 ## Product target
 
@@ -12,12 +12,13 @@ The SDK provides the shortest reliable path from an OpenAI Python integration
 to CometAPI while preserving official request, response, error, retry, timeout,
 sync, async, and streaming behavior.
 
-Private Remote Validation, Public Preview, and the functional `0.1.0a1`
-Registry Alpha are complete for the sanitized public repository. Protected
-repository configuration, public default-branch CI, exact-release live smoke,
-PyPI OIDC publication, provenance, digest comparison, and public-registry smoke
-provide separate evidence layers. Support and release claims remain limited to
-the evidence defined in this roadmap and `COMPATIBILITY.md`.
+Private Remote Validation, Public Preview, the functional `0.1.0a1` Registry
+Alpha, and stable `0.1.0` are complete for the sanitized public repository.
+Protected repository configuration, public default-branch CI, exact-release
+live smoke, PyPI OIDC publication, provenance, digest comparison, and
+public-registry smoke provide separate evidence layers. Support and release
+claims remain limited to the evidence defined in this roadmap and
+`COMPATIBILITY.md`.
 
 ## Milestones
 
@@ -27,7 +28,7 @@ the evidence defined in this roadmap and `COMPATIBILITY.md`.
 | Private Remote Validation | Complete | The sanitized private repository passes real credential-free default-branch CI; public-only controls and live tests remain disabled. |
 | Public Preview | Complete | The public repository has blocking CI, repository rules, security reporting, protected environments, immutable releases, and authorized live-smoke evidence. |
 | `0.1.0a1` Registry Alpha | Complete | Early adopters can install the functional prerelease from PyPI; every release and registry gate passed. |
-| `0.1.0` stable | Recovery in progress | Complete runtime, release-PR, example, provenance, and registry gates pass. |
+| `0.1.0` stable | Complete | Complete runtime, release-PR, example, provenance, and registry gates passed. |
 | `0.2.0` provider-native text | Planned | Optional official Anthropic and Gemini adapters. |
 | `0.3.0` CometAPI resources | Planned | First schema-backed typed CometAPI-specific resource. |
 | Media and task APIs | Planned | Coherent task lifecycle precedes individual media helpers. |
@@ -456,12 +457,12 @@ the attestation certificate's Build Config URI named
 expected `publish.yml`. This is a platform constraint: reusable workflows are
 [unsupported by the PyPA publisher action](https://github.com/pypa/gh-action-pypi-publish/issues/166),
 and [Warehouse requires the attestation identity to match the publisher](https://github.com/pypi/warehouse/issues/19814).
-The permanent correction consolidates release creation, recovery, selection,
-build, protected live smoke, direct PyPI publication, and registry verification
-in the single top-level `publish.yml` identity. It keeps attestations and the
-existing Trusted Publisher intact. Stable remains unreleased until this change
-passes pull-request CI, reaches `main`, and a newly authorized recovery passes
-OIDC, provenance, and registry gates.
+The first permanent correction consolidated release creation, recovery,
+selection, build, protected live smoke, direct PyPI publication, and registry
+verification in the single top-level `publish.yml` identity. It kept
+attestations and the existing Trusted Publisher intact and reached `main` as
+`ec420af2966ef683660b58acff8d125e916fc623` through
+[PR #22](https://github.com/cometapi-dev/cometapi-python/pull/22).
 
 [Recovery run 30357111315](https://github.com/cometapi-dev/cometapi-python/actions/runs/30357111315)
 verified the exact immutable release and passed the shared selector from the
@@ -472,8 +473,27 @@ the overall run incorrectly reported success. No live request or registry side
 effect occurred, and PyPI still returned 404 for `cometapi==0.1.0`. The
 permanent control-flow fix makes every selector descendant explicitly evaluate
 skipped ancestry while rejecting cancellation and reruns and requiring every
-direct dependency to succeed. Another recovery remains blocked until that fix
-passes review and reaches `main`, followed by fresh explicit authorization.
+direct dependency to succeed.
+
+[PR #23](https://github.com/cometapi-dev/cometapi-python/pull/23) pinned those
+conditions in the semantic checker and mutation tests, passed
+[pull-request CI run 30358662050](https://github.com/cometapi-dev/cometapi-python/actions/runs/30358662050),
+squash-merged as `9cd60419130533d6920083e2f4bf295a3b5a4fd7`, and passed
+[default-branch CI run 30358990834](https://github.com/cometapi-dev/cometapi-python/actions/runs/30358990834).
+Fresh first-attempt
+[recovery run 30359383715](https://github.com/cometapi-dev/cometapi-python/actions/runs/30359383715)
+then passed the selector, exact artifact rebuild, bounded four-request live
+suite, protected `pypi` approval, direct OIDC publication with attestations,
+public digest and provenance checks, and the isolated PyPI install and mocked
+smoke. The exact [PyPI release](https://pypi.org/project/cometapi/0.1.0/) is
+public with wheel SHA256
+`8eae758688bb6c98274e48d8d81f882eeae760f69cfd2f5e125004881d60e90f`
+and source-distribution SHA256
+`e9308b44f6091200b5121e24d1a0e1b9ea3e6bcccc109d6de87554b1ab2a8bca`.
+Both files matched retained pre-publication evidence and independently verified
+Trusted Publisher provenance. Recovery variables were removed immediately
+after identity verification; `LIVE_SMOKE_ENABLED=false` is the only remaining
+release-related repository variable.
 
 ## `0.2.0`: Provider-native text adapters
 
@@ -526,7 +546,8 @@ must resolve an unset or empty `COMETAPI_LIVE_MODEL` to `gpt-5.4` rather than
 attempt a request with an empty model. Immutable-release recovery additionally
 requires `RELEASE_RECOVERY_TAG` and `RELEASE_RECOVERY_SHA` to equal the exact
 dispatch inputs; keep both variables absent except for one explicitly authorized
-identity and delete them immediately after success or failure. Recovery and
+identity and delete them immediately after recovery identity verification or a
+stopped run. Recovery and
 publication jobs reject rerun attempts. Every job downstream of the mutually
 exclusive selector must explicitly evaluate skipped ancestry, reject
 cancellation, and require every direct dependency's result to equal `success`.

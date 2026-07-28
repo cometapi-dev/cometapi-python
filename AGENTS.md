@@ -48,20 +48,33 @@ proves only its own evidence layer. Never invent or mock missing evidence.
   Never reset, rebase, discard work, force-update refs, delete or recreate an
   existing `dev`, or push `dev` to recover. Report the exact state instead.
 
-## Current milestone: Registry Alpha
+## Current milestone: Stable 0.1
 
-Registry Alpha is complete: `cometapi==0.1.0a1` is publicly available and its
-release and registry trust chain has been verified.
+Stable 0.1 is complete: `cometapi==0.1.0` is publicly available and its release
+and registry trust chain has been verified. Do not begin 0.2 provider adapters
+without a separate maintainer request that authorizes that milestone.
 
 Private Remote Validation, the sanitized first history, private initialization,
-pre-visibility closeout, public visibility configuration, Public Preview, and
-the first Registry Alpha release are completed historical steps and must not be
-repeated. The canonical repository is public with protected branch and
-version-tag rules, Private Vulnerability Reporting, immutable releases,
+pre-visibility closeout, public visibility configuration, Public Preview,
+Registry Alpha, and the first stable release are completed historical steps and
+must not be repeated. The canonical repository is public with protected branch
+and version-tag rules, Private Vulnerability Reporting, immutable releases,
 protected environments, public default-branch CI, and protected release and
 registry evidence.
 
-The accepted release evidence is:
+The accepted stable release evidence is:
+
+| Field | Value |
+| --- | --- |
+| Release commit and tag target | `6f42981edcc6c252f8db997606671c3da84d1dd8` |
+| Release tag | `v0.1.0` |
+| GitHub release | `https://github.com/cometapi-dev/cometapi-python/releases/tag/v0.1.0` |
+| Release workflow | `https://github.com/cometapi-dev/cometapi-python/actions/runs/30359383715` |
+| PyPI release | `https://pypi.org/project/cometapi/0.1.0/` |
+| Wheel SHA256 | `8eae758688bb6c98274e48d8d81f882eeae760f69cfd2f5e125004881d60e90f` |
+| Source SHA256 | `e9308b44f6091200b5121e24d1a0e1b9ea3e6bcccc109d6de87554b1ab2a8bca` |
+
+The accepted Registry Alpha evidence is:
 
 | Field | Value |
 | --- | --- |
@@ -88,7 +101,7 @@ The accepted identity is:
 | Support and conduct | `support@cometapi.com` |
 | Security | `https://github.com/cometapi-dev/cometapi-python/security/advisories/new` |
 
-Post-alpha invariants:
+Post-stable invariants:
 
 1. Treat the dependency dispositions recorded in `ROADMAP.md` as authoritative
    for the listed pull requests. Process newly opened dependency pull requests
@@ -101,14 +114,16 @@ Post-alpha invariants:
    bridge was used once to generate the stable release PR and must remain absent
    after its human finalization. Keep `RELEASE_RECOVERY_TAG` and
    `RELEASE_RECOVERY_SHA` absent outside an explicitly authorized recovery of
-   that exact existing immutable release identity.
+   that exact existing immutable release identity, and delete them as soon as
+   recovery identity verification succeeds or the run stops.
 4. Treat the recorded public rules, security reporting, immutable releases, and
    protected environments as readiness invariants. Any drift invalidates the
    readiness claim until it is explicitly authorized, restored, and verified.
 5. Keep the `pypi` environment approval assigned to the current release
    approver with self-review allowed; the reviewer is GitHub configuration and
    must not be hardcoded in repository files.
-6. Treat the recovery tag, GitHub release, and PyPI distributions as immutable.
+6. Treat every recorded release tag, GitHub release, and PyPI distribution as
+   immutable.
    Any later live request, tag, release, Trusted Publisher change, publication,
    or other registry mutation requires separate explicit maintainer
    authorization.
@@ -139,7 +154,7 @@ Post-alpha invariants:
 
 ## Product contract
 
-The PyPI package name is `cometapi`. Version `0.1.0a1` exports only the public
+The PyPI package name is `cometapi`. Version `0.1.0` exports only the public
 clients `CometAPI` and `AsyncCometAPI`; `CometClient` and `AsyncCometClient`
 must not exist as aliases.
 

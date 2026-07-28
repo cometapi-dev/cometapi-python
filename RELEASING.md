@@ -95,7 +95,7 @@ uv run python scripts/check_repository_independence.py
 uv run python scripts/run_actionlint.py
 ```
 
-Build output must contain exactly the intended `0.1.0a1` wheel and source
+Build output must contain exactly the current project version's wheel and source
 distribution. Do not use an older artifact already present in `dist/`. Each
 exact artifact must be installed independently outside the source tree; the
 check must assert installed metadata, public exports, absence of legacy aliases,
@@ -362,7 +362,8 @@ gh workflow run publish.yml --ref main \
 The run must rebuild and verify the exact tag, pass the credential preflight and
 bounded four-request live suite, wait for protected `pypi` approval, publish by
 OIDC, verify provenance and public digests, and pass the registry clean-install
-smoke. Delete the gate immediately after the run succeeds or stops:
+smoke. Delete the gate as soon as `verify-recovery` succeeds; if verification
+never succeeds, delete it immediately when the run stops:
 
 ```bash
 gh variable delete RELEASE_RECOVERY_TAG
@@ -393,6 +394,35 @@ plain downstream job conditions. Build, live smoke, publication, and registry
 verification were all skipped while the overall workflow incorrectly reported
 success. No live request or PyPI upload occurred, and `cometapi==0.1.0` remained
 absent. The permanent correction explicitly evaluates every selector descendant
-and requires all of its direct dependencies to succeed. Do not dispatch another
-recovery until that fix reaches `main` and a new recovery is explicitly
+and requires all of its direct dependencies to succeed. A further recovery
+remained blocked until that fix reached `main` and a new recovery was explicitly
 authorized.
+
+### Completed stable release evidence
+
+- The immutable non-draft [GitHub release](https://github.com/cometapi-dev/cometapi-python/releases/tag/v0.1.0)
+  and lightweight tag `v0.1.0` resolve to release commit
+  `6f42981edcc6c252f8db997606671c3da84d1dd8` on protected `main`.
+- Selector-descendant fix [PR #23](https://github.com/cometapi-dev/cometapi-python/pull/23)
+  passed [pull-request CI run 30358662050](https://github.com/cometapi-dev/cometapi-python/actions/runs/30358662050),
+  squash-merged as `9cd60419130533d6920083e2f4bf295a3b5a4fd7`, and passed
+  [default-branch CI run 30358990834](https://github.com/cometapi-dev/cometapi-python/actions/runs/30358990834).
+- Fresh first-attempt
+  [recovery run 30359383715](https://github.com/cometapi-dev/cometapi-python/actions/runs/30359383715)
+  passed immutable identity verification, the shared selector, an exact rebuild,
+  the bounded four-request live suite, protected `pypi` approval, direct
+  top-level OIDC publication with attestations, public digest and provenance
+  verification, and the isolated public-registry install and mocked-call smoke.
+- The exact [PyPI release](https://pypi.org/project/cometapi/0.1.0/) has wheel
+  SHA256 `8eae758688bb6c98274e48d8d81f882eeae760f69cfd2f5e125004881d60e90f`
+  and source-distribution SHA256
+  `e9308b44f6091200b5121e24d1a0e1b9ea3e6bcccc109d6de87554b1ab2a8bca`.
+  Both public files matched the retained pre-publication digest record and
+  Trusted Publisher provenance independently verified against this repository.
+- The immediate one-attempt local simple-index install encountered PyPI CDN
+  propagation and still saw only `0.1.0a1`. The documented bounded retry then
+  installed `cometapi==0.1.0`, verified the public imports and version, and
+  passed all README mocked-call examples.
+- `RELEASE_RECOVERY_TAG` and `RELEASE_RECOVERY_SHA` were deleted immediately
+  after recovery identity verification. `LIVE_SMOKE_ENABLED=false` is the only
+  remaining release-related repository variable.

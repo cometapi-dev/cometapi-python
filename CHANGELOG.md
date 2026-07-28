@@ -17,6 +17,11 @@ automation.
   release chain after a successful selector, while continuing to reject
   cancellation, reruns, and every non-successful direct dependency.
 
+### Documentation
+
+- Record completed stable publication, provenance, digest, and clean-install
+  evidence for `cometapi==0.1.0`.
+
 ## [0.1.0] - 2026-07-28
 
 ### Features
