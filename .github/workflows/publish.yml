@@ -26,6 +26,7 @@ env:
 jobs:
   build:
     name: Verify and build the immutable default-branch release
+    if: github.run_attempt == 1
     runs-on: ubuntu-latest
     timeout-minutes: 25
     outputs:
@@ -93,6 +94,7 @@ jobs:
 
   release-live-smoke:
     name: Verify the exact release commit against CometAPI
+    if: github.run_attempt == 1
     needs:
       - build
     concurrency:
@@ -114,6 +116,10 @@ jobs:
       COMETAPI_LIVE_RUN: "1"
       COMETAPI_LIVE_STOP_ON_FAILURE: "1"
     steps:
+      - name: Require the protected live credential
+        env:
+          COMETAPI_KEY: ${{ secrets.COMETAPI_KEY }}
+        run: test -n "$COMETAPI_KEY"
       - name: Check out the verified release commit
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -138,6 +144,7 @@ jobs:
 
   publish:
     name: Publish verified artifacts with PyPI OIDC
+    if: github.run_attempt == 1
     needs:
       - build
       - release-live-smoke
@@ -167,6 +174,7 @@ jobs:
 
   verify-registry:
     name: Verify the public registry artifact
+    if: github.run_attempt == 1
     needs:
       - build
       - publish

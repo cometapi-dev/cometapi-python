@@ -1,44 +1,45 @@
-name: Release Please
+name: Recover immutable release publication
 
 on:
-  push:
-    branches:
-      - main
+  workflow_dispatch:
+    inputs:
+      release-tag:
+        description: Exact immutable GitHub release tag
+        required: true
+        type: string
+      release-sha:
+        description: Exact commit resolved by the release tag
+        required: true
+        type: string
 
 permissions:
   contents: read
 
 concurrency:
-  group: release-please-${{ github.ref }}
+  group: release-recovery
   cancel-in-progress: false
 
 jobs:
-  release-please:
-    name: Maintain the reviewed release PR and release
-    if: vars.RELEASE_PLEASE_ENABLED == 'true'
+  verify-recovery:
+    name: Verify the authorized immutable release recovery
+    if: >-
+      github.run_attempt == 1 &&
+      github.ref == format('refs/heads/{0}', github.event.repository.default_branch) &&
+      vars.RELEASE_RECOVERY_TAG == inputs.release-tag &&
+      vars.RELEASE_RECOVERY_SHA == inputs.release-sha
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 5
     outputs:
-      release-created: ${{ steps.release.outputs.release_created }}
       release-sha: ${{ steps.verify-release.outputs.release-sha }}
       release-tag: ${{ steps.verify-release.outputs.release-tag }}
-      release-verified: ${{ steps.verify-release.outputs.release-verified }}
     permissions:
-      contents: write
-      pull-requests: write
+      contents: read
     steps:
-      - name: Open or update the release PR, or create its approved release
-        id: release
-        uses: googleapis/release-please-action@5c625bfb5d1ff62eadeeb3772007f7f66fdcf071 # v4.4.1
-        with:
-          config-file: release-please-config.json
-          manifest-file: .release-please-manifest.json
-      - name: Verify the immutable release created by Release Please
+      - name: Verify the immutable release selected for recovery
         id: verify-release
-        if: steps.release.outputs.release_created == 'true'
         env:
-          EXPECTED_SHA: ${{ steps.release.outputs.sha }}
-          EXPECTED_TAG: ${{ steps.release.outputs.tag_name }}
+          EXPECTED_SHA: ${{ inputs.release-sha }}
+          EXPECTED_TAG: ${{ inputs.release-tag }}
           GH_TOKEN: ${{ github.token }}
         run: |
           test -n "$EXPECTED_TAG"
@@ -75,17 +76,15 @@ jobs:
           } >> "$GITHUB_OUTPUT"
 
   publish-release:
-    name: Run the protected publication chain
-    needs: release-please
-    if: >-
-      needs.release-please.outputs.release-created == 'true' &&
-      needs.release-please.outputs.release-verified == 'true'
+    name: Run the protected publication recovery
+    needs: verify-recovery
+    if: github.run_attempt == 1
     permissions:
       contents: read
       id-token: write
     uses: ./.github/workflows/publish.yml
     with:
-      release-tag: ${{ needs.release-please.outputs.release-tag }}
-      release-sha: ${{ needs.release-please.outputs.release-sha }}
+      release-tag: ${{ needs.verify-recovery.outputs.release-tag }}
+      release-sha: ${{ needs.verify-recovery.outputs.release-sha }}
       default-branch: ${{ github.event.repository.default_branch }}
     secrets: inherit

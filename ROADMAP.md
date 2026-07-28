@@ -437,6 +437,18 @@ Stable 0.1 retains the alpha surface. Its additional exit criteria are:
   independent post-publication install/import/mocked-call check.
 - No complete credential appears in source, fixtures, artifacts, or logs.
 
+The first stable publication attempt created immutable release `v0.1.0` at
+`6f42981edcc6c252f8db997606671c3da84d1dd8` and passed default-branch CI plus
+exact artifact construction, but [stopped before any live request](https://github.com/cometapi-dev/cometapi-python/actions/runs/30348177128)
+because the reusable workflow caller omitted `secrets: inherit` and GitHub
+resolved the `live-smoke` environment secret as empty. PyPI publication and
+registry verification were skipped. The permanent correction requires
+inheritance on every publish caller, checks the credential before any request,
+and provides a default-branch-only, explicitly enabled recovery of that exact
+immutable identity through the unchanged protected publication chain. Stable
+remains unreleased until the recovery live, OIDC, provenance, and registry gates
+pass.
+
 ## `0.2.0`: Provider-native text adapters
 
 Planned scope:
@@ -458,7 +470,7 @@ separated under `resources/` and `types/` when this milestone begins.
 
 ## CI/CD contract
 
-The repository maintains four independently auditable workflows:
+The repository maintains five independently auditable workflows:
 
 - `ci.yml`: offline lint, type, unit, contract, build, artifact, and clean
   install checks for pull requests and default-branch pushes.
@@ -468,6 +480,8 @@ The repository maintains four independently auditable workflows:
 - `release-please.yml`: a human-reviewed version and changelog pull request,
   followed by bounded API verification of the exact immutable release and a
   direct call into the protected publication chain.
+- `release-recovery.yml`: an explicitly enabled, protected-default-branch-only
+  recovery of an independently verified existing immutable release.
 - `publish.yml`: reusable immutable-tag, commit, and default-branch ancestry
   verification, exact-release protected live smoke, artifact rebuild and
   verification, protected PyPI OIDC publication, provenance, and registry
@@ -483,9 +497,13 @@ Release Please requires `RELEASE_PLEASE_ENABLED=true` and remains disabled
 outside an explicitly authorized release sequence. Its reviewed one-time
 `last-release-sha` bridge established the recovery alpha boundary, generated
 the stable release PR, and was removed during human finalization. Release jobs
-must resolve an unset or empty
-`COMETAPI_LIVE_MODEL` to `gpt-5.4` rather than attempt a request with an empty
-model.
+must resolve an unset or empty `COMETAPI_LIVE_MODEL` to `gpt-5.4` rather than
+attempt a request with an empty model. Immutable-release recovery additionally
+requires `RELEASE_RECOVERY_TAG` and `RELEASE_RECOVERY_SHA` to equal the exact
+dispatch inputs; keep both variables absent except for one explicitly authorized
+identity and delete them immediately after success or failure. Recovery and
+publication jobs reject rerun attempts. Every reusable publish caller must use
+`secrets: inherit`.
 
 ## Maintenance cadence
 

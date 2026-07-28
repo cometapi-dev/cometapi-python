@@ -99,7 +99,9 @@ Post-alpha invariants:
    `LIVE_SMOKE_ENABLED=true`, and keep `RELEASE_PLEASE_ENABLED` disabled outside
    an explicitly authorized release sequence. The reviewed `last-release-sha`
    bridge was used once to generate the stable release PR and must remain absent
-   after its human finalization.
+   after its human finalization. Keep `RELEASE_RECOVERY_TAG` and
+   `RELEASE_RECOVERY_SHA` absent outside an explicitly authorized recovery of
+   that exact existing immutable release identity.
 4. Treat the recorded public rules, security reporting, immutable releases, and
    protected environments as readiness invariants. Any drift invalidates the
    readiness claim until it is explicitly authorized, restored, and verified.
@@ -253,7 +255,13 @@ committed.
 - Missing identity, credentials, environments, reviewers, protection,
   publisher configuration, or approval blocks publication; no conditional
   skip or mock may bypass it.
-- Manual or arbitrary-branch publication is forbidden.
+- Arbitrary-branch publication is forbidden. Manual publication is permitted
+  only through the reviewed `release-recovery.yml` workflow from the protected
+  default branch, with `RELEASE_RECOVERY_TAG` and `RELEASE_RECOVERY_SHA` equal
+  to its exact inputs, after separately verifying the existing immutable tag
+  and commit. The recovery and reusable publication jobs must reject every
+  workflow rerun. Delete both variables immediately after the recovery succeeds
+  or stops.
 - A successful build or upload is not a release. Registry installation,
   import, mocked-call smoke, and provenance must be verified separately.
 - Every distribution `Project-URL` must use HTTPS. The canonical Support URL
@@ -269,10 +277,13 @@ committed.
   `last-release-sha` bridge because the recovery tag's build metadata could not
   be inferred from the manifest. The human-finalized stable release PR removed
   that bridge and its prerelease-versioning controls; keep them absent.
-- Keep third-party Actions pinned to full commit SHAs. Grant `id-token: write`
-  only to the reusable publication caller and the protected publishing job;
-  the caller passes this maximum permission and only the publishing job uses
-  the OIDC token.
+- Keep third-party Actions pinned to full commit SHAs. Every local caller of
+  the reusable publication workflow must use `secrets: inherit`; GitHub-hosted
+  runners otherwise can resolve its job-level environment secret as empty.
+  Keep the semantic workflow checker's inheritance regression coverage. Grant
+  `id-token: write` only to a reviewed reusable publication caller and the
+  protected publishing job; callers pass this maximum permission and only the
+  publishing job uses the OIDC token.
 - Keep README, roadmap, compatibility matrix, examples, and changelog aligned
   with shipped behavior. Use currently supported model IDs.
 - All repository documentation is written in English.
