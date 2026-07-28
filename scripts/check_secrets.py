@@ -115,11 +115,7 @@ def scan_workflow_scope(root: Path) -> list[str]:
             findings.append(
                 ".github/workflows/publish.yml: exactly one job must receive id-token: write"
             )
-    allowed_id_token_counts = {
-        "publish.yml": 1,
-        "release-please.yml": 1,
-        "release-recovery.yml": 1,
-    }
+    allowed_id_token_counts = {"publish.yml": 1}
     for path in sorted(
         candidate
         for candidate in workflow_root.iterdir()

@@ -184,26 +184,26 @@ violations in one run and still returns non-zero when any violation exists.
   per generation, a 30-second request timeout, concurrency one, a ten-minute
   workflow timeout, and stop on the first failure. Every trigger requires
   `LIVE_SMOKE_ENABLED=true`.
-- `release-please.yml` maintains a human-reviewed version and changelog pull
-  request from Conventional Commits after maintainers enable the
-  `RELEASE_PLEASE_ENABLED` repository variable. A reviewed one-time
+- The `release-please` job in `publish.yml` maintains a human-reviewed version
+  and changelog pull request from Conventional Commits after maintainers enable
+  the `RELEASE_PLEASE_ENABLED` repository variable. A reviewed one-time
   `last-release-sha` bridge established the recovery release boundary and was
   removed during human finalization of the stable release PR. Keep the variable
   disabled except while executing an explicitly authorized release sequence.
   When it creates an approved release with the GitHub workflow token, it polls
   the GitHub API until that exact tag and commit are independently reported as
-  immutable, then invokes the protected publication chain directly;
-  workflow-token release events do not trigger a second workflow run.
-- `release-recovery.yml` is the only manual publication path. It requires an
-  exact immutable tag and commit, the protected default branch, and the
-  temporary `RELEASE_RECOVERY_TAG` and `RELEASE_RECOVERY_SHA` identity opt-in
-  before it calls the same protected publication chain. Delete both variables
-  immediately after success or failure. The workflow and reusable publication
-  jobs reject every rerun attempt.
-- `publish.yml` is called only with the independently verified immutable tag,
-  commit, and default branch. It resolves the tag to the checked-out commit,
-  fetches the protected default branch, and rejects a commit that is not
-  reachable from that branch. A protected
+  immutable, then selects it for the downstream chain in the same workflow;
+  workflow-token release events do not trigger a second workflow.
+- The `verify-recovery` path in `publish.yml` is the only manual publication
+  path. It requires an exact immutable tag and commit, the protected default
+  branch, and the temporary `RELEASE_RECOVERY_TAG` and `RELEASE_RECOVERY_SHA`
+  identity opt-in before the shared release selector can continue. Delete both
+  variables immediately after success or failure.
+- `publish.yml` is the single top-level release and Trusted Publisher identity.
+  It accepts only a protected `main` push or an exact manual recovery dispatch,
+  selects only an independently verified immutable tag and commit, resolves the
+  tag to the checked-out commit, fetches the protected default branch, and
+  rejects a commit that is not reachable from that branch. A protected
   `live-smoke` job then checks out that exact verified commit and must succeed
   before the protected `pypi` job becomes eligible. The workflow publishes the
   previously verified artifacts with OIDC, then checks the public package
@@ -212,13 +212,13 @@ violations in one run and still returns non-zero when any violation exists.
   or empty live-model repository variable resolves to `gpt-5.4`.
 
 Third-party Actions are pinned to full commit SHAs. Workflow permissions are
-read-only by default. The reusable publication caller and protected publishing
-job declare `id-token: write`; the caller passes the maximum permission and
-only the publishing job requests the OIDC token. Every repository-local caller
-of `publish.yml` declares `secrets: inherit`; without it, GitHub-hosted runners
-can silently resolve the called job's environment secret as empty. The semantic
-workflow checker enforces inheritance and the live job checks the credential
-before making a request.
+read-only by default, and only the protected publishing job declares
+`id-token: write`. The PyPI action must remain directly in `publish.yml`, the
+workflow filename configured in the Trusted Publisher. PyPI validates uploaded
+attestations against that workflow identity, so publishing from a reusable
+workflow is unsupported and must fail static review. The semantic workflow
+checker enforces the single top-level identity, exact selector bindings, and
+OIDC scope; the live job checks the credential before making a request.
 Publishing uses a protected `pypi` environment and concurrency control.
 Arbitrary-branch publication is forbidden. Manual publication is limited to the
 reviewed immutable-release recovery described below.
@@ -310,7 +310,7 @@ feature or fix pull request
     -> required release-PR CI, review, and merge
     -> immutable tag and GitHub release
     -> bounded API verification of immutable tag and commit identity
-    -> direct call to the protected publication workflow
+    -> same top-level workflow selects the independently verified release
     -> verify immutable tag commit and protected-default-branch ancestry
     -> rebuild and verify exact artifacts
     -> protected live smoke against that exact commit
@@ -341,14 +341,15 @@ failed run.
 
 Before dispatch, verify that the exact PyPI version is absent, the release is
 immutable and non-draft, its tag resolves to the supplied commit, that commit is
-reachable from protected `main`, and the repository-local caller uses
-`secrets: inherit`. Then enable only the one-time recovery gate and dispatch the
-workflow from `main` with the exact immutable identity:
+reachable from protected `main`, and PyPI's Trusted Publisher names
+`publish.yml`. Confirm that the PyPI action still executes directly in that
+top-level workflow. Then enable only the one-time recovery gate and dispatch
+the workflow from `main` with the exact immutable identity:
 
 ```bash
 gh variable set RELEASE_RECOVERY_TAG --body '<exact-tag>'
 gh variable set RELEASE_RECOVERY_SHA --body '<exact-commit>'
-gh workflow run release-recovery.yml --ref main \
+gh workflow run publish.yml --ref main \
   -f release-tag='<exact-tag>' \
   -f release-sha='<exact-commit>'
 ```
@@ -366,5 +367,14 @@ gh variable delete RELEASE_RECOVERY_SHA
 A recovery failure stops the sequence. Diagnose and land a separate reviewed
 fix before requesting another explicit recovery authorization; do not rerun a
 failed job merely to obtain a different result. The workflow enforces this by
-allowing only `github.run_attempt == 1` at both the recovery and publication
-boundaries.
+allowing only `github.run_attempt == 1` for verification, selection, build,
+live smoke, publication, and registry verification.
+
+[Recovery run 30353657522](https://github.com/cometapi-dev/cometapi-python/actions/runs/30353657522)
+passed immutable identity verification, the exact artifact rebuild, credential
+preflight, four-request live suite, and protected `pypi` approval. PyPI then
+rejected the upload before accepting any distribution because the reusable
+caller produced an attestation Build Config URI for `release-recovery.yml`
+while the Trusted Publisher expected `publish.yml`. The permanent correction
+keeps attestations enabled and moves the PyPI action into the single top-level
+`publish.yml`; it does not weaken or reconfigure the Trusted Publisher.

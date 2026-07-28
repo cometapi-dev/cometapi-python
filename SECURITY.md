@@ -46,14 +46,14 @@ Long-lived PyPI tokens are not an accepted publication path. A successful
 upload is incomplete until provenance and a clean public-registry installation
 have been verified.
 
-Third-party GitHub Actions must be pinned to full commit SHAs. The reusable
-workflow callers and protected publishing job may declare `id-token: write`,
-but only the publishing job may request the OIDC token. Repository-local
-publication callers must use `secrets: inherit` so the called `live-smoke`
-environment can resolve its scoped credential; the reusable workflow may
-reference that credential only in its protected preflight and live-test steps.
-Recovery and reusable publication jobs must reject workflow reruns so an old
-authorization cannot be replayed.
+Third-party GitHub Actions must be pinned to full commit SHAs. The PyPI action
+must execute directly in the top-level `publish.yml` workflow configured as the
+Trusted Publisher; a reusable or split publication workflow is forbidden
+because its attestation identity can differ from the publisher identity. Only
+the protected publishing job may declare `id-token: write`. The protected live
+job may reference `COMETAPI_KEY` only in its credential preflight and live-test
+steps. Recovery verification, release selection, and downstream publication
+jobs must reject workflow reruns so an old authorization cannot be replayed.
 
 ## Scope
 
