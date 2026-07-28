@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import argparse
+import json
 import re
 from collections.abc import Iterator
 from pathlib import Path
@@ -15,6 +16,46 @@ try:
     from ._checks import PROJECT_ROOT, CheckError
 except ImportError:  # Direct execution from the repository root.
     from _checks import PROJECT_ROOT, CheckError
+
+RELEASE_PLEASE_BASELINE_SHA = "31b68904141489ca04932edbf305ccf88af09372"
+RELEASE_PLEASE_LOCK_JSONPATH = "$.package[?(@.name.value == 'cometapi')].version"
+RELEASE_PLEASE_ACTION_SHA = "5c625bfb5d1ff62eadeeb3772007f7f66fdcf071"
+RELEASE_PLEASE_BRIDGE_VERSION = "0.1.0-alpha.1"
+RELEASE_PLEASE_STABLE_VERSION = "0.1.0"
+RELEASE_PLEASE_VERIFY_COMMAND = """\
+test -n "$EXPECTED_TAG"
+test -n "$EXPECTED_SHA"
+release=""
+for attempt in $(seq 1 12); do
+  release=$(gh api "repos/${{ github.repository }}/releases/tags/$EXPECTED_TAG") || true
+  if test -n "$release" && test "$(jq -r .immutable <<<"$release")" = "true"; then
+    break
+  fi
+  if test "$attempt" -ge 12; then
+    echo "release did not become immutable" >&2
+    exit 1
+  fi
+  sleep 5
+done
+test "$(jq -r .tag_name <<<"$release")" = "$EXPECTED_TAG"
+test "$(jq -r .draft <<<"$release")" = "false"
+test "$(jq -r .prerelease <<<"$release")" = "false"
+test "$(jq -r .immutable <<<"$release")" = "true"
+ref=$(gh api "repos/${{ github.repository }}/git/ref/tags/$EXPECTED_TAG")
+tag_type=$(jq -r .object.type <<<"$ref")
+tag_sha=$(jq -r .object.sha <<<"$ref")
+if test "$tag_type" = "tag"; then
+  tag_sha=$(gh api "repos/${{ github.repository }}/git/tags/$tag_sha" --jq .object.sha)
+else
+  test "$tag_type" = "commit"
+fi
+test "$tag_sha" = "$EXPECTED_SHA"
+{
+  echo "release-tag=$EXPECTED_TAG"
+  echo "release-sha=$EXPECTED_SHA"
+  echo "release-verified=true"
+} >> "$GITHUB_OUTPUT"
+"""
 
 
 def _mapping(value: object, label: str) -> dict[str, object]:
@@ -377,7 +418,7 @@ def check_ci_workflow(text: str) -> None:
             "uv run ruff format --check src tests scripts",
             "uv run pyright",
             'uv run pytest -m "not live"',
-            "uv run python scripts/check_version.py --expected 0.1.0a1 --require-changelog",
+            "uv run python scripts/check_version.py --require-changelog",
             "uv run python scripts/check_version.py --require-public-preview-docs",
             "uv run python scripts/check_secrets.py",
             "uv run python scripts/run_actionlint.py",
@@ -612,20 +653,20 @@ def check_release_please_workflow(text: str) -> None:
     }:
         raise CheckError("Release Please must serialize updates per ref without cancellation")
     jobs = _mapping(workflow.get("jobs"), "Release Please jobs")
-    if set(jobs) != {"release-please"}:
-        raise CheckError("Release Please must contain only its gated release-please job")
+    if set(jobs) != {"release-please", "publish-release"}:
+        raise CheckError("Release Please must contain only its gated release and publish chain")
     release_job = _workflow_job(workflow, "release-please", "Release Please workflow")
     _require_exact_keys(
         release_job,
-        {"name", "if", "runs-on", "timeout-minutes", "permissions", "steps"},
+        {"name", "if", "runs-on", "timeout-minutes", "outputs", "permissions", "steps"},
         "Release Please job",
     )
     if release_job.get("if") != "vars.RELEASE_PLEASE_ENABLED == 'true'":
         raise CheckError("Release Please must require RELEASE_PLEASE_ENABLED=true")
     if release_job.get("runs-on") != "ubuntu-latest":
         raise CheckError("Release Please must use the reviewed GitHub-hosted runner")
-    if release_job.get("timeout-minutes") != "10":
-        raise CheckError("Release Please must retain its ten-minute timeout")
+    if release_job.get("timeout-minutes") != "15":
+        raise CheckError("Release Please must retain its fifteen-minute timeout")
     if "continue-on-error" in release_job:
         raise CheckError("Release Please must not allow its job to fail")
     if "env" in release_job:
@@ -637,14 +678,33 @@ def check_release_please_workflow(text: str) -> None:
     )
     if "defaults" in workflow or "defaults" in release_job:
         raise CheckError("Release Please must not override command defaults")
-    for index, step in enumerate(_workflow_steps(release_job, "Release Please job")):
-        _require_unconditional(step, f"Release Please step {index}")
     _require_step_names(
         release_job,
-        ["Open or update the release PR, or create its approved release"],
+        [
+            "Open or update the release PR, or create its approved release",
+            "Verify the immutable release created by Release Please",
+        ],
         "Release Please job",
     )
-    _require_step_environments(release_job, {}, "Release Please job")
+    outputs = _mapping(release_job["outputs"], "Release Please job outputs")
+    if outputs != {
+        "release-created": "${{ steps.release.outputs.release_created }}",
+        "release-sha": "${{ steps.verify-release.outputs.release-sha }}",
+        "release-tag": "${{ steps.verify-release.outputs.release-tag }}",
+        "release-verified": "${{ steps.verify-release.outputs.release-verified }}",
+    }:
+        raise CheckError("Release Please must expose only the verified release identity")
+    _require_step_environments(
+        release_job,
+        {
+            "Verify the immutable release created by Release Please": {
+                "EXPECTED_SHA": "${{ steps.release.outputs.sha }}",
+                "EXPECTED_TAG": "${{ steps.release.outputs.tag_name }}",
+                "GH_TOKEN": "${{ github.token }}",
+            }
+        },
+        "Release Please job",
+    )
     _require_step_working_directories(release_job, {}, "Release Please job")
     _, release_step = _named_action_step(
         release_job,
@@ -660,8 +720,136 @@ def check_release_please_workflow(text: str) -> None:
         },
         "Release Please action",
     )
+    if release_step.get("id") != "release":
+        raise CheckError("Release Please action must expose its reviewed release outputs")
+    if release_step.get("uses") != (
+        f"googleapis/release-please-action@{RELEASE_PLEASE_ACTION_SHA}"
+    ):
+        raise CheckError("Release Please must retain the release-please 17.3.0 action pin")
+    verify_matches = [
+        (index, step)
+        for index, step in enumerate(_workflow_steps(release_job, "Release Please job"))
+        if step.get("name") == "Verify the immutable release created by Release Please"
+    ]
+    if len(verify_matches) != 1:
+        raise CheckError("Release Please job must contain its immutable-release verification")
+    _, verify_step = verify_matches[0]
+    if verify_step.get("run") != RELEASE_PLEASE_VERIFY_COMMAND or "uses" in verify_step:
+        raise CheckError("Release Please immutable-release verification is not exact")
+    if verify_step.get("id") != "verify-release" or verify_step.get("if") != (
+        "steps.release.outputs.release_created == 'true'"
+    ):
+        raise CheckError("Release Please must verify only the release it just created")
+    if any(key in verify_step for key in ("continue-on-error", "shell", "working-directory")):
+        raise CheckError("Release Please immutable-release verification must fail closed")
+
+    publish_job = _workflow_job(workflow, "publish-release", "Release Please workflow")
+    _require_exact_keys(
+        publish_job,
+        {"name", "needs", "if", "permissions", "uses", "with"},
+        "Release Please publish caller",
+    )
+    expected_publish_condition = (
+        "needs.release-please.outputs.release-created == 'true' && "
+        "needs.release-please.outputs.release-verified == 'true'"
+    )
+    if (
+        publish_job["needs"] != "release-please"
+        or " ".join(_scalar(publish_job["if"], "Release Please publish condition").split())
+        != expected_publish_condition
+    ):
+        raise CheckError("protected publication must require a newly verified release")
+    _require_permissions(
+        publish_job,
+        {"contents": "read", "id-token": "write"},
+        "Release Please publish caller",
+    )
+    if publish_job["uses"] != "./.github/workflows/publish.yml":
+        raise CheckError("Release Please must call the reviewed protected publish workflow")
+    if _mapping(publish_job["with"], "Release Please publish inputs") != {
+        "release-tag": "${{ needs.release-please.outputs.release-tag }}",
+        "release-sha": "${{ needs.release-please.outputs.release-sha }}",
+        "default-branch": "${{ github.event.repository.default_branch }}",
+    }:
+        raise CheckError("protected publication must receive only the verified release identity")
     if _secret_references(workflow):
-        raise CheckError("Release Please must not depend on repository credentials")
+        raise CheckError("Release Please must not depend on explicit repository credentials")
+
+
+def check_release_please_config(text: str, manifest_text: str) -> None:
+    """Require either the reviewed bridge or its exact stable cleanup state."""
+    try:
+        value = cast(object, json.loads(text))
+    except json.JSONDecodeError as error:
+        raise CheckError(f"Release Please config is not valid JSON: {error}") from error
+    config = _mapping(value, "Release Please config")
+    try:
+        manifest_value = cast(object, json.loads(manifest_text))
+    except json.JSONDecodeError as error:
+        raise CheckError(f"Release Please manifest is not valid JSON: {error}") from error
+    manifest = _mapping(manifest_value, "Release Please manifest")
+    _require_exact_keys(manifest, {"."}, "Release Please manifest")
+    version = manifest["."]
+    if version not in {RELEASE_PLEASE_BRIDGE_VERSION, RELEASE_PLEASE_STABLE_VERSION}:
+        raise CheckError("Release Please manifest must be the reviewed bridge or stable version")
+
+    common_keys = {
+        "$schema",
+        "release-type",
+        "include-component-in-tag",
+        "include-v-in-tag",
+        "packages",
+    }
+    bridge_keys = {"last-release-sha", "prerelease", "versioning"}
+    bridge_enabled = set(config) == common_keys | bridge_keys
+    if bridge_enabled:
+        _require_exact_keys(
+            config,
+            common_keys | bridge_keys,
+            "Release Please bridge config",
+        )
+        if config["last-release-sha"] != RELEASE_PLEASE_BASELINE_SHA:
+            raise CheckError("Release Please must stop history at the recovery alpha commit")
+        if config["versioning"] != "prerelease" or config["prerelease"] is not False:
+            raise CheckError(
+                "Release Please must make the reviewed prerelease-to-stable transition"
+            )
+        if version != RELEASE_PLEASE_BRIDGE_VERSION:
+            raise CheckError(
+                "Release Please stable release PR must remove the one-time bridge before merge"
+            )
+    else:
+        _require_exact_keys(config, common_keys, "Release Please stable config")
+        if version != RELEASE_PLEASE_STABLE_VERSION:
+            raise CheckError("Release Please may remove the one-time bridge only after stable")
+    if config["release-type"] != "python":
+        raise CheckError("Release Please must retain its Python release type")
+    if config["$schema"] != (
+        "https://raw.githubusercontent.com/googleapis/release-please/main/schemas/config.json"
+    ):
+        raise CheckError("Release Please must retain the reviewed upstream schema")
+    if config["include-component-in-tag"] is not False or config["include-v-in-tag"] is not True:
+        raise CheckError("Release Please tag spelling does not match the reviewed contract")
+    packages = _mapping(config["packages"], "Release Please packages")
+    _require_exact_keys(packages, {"."}, "Release Please packages")
+    package = _mapping(packages["."], "Release Please root package")
+    _require_exact_keys(
+        package,
+        {"package-name", "extra-files"},
+        "Release Please root package",
+    )
+    if package["package-name"] != "cometapi":
+        raise CheckError("Release Please must update only the cometapi package")
+    extra_files = _sequence(package["extra-files"], "Release Please extra files")
+    if len(extra_files) != 1:
+        raise CheckError("Release Please must contain exactly one reviewed extra-file updater")
+    updater = _mapping(extra_files[0], "Release Please uv.lock updater")
+    if updater != {
+        "type": "toml",
+        "path": "uv.lock",
+        "jsonpath": RELEASE_PLEASE_LOCK_JSONPATH,
+    }:
+        raise CheckError("Release Please must update the editable cometapi version in uv.lock")
 
 
 def check_publish_workflow(text: str, live_smoke_text: str) -> None:
@@ -680,17 +868,20 @@ def check_publish_workflow(text: str, live_smoke_text: str) -> None:
     )
 
     publish_triggers = _mapping(workflow.get("on"), "publish workflow triggers")
-    if set(publish_triggers) != {"release"}:
-        raise CheckError("publication must be triggered only by a published GitHub release")
-    release_trigger = _mapping(publish_triggers["release"], "publish release trigger")
-    if set(release_trigger) != {"types"}:
-        raise CheckError("publication release trigger must not use additional filters")
-    release_types = [
-        _scalar(item, "publish release type")
-        for item in _sequence(release_trigger.get("types"), "publish release types")
-    ]
-    if release_types != ["published"]:
-        raise CheckError("publication must be triggered only by a published GitHub release")
+    if set(publish_triggers) != {"workflow_call"}:
+        raise CheckError("publication must run only through the verified reusable workflow call")
+    workflow_call = _mapping(publish_triggers["workflow_call"], "publish workflow call")
+    if set(workflow_call) != {"inputs"}:
+        raise CheckError("publication workflow call must accept only reviewed release inputs")
+    call_inputs = _mapping(workflow_call["inputs"], "publish workflow call inputs")
+    if set(call_inputs) != {"release-tag", "release-sha", "default-branch"}:
+        raise CheckError("publication workflow call inputs must match the verified identity")
+    for name in ("release-tag", "release-sha", "default-branch"):
+        if _mapping(call_inputs[name], f"publish workflow input {name}") != {
+            "required": "true",
+            "type": "string",
+        }:
+            raise CheckError(f"publication workflow input {name} must be a required string")
     _require_permissions(workflow, {"contents": "read"}, "publish workflow")
     concurrency = _mapping(workflow.get("concurrency"), "publish workflow concurrency")
     if concurrency != {"group": "pypi-publish", "cancel-in-progress": "false"}:
@@ -931,15 +1122,16 @@ def check_publish_workflow(text: str, live_smoke_text: str) -> None:
         build,
         {
             "Reject an untrusted release target": {
-                "DEFAULT_BRANCH": "${{ github.event.repository.default_branch }}",
-                "RELEASE_IMMUTABLE": "${{ github.event.release.immutable }}",
-                "RELEASE_TAG": "${{ github.event.release.tag_name }}",
+                "DEFAULT_BRANCH": "${{ inputs.default-branch }}",
+                "EXPECTED_RELEASE_SHA": "${{ inputs.release-sha }}",
+                "RELEASE_IMMUTABLE": "true",
+                "RELEASE_TAG": "${{ inputs.release-tag }}",
             },
             "Verify project, manifest, changelog, release docs, and tag agreement": {
-                "RELEASE_TAG": "${{ github.event.release.tag_name }}"
+                "RELEASE_TAG": "${{ inputs.release-tag }}"
             },
             "Verify artifact versions against the tag": {
-                "RELEASE_TAG": "${{ github.event.release.tag_name }}"
+                "RELEASE_TAG": "${{ inputs.release-tag }}"
             },
         },
         "release build job",
@@ -953,7 +1145,7 @@ def check_publish_workflow(text: str, live_smoke_text: str) -> None:
     _require_options(
         build_checkout,
         {
-            "ref": "refs/tags/${{ github.event.release.tag_name }}",
+            "ref": "refs/tags/${{ inputs.release-tag }}",
             "fetch-depth": "0",
             "persist-credentials": "false",
         },
@@ -969,9 +1161,10 @@ def check_publish_workflow(text: str, live_smoke_text: str) -> None:
         raise CheckError("release trust step must expose the trust output id")
     trust_environment = _mapping(trust_step.get("env"), "release trust environment")
     if trust_environment != {
-        "DEFAULT_BRANCH": "${{ github.event.repository.default_branch }}",
-        "RELEASE_IMMUTABLE": "${{ github.event.release.immutable }}",
-        "RELEASE_TAG": "${{ github.event.release.tag_name }}",
+        "DEFAULT_BRANCH": "${{ inputs.default-branch }}",
+        "EXPECTED_RELEASE_SHA": "${{ inputs.release-sha }}",
+        "RELEASE_IMMUTABLE": "true",
+        "RELEASE_TAG": "${{ inputs.release-tag }}",
     }:
         raise CheckError("release trust step must receive only the immutable release identity")
     _, build_setup = _named_action_step(
@@ -1011,7 +1204,7 @@ def check_publish_workflow(text: str, live_smoke_text: str) -> None:
     )
     if version_step.get("id") != "version" or _mapping(
         version_step.get("env"), "release version environment"
-    ) != {"RELEASE_TAG": "${{ github.event.release.tag_name }}"}:
+    ) != {"RELEASE_TAG": "${{ inputs.release-tag }}"}:
         raise CheckError("release version step must expose the verified tag-derived version")
     _, artifact_upload = _named_action_step(
         build,
@@ -1378,6 +1571,16 @@ def main() -> int:
         type=Path,
         default=PROJECT_ROOT / ".github" / "workflows" / "ci.yml",
     )
+    parser.add_argument(
+        "--release-please-config",
+        type=Path,
+        default=PROJECT_ROOT / "release-please-config.json",
+    )
+    parser.add_argument(
+        "--release-please-manifest",
+        type=Path,
+        default=PROJECT_ROOT / ".release-please-manifest.json",
+    )
     args = parser.parse_args()
     paths = check_workflow_inventory(args.ci_workflow.parent)
     check_publish_workflow(
@@ -1385,6 +1588,10 @@ def main() -> int:
         args.live_smoke_workflow.read_text(encoding="utf-8"),
     )
     check_release_please_workflow(args.release_please_workflow.read_text(encoding="utf-8"))
+    check_release_please_config(
+        args.release_please_config.read_text(encoding="utf-8"),
+        args.release_please_manifest.read_text(encoding="utf-8"),
+    )
     check_ci_workflow(args.ci_workflow.read_text(encoding="utf-8"))
     for path in paths:
         check_action_pins(path.read_text(encoding="utf-8"), path.name)

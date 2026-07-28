@@ -11,6 +11,7 @@ from openai import AuthenticationError, OpenAIError
 import cometapi
 from cometapi import AsyncCometAPI, CometAPI
 from cometapi._config import DEFAULT_BASE_URL
+from scripts._checks import read_project_version
 
 from .conftest import (
     API_KEY,
@@ -22,7 +23,7 @@ from .conftest import (
 
 
 def test_public_api_exports_only_accepted_client_names() -> None:
-    assert cometapi.__version__ == "0.1.0a1"
+    assert cometapi.__version__ == read_project_version()
     assert cometapi.__all__ == ["AsyncCometAPI", "CometAPI", "__version__"]
     assert cometapi.CometAPI is CometAPI
     assert cometapi.AsyncCometAPI is AsyncCometAPI

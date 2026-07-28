@@ -13,6 +13,7 @@ from scripts.check_workflows import (
     check_action_pins,
     check_ci_workflow,
     check_publish_workflow,
+    check_release_please_config,
     check_release_please_workflow,
     check_workflow_inventory,
     workflow_paths,
@@ -24,6 +25,8 @@ CI_WORKFLOW = PROJECT_ROOT / ".github" / "workflows" / "ci.yml"
 PUBLISH_WORKFLOW = PROJECT_ROOT / ".github" / "workflows" / "publish.yml"
 LIVE_SMOKE_WORKFLOW = PROJECT_ROOT / ".github" / "workflows" / "live-smoke.yml"
 RELEASE_PLEASE_WORKFLOW = PROJECT_ROOT / ".github" / "workflows" / "release-please.yml"
+RELEASE_PLEASE_CONFIG = PROJECT_ROOT / "release-please-config.json"
+RELEASE_PLEASE_MANIFEST = PROJECT_ROOT / ".release-please-manifest.json"
 TRUST_SCRIPT = PROJECT_ROOT / "scripts" / "verify_release_trust.sh"
 
 
@@ -66,12 +69,15 @@ def _verify_trust(
     *,
     immutable: str = "true",
     tag: str = "v0.1.0-alpha.1",
+    expected_release_sha: str | None = None,
 ) -> subprocess.CompletedProcess[str]:
     output = tmp_path / "github-output.txt"
     environment = os.environ.copy()
     environment.update(
         {
             "DEFAULT_BRANCH": "main",
+            "EXPECTED_RELEASE_SHA": expected_release_sha
+            or _git(repository, "rev-parse", f"{tag}^{{commit}}"),
             "GITHUB_OUTPUT": str(output),
             "RELEASE_IMMUTABLE": immutable,
             "RELEASE_TAG": tag,
@@ -95,8 +101,8 @@ def _step(text: str, name: str) -> tuple[int, int]:
 
 def _bypass_immutable_event(text: str) -> str:
     return text.replace(
-        "RELEASE_IMMUTABLE: ${{ github.event.release.immutable }}",
         'RELEASE_IMMUTABLE: "true"',
+        'RELEASE_IMMUTABLE: "false"',
         1,
     )
 
@@ -740,6 +746,96 @@ def test_current_release_please_workflow_is_disabled_by_default() -> None:
     check_release_please_workflow(RELEASE_PLEASE_WORKFLOW.read_text(encoding="utf-8"))
 
 
+def test_current_release_please_config_has_reviewed_stable_bridge() -> None:
+    check_release_please_config(
+        RELEASE_PLEASE_CONFIG.read_text(encoding="utf-8"),
+        RELEASE_PLEASE_MANIFEST.read_text(encoding="utf-8"),
+    )
+
+
+@pytest.mark.parametrize(
+    ("needle", "replacement", "message"),
+    [
+        (
+            '"31b68904141489ca04932edbf305ccf88af09372"',
+            '"f39b4dc9f2e18e91ab3cbac202246f85658f71fd"',
+            "recovery alpha commit",
+        ),
+        ('"prerelease": false', '"prerelease": true', "prerelease-to-stable"),
+        ('"versioning": "prerelease"', '"versioning": "default"', "prerelease-to-stable"),
+        ('"path": "uv.lock"', '"path": "pyproject.toml"', "uv.lock"),
+        (
+            "$.package[?(@.name.value == 'cometapi')].version",
+            "$.package[0].version",
+            "uv.lock",
+        ),
+    ],
+    ids=["wrong-boundary", "prerelease", "versioning", "wrong-path", "wrong-jsonpath"],
+)
+def test_release_please_config_rejects_bridge_drift(
+    needle: str, replacement: str, message: str
+) -> None:
+    text = RELEASE_PLEASE_CONFIG.read_text(encoding="utf-8")
+    assert needle in text
+    with pytest.raises(RuntimeError, match=message):
+        check_release_please_config(
+            text.replace(needle, replacement, 1),
+            RELEASE_PLEASE_MANIFEST.read_text(encoding="utf-8"),
+        )
+
+
+def test_release_please_config_rejects_alpha_type_and_extra_updaters() -> None:
+    text = RELEASE_PLEASE_CONFIG.read_text(encoding="utf-8").replace(
+        '"package-name": "cometapi",',
+        '"package-name": "cometapi",\n      "prerelease-type": "alpha",',
+        1,
+    )
+    with pytest.raises(RuntimeError, match="reviewed contract"):
+        check_release_please_config(
+            text,
+            RELEASE_PLEASE_MANIFEST.read_text(encoding="utf-8"),
+        )
+
+
+def test_release_please_config_rejects_manifest_drift() -> None:
+    with pytest.raises(RuntimeError, match="reviewed bridge or stable version"):
+        check_release_please_config(
+            RELEASE_PLEASE_CONFIG.read_text(encoding="utf-8"),
+            '{".": "0.1.0-alpha.2"}\n',
+        )
+
+
+def test_release_please_config_accepts_exact_stable_cleanup() -> None:
+    config = RELEASE_PLEASE_CONFIG.read_text(encoding="utf-8")
+    for line in (
+        '  "last-release-sha": "31b68904141489ca04932edbf305ccf88af09372",\n',
+        '  "prerelease": false,\n',
+        '  "versioning": "prerelease",\n',
+    ):
+        config = config.replace(line, "", 1)
+    check_release_please_config(config, '{".": "0.1.0"}\n')
+
+
+def test_release_please_config_rejects_stable_manifest_with_bridge() -> None:
+    with pytest.raises(RuntimeError, match="remove the one-time bridge"):
+        check_release_please_config(
+            RELEASE_PLEASE_CONFIG.read_text(encoding="utf-8"),
+            '{".": "0.1.0"}\n',
+        )
+
+
+def test_release_please_config_rejects_bridge_cleanup_before_stable() -> None:
+    config = RELEASE_PLEASE_CONFIG.read_text(encoding="utf-8")
+    for line in (
+        '  "last-release-sha": "31b68904141489ca04932edbf305ccf88af09372",\n',
+        '  "prerelease": false,\n',
+        '  "versioning": "prerelease",\n',
+    ):
+        config = config.replace(line, "", 1)
+    with pytest.raises(RuntimeError, match="only after stable"):
+        check_release_please_config(config, '{".": "0.1.0-alpha.1"}\n')
+
+
 @pytest.mark.parametrize(
     "replacement",
     [
@@ -1219,7 +1315,10 @@ def test_secret_scope_scan_includes_yaml_workflows(tmp_path: Path) -> None:
         capture_output=True,
     )
     assert result.returncode != 0
-    assert ".github/workflows/rogue.yaml: id-token: write is publish-job-only" in result.stderr
+    assert (
+        ".github/workflows/rogue.yaml: id-token: write must match the reviewed "
+        "publication chain count (0)"
+    ) in result.stderr
 
 
 def test_semantic_contract_rejects_download_before_checkout() -> None:
@@ -1273,6 +1372,16 @@ def test_release_trust_rejects_non_immutable_release(
 
     assert result.returncode != 0
     assert "immutable=true" in result.stderr
+
+
+def test_release_trust_rejects_release_sha_that_differs_from_tag(
+    release_repository: tuple[Path, str], tmp_path: Path
+) -> None:
+    repository, _release_commit = release_repository
+    result = _verify_trust(repository, tmp_path, expected_release_sha="0" * 40)
+
+    assert result.returncode != 0
+    assert "expected 0000000000000000000000000000000000000000" in result.stderr
 
 
 def test_release_trust_rejects_checkout_that_differs_from_tag(

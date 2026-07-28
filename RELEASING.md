@@ -45,10 +45,11 @@ one active maintainer.
 
 Before the historical first push, scheduled and manually dispatched live
 execution was required to fail closed unless `LIVE_SMOKE_ENABLED=true`.
-`RELEASE_PLEASE_ENABLED` was kept disabled and remains disabled until a
-separately reviewed and tested `last-release-sha` bridge establishes the
-recovery alpha as the previous-release boundary. An unset or non-true value
-prevents the corresponding gated job from executing.
+`RELEASE_PLEASE_ENABLED` was kept disabled. The reviewed stable-readiness
+configuration now uses an explicit `last-release-sha` bridge to establish the
+recovery alpha as the previous-release boundary; the repository variable stays
+disabled until maintainers intentionally start the stable release sequence. An
+unset or non-true value prevents the corresponding gated job from executing.
 The release live-model configuration resolves an unset or empty
 `COMETAPI_LIVE_MODEL` to `gpt-5.4`.
 
@@ -78,7 +79,7 @@ uv run ruff check src tests scripts
 uv run ruff format --check src tests scripts
 uv run pyright
 uv run pytest -m "not live"
-uv run python scripts/check_version.py --expected 0.1.0a1 --require-changelog
+uv run python scripts/check_version.py --require-changelog
 uv run python scripts/check_secrets.py
 uv run python scripts/check_workflows.py
 rm -rf dist
@@ -181,14 +182,18 @@ violations in one run and still returns non-zero when any violation exists.
   `LIVE_SMOKE_ENABLED=true`.
 - `release-please.yml` maintains a human-reviewed version and changelog pull
   request from Conventional Commits after maintainers enable the
-  `RELEASE_PLEASE_ENABLED` repository variable. Keep it disabled after the
-  initial `v0.1.0-alpha.1+recovery.1` release: the checked-in manifest version
-  lacks the recovery tag's build metadata and cannot safely infer the previous
-  release boundary. Enable it only after a separate reviewed change configures
-  and tests an explicit `last-release-sha` bridge.
-- `publish.yml` runs only for a published immutable GitHub release. It resolves
-  the tag to the checked-out commit, fetches the protected default branch, and
-  rejects a commit that is not reachable from that branch. A protected
+  `RELEASE_PLEASE_ENABLED` repository variable. The checked-in stable-readiness
+  configuration establishes the recovery release boundary with the reviewed
+  `last-release-sha` bridge. Keep the variable disabled except while executing
+  an explicitly authorized release sequence. When it creates an approved
+  release with the GitHub workflow token, it polls the GitHub API until that
+  exact tag and commit are independently reported as immutable, then invokes
+  the protected publication chain directly; workflow-token release events do
+  not trigger a second workflow run.
+- `publish.yml` is called only with the independently verified immutable tag,
+  commit, and default branch. It resolves the tag to the checked-out commit,
+  fetches the protected default branch, and rejects a commit that is not
+  reachable from that branch. A protected
   `live-smoke` job then checks out that exact verified commit and must succeed
   before the protected `pypi` job becomes eligible. The workflow publishes the
   previously verified artifacts with OIDC, then checks the public package
@@ -197,7 +202,9 @@ violations in one run and still returns non-zero when any violation exists.
   or empty live-model repository variable resolves to `gpt-5.4`.
 
 Third-party Actions are pinned to full commit SHAs. Workflow permissions are
-read-only by default; only the publishing job receives `id-token: write`.
+read-only by default. The reusable publication caller and protected publishing
+job declare `id-token: write`; the caller passes the maximum permission and
+only the publishing job requests the OIDC token.
 Publishing uses a protected `pypi` environment and concurrency control.
 Arbitrary-branch and manual publication are forbidden.
 
@@ -272,8 +279,9 @@ changelog, GitHub release, wheel, and source distribution.
   SHA256 `a6820347317943ca22f7632acbe354dd992f31a122a6172dfe45b57960e3a093`
   and source-distribution SHA256
   `98d86829ef14771e8b7ec180d452c6638289f49c14a39b7207be5c47cb64cde7`.
-- `LIVE_SMOKE_ENABLED=false`. Release Please remains disabled until a separate
-  reviewed and tested `last-release-sha` bridge is merged.
+- `LIVE_SMOKE_ENABLED=false`. Release Please remains disabled outside an
+  explicitly authorized release sequence; the reviewed `last-release-sha`
+  bridge is configured for the alpha-to-stable transition.
 
 ## Stable release sequence
 
@@ -282,8 +290,11 @@ feature or fix pull request
     -> required offline CI
     -> merge to the default branch
     -> automated release pull request
-    -> human review and merge
+    -> human finalization of stable docs, metadata, and one-time bridge cleanup
+    -> required release-PR CI, review, and merge
     -> immutable tag and GitHub release
+    -> bounded API verification of immutable tag and commit identity
+    -> direct call to the protected publication workflow
     -> verify immutable tag commit and protected-default-branch ancestry
     -> rebuild and verify exact artifacts
     -> protected live smoke against that exact commit
@@ -295,4 +306,11 @@ feature or fix pull request
 
 Stable `0.1.0` additionally requires the complete blocking Python matrix,
 executed README examples against the built package, trusted live evidence, and
-reviewed release-PR and changelog agreement.
+reviewed release-PR and changelog agreement. Before the stable release PR is
+merged, its finalization commit must state that `0.1.0` is approved for PyPI
+publication, use the stable installation command and classifier, and remove the
+one-time `last-release-sha` plus prerelease-versioning controls. The manifest,
+project metadata, lock file, and changelog must remain at the exact generated
+`0.1.0` version. If GitHub requires approval before checks run on the automated
+pull request, approve only that reviewed workflow execution and wait for every
+blocking check.

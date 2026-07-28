@@ -45,7 +45,7 @@ jobs:
       - name: Run offline unit and contract tests
         run: uv run pytest -m "not live"
       - name: Check release version agreement
-        run: uv run python scripts/check_version.py --expected 0.1.0a1 --require-changelog
+        run: uv run python scripts/check_version.py --require-changelog
       - name: Check canonical public content and identity
         run: uv run python scripts/check_version.py --require-public-preview-docs
       - name: Scan for credentials and scope mistakes

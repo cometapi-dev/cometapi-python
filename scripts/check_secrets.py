@@ -7,7 +7,10 @@ import argparse
 import re
 from pathlib import Path
 
-from _checks import PROJECT_ROOT, CheckError
+try:
+    from scripts._checks import PROJECT_ROOT, CheckError
+except ModuleNotFoundError:  # Support direct execution from the repository root.
+    from _checks import PROJECT_ROOT, CheckError
 
 EXCLUDED_PARTS = {
     ".cache",
@@ -91,7 +94,7 @@ def _scan_content(root: Path) -> list[str]:
     return findings
 
 
-def _scan_workflow_scope(root: Path) -> list[str]:
+def scan_workflow_scope(root: Path) -> list[str]:
     findings: list[str] = []
     workflow_root = root / ".github" / "workflows"
     if not workflow_root.is_dir():
@@ -112,14 +115,22 @@ def _scan_workflow_scope(root: Path) -> list[str]:
             findings.append(
                 ".github/workflows/publish.yml: exactly one job must receive id-token: write"
             )
+    allowed_id_token_counts = {
+        "publish.yml": 1,
+        "release-please.yml": 1,
+    }
     for path in sorted(
         candidate
         for candidate in workflow_root.iterdir()
         if candidate.is_file() and candidate.suffix in {".yaml", ".yml"}
     ):
         text = path.read_text(encoding="utf-8")
-        if path.name != "publish.yml" and "id-token: write" in text:
-            findings.append(f"{path.relative_to(root)}: id-token: write is publish-job-only")
+        expected_count = allowed_id_token_counts.get(path.name, 0)
+        if text.count("id-token: write") != expected_count:
+            findings.append(
+                f"{path.relative_to(root)}: id-token: write must match the reviewed "
+                f"publication chain count ({expected_count})"
+            )
     return findings
 
 
@@ -128,7 +139,7 @@ def main() -> int:
     parser.add_argument("--root", type=Path, default=PROJECT_ROOT)
     args = parser.parse_args()
     root = args.root.resolve()
-    findings = _scan_content(root) + _scan_workflow_scope(root)
+    findings = _scan_content(root) + scan_workflow_scope(root)
     if findings:
         raise CheckError("\n".join(findings))
     print(f"secret and scope scans passed: {root}")

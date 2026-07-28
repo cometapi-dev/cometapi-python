@@ -2,6 +2,7 @@
 set -euo pipefail
 
 : "${DEFAULT_BRANCH:?DEFAULT_BRANCH is required}"
+: "${EXPECTED_RELEASE_SHA:?EXPECTED_RELEASE_SHA is required}"
 : "${RELEASE_IMMUTABLE:?RELEASE_IMMUTABLE is required}"
 : "${RELEASE_TAG:?RELEASE_TAG is required}"
 
@@ -14,6 +15,11 @@ git check-ref-format --branch "$DEFAULT_BRANCH" >/dev/null
 release_ref="refs/tags/${RELEASE_TAG}"
 release_commit="$(git rev-parse --verify "${release_ref}^{commit}")"
 head_commit="$(git rev-parse --verify 'HEAD^{commit}')"
+
+if [[ "$release_commit" != "$EXPECTED_RELEASE_SHA" ]]; then
+  echo "Release tag $release_ref resolves to $release_commit, expected $EXPECTED_RELEASE_SHA." >&2
+  exit 1
+fi
 
 if [[ "$head_commit" != "$release_commit" ]]; then
   echo "Checked-out commit $head_commit does not match $release_ref ($release_commit)." >&2
