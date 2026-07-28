@@ -134,6 +134,19 @@ protected exact-release live job. OIDC permission is exposed only to the
 protected publish job. Missing credentials, environments, approvals, or
 remote configuration block publication.
 
+The protected publication chain is reusable, and every repository-local caller
+must declare `secrets: inherit`. GitHub-hosted runners can otherwise bind the
+called job to the `live-smoke` environment while silently resolving its
+environment secret as empty. `scripts/check_workflows.py` rejects a caller that
+omits inheritance and requires a credential preflight before any live request.
+`release-recovery.yml` is the sole manual recovery path for an already-created
+immutable release: it runs only from the protected default branch behind a
+temporary tag-and-commit identity opt-in, independently verifies that exact
+release identity, and then calls the same protected build, live, OIDC,
+provenance, and registry chain. Both the recovery caller and reusable
+publication jobs reject rerun attempts so an old authorization cannot be
+replayed through GitHub's rerun controls.
+
 The initial alpha has one release-identity exception. GitHub's immutable
 release tombstone permanently reserves `v0.1.0-alpha.1`, so the reviewed
 recovery release uses SemVer build metadata in

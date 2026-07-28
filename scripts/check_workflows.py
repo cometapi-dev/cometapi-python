@@ -746,7 +746,7 @@ def check_release_please_workflow(text: str) -> None:
     publish_job = _workflow_job(workflow, "publish-release", "Release Please workflow")
     _require_exact_keys(
         publish_job,
-        {"name", "needs", "if", "permissions", "uses", "with"},
+        {"name", "needs", "if", "permissions", "uses", "with", "secrets"},
         "Release Please publish caller",
     )
     expected_publish_condition = (
@@ -766,6 +766,11 @@ def check_release_please_workflow(text: str) -> None:
     )
     if publish_job["uses"] != "./.github/workflows/publish.yml":
         raise CheckError("Release Please must call the reviewed protected publish workflow")
+    if publish_job["secrets"] != "inherit":
+        raise CheckError(
+            "Release Please publish caller must inherit environment secrets for the "
+            "reusable workflow"
+        )
     if _mapping(publish_job["with"], "Release Please publish inputs") != {
         "release-tag": "${{ needs.release-please.outputs.release-tag }}",
         "release-sha": "${{ needs.release-please.outputs.release-sha }}",
@@ -774,6 +779,142 @@ def check_release_please_workflow(text: str) -> None:
         raise CheckError("protected publication must receive only the verified release identity")
     if _secret_references(workflow):
         raise CheckError("Release Please must not depend on explicit repository credentials")
+
+
+def check_release_recovery_workflow(text: str) -> None:
+    """Require a default-branch-only, explicitly enabled immutable release recovery."""
+    workflow = _load_workflow(text, "release recovery workflow")
+    _require_exact_keys(
+        workflow,
+        {"name", "on", "permissions", "concurrency", "jobs"},
+        "release recovery workflow",
+    )
+    _require_permissions(workflow, {"contents": "read"}, "release recovery workflow")
+    if "env" in workflow or "defaults" in workflow:
+        raise CheckError("release recovery workflow must not override execution context")
+
+    triggers = _mapping(workflow.get("on"), "release recovery triggers")
+    if set(triggers) != {"workflow_dispatch"}:
+        raise CheckError("release recovery must run only by explicit manual dispatch")
+    dispatch = _mapping(triggers["workflow_dispatch"], "release recovery dispatch")
+    _require_exact_keys(dispatch, {"inputs"}, "release recovery dispatch")
+    inputs = _mapping(dispatch["inputs"], "release recovery inputs")
+    if set(inputs) != {"release-tag", "release-sha"}:
+        raise CheckError("release recovery must accept only the exact release identity")
+    expected_descriptions = {
+        "release-tag": "Exact immutable GitHub release tag",
+        "release-sha": "Exact commit resolved by the release tag",
+    }
+    for name, description in expected_descriptions.items():
+        if _mapping(inputs[name], f"release recovery input {name}") != {
+            "description": description,
+            "required": "true",
+            "type": "string",
+        }:
+            raise CheckError(f"release recovery input {name} must be an exact required string")
+
+    concurrency = _mapping(workflow.get("concurrency"), "release recovery concurrency")
+    if concurrency != {
+        "group": "release-recovery",
+        "cancel-in-progress": "false",
+    }:
+        raise CheckError("release recovery must serialize all attempts without cancellation")
+
+    jobs = _mapping(workflow.get("jobs"), "release recovery jobs")
+    if set(jobs) != {"verify-recovery", "publish-release"}:
+        raise CheckError("release recovery must contain only verification and publication")
+    verify = _workflow_job(workflow, "verify-recovery", "release recovery workflow")
+    _require_exact_keys(
+        verify,
+        {
+            "name",
+            "if",
+            "runs-on",
+            "timeout-minutes",
+            "outputs",
+            "permissions",
+            "steps",
+        },
+        "release recovery verification job",
+    )
+    expected_condition = (
+        "github.run_attempt == 1 && "
+        "github.ref == format('refs/heads/{0}', github.event.repository.default_branch) && "
+        "vars.RELEASE_RECOVERY_TAG == inputs.release-tag && "
+        "vars.RELEASE_RECOVERY_SHA == inputs.release-sha"
+    )
+    if " ".join(_scalar(verify["if"], "release recovery condition").split()) != (
+        expected_condition
+    ):
+        raise CheckError(
+            "release recovery must require the first workflow attempt, protected default "
+            "branch, and exact authorized release tag and commit"
+        )
+    if verify["runs-on"] != "ubuntu-latest" or verify["timeout-minutes"] != "5":
+        raise CheckError("release recovery verification must use the reviewed bounded runner")
+    _require_permissions(verify, {"contents": "read"}, "release recovery verification job")
+    outputs = _mapping(verify["outputs"], "release recovery outputs")
+    if outputs != {
+        "release-sha": "${{ steps.verify-release.outputs.release-sha }}",
+        "release-tag": "${{ steps.verify-release.outputs.release-tag }}",
+    }:
+        raise CheckError("release recovery must expose only the verified release identity")
+    _require_step_names(
+        verify,
+        ["Verify the immutable release selected for recovery"],
+        "release recovery verification job",
+    )
+    _require_step_environments(
+        verify,
+        {
+            "Verify the immutable release selected for recovery": {
+                "EXPECTED_SHA": "${{ inputs.release-sha }}",
+                "EXPECTED_TAG": "${{ inputs.release-tag }}",
+                "GH_TOKEN": "${{ github.token }}",
+            }
+        },
+        "release recovery verification job",
+    )
+    _require_step_working_directories(verify, {}, "release recovery verification job")
+    _, verify_step = _named_run_step(
+        verify,
+        "Verify the immutable release selected for recovery",
+        RELEASE_PLEASE_VERIFY_COMMAND,
+        "release recovery verification job",
+    )
+    if verify_step.get("id") != "verify-release":
+        raise CheckError("release recovery verification must expose its exact outputs")
+
+    publish = _workflow_job(workflow, "publish-release", "release recovery workflow")
+    _require_exact_keys(
+        publish,
+        {"name", "needs", "if", "permissions", "uses", "with", "secrets"},
+        "release recovery publish caller",
+    )
+    if publish["needs"] != "verify-recovery":
+        raise CheckError("release recovery publication must depend on immutable verification")
+    if publish["if"] != "github.run_attempt == 1":
+        raise CheckError("release recovery publication must run only on the first workflow attempt")
+    _require_permissions(
+        publish,
+        {"contents": "read", "id-token": "write"},
+        "release recovery publish caller",
+    )
+    if publish["uses"] != "./.github/workflows/publish.yml":
+        raise CheckError("release recovery must call the reviewed protected publish workflow")
+    if publish["secrets"] != "inherit":
+        raise CheckError(
+            "release recovery publish caller must inherit environment secrets for the "
+            "reusable workflow"
+        )
+    if _mapping(publish["with"], "release recovery publish inputs") != {
+        "release-tag": "${{ needs.verify-recovery.outputs.release-tag }}",
+        "release-sha": "${{ needs.verify-recovery.outputs.release-sha }}",
+        "default-branch": "${{ github.event.repository.default_branch }}",
+    }:
+        raise CheckError("release recovery publication must use only verified outputs")
+    if _secret_references(workflow):
+        raise CheckError("release recovery must not reference explicit repository credentials")
 
 
 def check_release_please_config(text: str, manifest_text: str) -> None:
@@ -917,13 +1058,20 @@ def check_publish_workflow(text: str, live_smoke_text: str) -> None:
     }:
         raise CheckError("monitoring live smoke must retain its bounded execution budget")
 
+    first_attempt_guards = 0
     for mapping in _walk_mappings(workflow, "publish workflow"):
         if "if" in mapping:
-            raise CheckError("release gates must not be conditional")
+            if mapping["if"] != "github.run_attempt == 1":
+                raise CheckError(
+                    "release gates may be conditional only on the first workflow attempt"
+                )
+            first_attempt_guards += 1
         if "continue-on-error" in mapping:
             raise CheckError("release gates must not be allowed to continue on error")
         if "defaults" in mapping or "shell" in mapping:
             raise CheckError("release gates must not override command execution")
+    if first_attempt_guards != 4:
+        raise CheckError("every release job must reject workflow reruns")
 
     monitoring_job = _workflow_job(live_workflow, "smoke", "live-smoke workflow")
     _require_exact_keys(
@@ -1034,9 +1182,18 @@ def check_publish_workflow(text: str, live_smoke_text: str) -> None:
     publish = _workflow_job(workflow, "publish", "publish workflow")
     registry = _workflow_job(workflow, "verify-registry", "publish workflow")
     expected_release_job_keys = {
-        "build": {"name", "runs-on", "timeout-minutes", "outputs", "permissions", "steps"},
+        "build": {
+            "name",
+            "if",
+            "runs-on",
+            "timeout-minutes",
+            "outputs",
+            "permissions",
+            "steps",
+        },
         "release-live-smoke": {
             "name",
+            "if",
             "needs",
             "concurrency",
             "runs-on",
@@ -1048,6 +1205,7 @@ def check_publish_workflow(text: str, live_smoke_text: str) -> None:
         },
         "publish": {
             "name",
+            "if",
             "needs",
             "runs-on",
             "timeout-minutes",
@@ -1057,6 +1215,7 @@ def check_publish_workflow(text: str, live_smoke_text: str) -> None:
         },
         "verify-registry": {
             "name",
+            "if",
             "needs",
             "runs-on",
             "timeout-minutes",
@@ -1071,6 +1230,8 @@ def check_publish_workflow(text: str, live_smoke_text: str) -> None:
         ("verify-registry", registry),
     ):
         _require_exact_keys(job, expected_release_job_keys[name], f"release {name} job")
+        if job["if"] != "github.run_attempt == 1":
+            raise CheckError(f"release {name} job must run only on the first workflow attempt")
         _require_step_working_directories(
             job,
             ({"Recheck immutable artifact digests": "release-bundle"} if name == "publish" else {}),
@@ -1255,6 +1416,7 @@ def check_publish_workflow(text: str, live_smoke_text: str) -> None:
     _require_step_names(
         release_live,
         [
+            "Require the protected live credential",
             "Check out the verified release commit",
             "Require the exact verified release commit",
             "Set up Python",
@@ -1267,6 +1429,9 @@ def check_publish_workflow(text: str, live_smoke_text: str) -> None:
     _require_step_environments(
         release_live,
         {
+            "Require the protected live credential": {
+                "COMETAPI_KEY": "${{ secrets.COMETAPI_KEY }}"
+            },
             "Require the exact verified release commit": {
                 "RELEASE_COMMIT": "${{ needs.build.outputs.release-commit }}"
             },
@@ -1276,6 +1441,16 @@ def check_publish_workflow(text: str, live_smoke_text: str) -> None:
         },
         "exact-release live-smoke job",
     )
+    _, credential_check = _named_run_step(
+        release_live,
+        "Require the protected live credential",
+        'test -n "$COMETAPI_KEY"',
+        "exact-release live-smoke job",
+    )
+    if _mapping(credential_check.get("env"), "exact-release credential-check environment") != {
+        "COMETAPI_KEY": "${{ secrets.COMETAPI_KEY }}"
+    }:
+        raise CheckError("exact-release live credential preflight must stay step-scoped")
     _, release_checkout = _named_action_step(
         release_live,
         "Check out the verified release commit",
@@ -1520,8 +1695,13 @@ def check_publish_workflow(text: str, live_smoke_text: str) -> None:
     }:
         raise CheckError("registry clean install must use the verified build version")
 
-    if _secret_references(workflow) != ["${{ secrets.COMETAPI_KEY }}"]:
-        raise CheckError("COMETAPI_KEY must appear only in the exact-release live-smoke job")
+    if _secret_references(workflow) != [
+        "${{ secrets.COMETAPI_KEY }}",
+        "${{ secrets.COMETAPI_KEY }}",
+    ]:
+        raise CheckError(
+            "COMETAPI_KEY must appear only in the exact-release credential preflight and test"
+        )
 
 
 def workflow_paths(directory: Path) -> list[Path]:
@@ -1534,7 +1714,13 @@ def check_workflow_inventory(directory: Path) -> list[Path]:
             "workflow directory and .github parent must be real repository directories"
         )
     paths = workflow_paths(directory)
-    expected = {"ci.yml", "live-smoke.yml", "publish.yml", "release-please.yml"}
+    expected = {
+        "ci.yml",
+        "live-smoke.yml",
+        "publish.yml",
+        "release-please.yml",
+        "release-recovery.yml",
+    }
     actual = {path.name for path in paths}
     if actual != expected:
         missing = ", ".join(sorted(expected - actual)) or "none"
@@ -1567,6 +1753,11 @@ def main() -> int:
         default=PROJECT_ROOT / ".github" / "workflows" / "release-please.yml",
     )
     parser.add_argument(
+        "--release-recovery-workflow",
+        type=Path,
+        default=PROJECT_ROOT / ".github" / "workflows" / "release-recovery.yml",
+    )
+    parser.add_argument(
         "--ci-workflow",
         type=Path,
         default=PROJECT_ROOT / ".github" / "workflows" / "ci.yml",
@@ -1588,6 +1779,7 @@ def main() -> int:
         args.live_smoke_workflow.read_text(encoding="utf-8"),
     )
     check_release_please_workflow(args.release_please_workflow.read_text(encoding="utf-8"))
+    check_release_recovery_workflow(args.release_recovery_workflow.read_text(encoding="utf-8"))
     check_release_please_config(
         args.release_please_config.read_text(encoding="utf-8"),
         args.release_please_manifest.read_text(encoding="utf-8"),

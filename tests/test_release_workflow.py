@@ -15,6 +15,7 @@ from scripts.check_workflows import (
     check_publish_workflow,
     check_release_please_config,
     check_release_please_workflow,
+    check_release_recovery_workflow,
     check_workflow_inventory,
     workflow_paths,
 )
@@ -25,6 +26,7 @@ CI_WORKFLOW = PROJECT_ROOT / ".github" / "workflows" / "ci.yml"
 PUBLISH_WORKFLOW = PROJECT_ROOT / ".github" / "workflows" / "publish.yml"
 LIVE_SMOKE_WORKFLOW = PROJECT_ROOT / ".github" / "workflows" / "live-smoke.yml"
 RELEASE_PLEASE_WORKFLOW = PROJECT_ROOT / ".github" / "workflows" / "release-please.yml"
+RELEASE_RECOVERY_WORKFLOW = PROJECT_ROOT / ".github" / "workflows" / "release-recovery.yml"
 RELEASE_PLEASE_CONFIG = PROJECT_ROOT / "release-please-config.json"
 RELEASE_PLEASE_MANIFEST = PROJECT_ROOT / ".release-please-manifest.json"
 TRUST_SCRIPT = PROJECT_ROOT / "scripts" / "verify_release_trust.sh"
@@ -302,6 +304,15 @@ def _remove_live_model_fallback(text: str) -> str:
     )
 
 
+def _remove_live_credential_preflight(text: str) -> str:
+    start, end = _step(text, "Require the protected live credential")
+    return text[:start] + text[end:]
+
+
+def _allow_publication_rerun(text: str) -> str:
+    return text.replace("    if: github.run_attempt == 1\n", "    if: always()\n", 1)
+
+
 PUBLICATION_BYPASSES: list[Callable[[str], str]] = [
     _bypass_immutable_event,
     _remove_live_dependency,
@@ -327,6 +338,8 @@ PUBLICATION_BYPASSES: list[Callable[[str], str]] = [
     _quote_publish_if_key,
     _quote_build_write_permission,
     _remove_live_model_fallback,
+    _remove_live_credential_preflight,
+    _allow_publication_rerun,
 ]
 
 
@@ -436,6 +449,8 @@ jobs:
         "quoted-publish-if-bypass",
         "quoted-build-write-bypass",
         "empty-live-model-bypass",
+        "missing-live-credential-preflight",
+        "publication-rerun-bypass",
     ],
 )
 def test_semantic_contract_rejects_publication_bypasses(
@@ -757,6 +772,84 @@ def test_semantic_contract_rejects_unreviewed_monitoring_job_controls(control: s
 
 def test_current_release_please_workflow_is_disabled_by_default() -> None:
     check_release_please_workflow(RELEASE_PLEASE_WORKFLOW.read_text(encoding="utf-8"))
+
+
+def test_current_release_recovery_workflow_is_disabled_by_default() -> None:
+    check_release_recovery_workflow(RELEASE_RECOVERY_WORKFLOW.read_text(encoding="utf-8"))
+
+
+@pytest.mark.parametrize(
+    ("needle", "replacement", "message"),
+    [
+        (
+            "github.run_attempt == 1 &&",
+            "github.run_attempt >= 1 &&",
+            "first workflow attempt",
+        ),
+        (
+            "github.ref == format('refs/heads/{0}', github.event.repository.default_branch)",
+            "github.event_name == 'workflow_dispatch'",
+            "protected default branch",
+        ),
+        (
+            "vars.RELEASE_RECOVERY_TAG == inputs.release-tag",
+            "inputs.release-tag != ''",
+            "exact authorized release tag",
+        ),
+        (
+            "vars.RELEASE_RECOVERY_SHA == inputs.release-sha",
+            "inputs.release-sha != ''",
+            "exact authorized release tag and commit",
+        ),
+        (
+            "    if: github.run_attempt == 1\n    permissions:",
+            "    if: always()\n    permissions:",
+            "first workflow attempt",
+        ),
+        (
+            "release-tag: ${{ needs.verify-recovery.outputs.release-tag }}",
+            "release-tag: ${{ inputs.release-tag }}",
+            "verified outputs",
+        ),
+        (
+            "secrets: inherit",
+            "secrets:\n      COMETAPI_KEY: ${{ secrets.COMETAPI_KEY }}",
+            "inherit environment secrets",
+        ),
+        (
+            'test "$(jq -r .immutable <<<"$release")" = "true"',
+            'test -n "$release"',
+            "run exactly",
+        ),
+    ],
+    ids=[
+        "rerun-verification",
+        "arbitrary-branch",
+        "unbound-tag",
+        "unbound-sha",
+        "rerun-publication",
+        "unverified-input",
+        "explicit-secret",
+        "immutable-release-bypass",
+    ],
+)
+def test_release_recovery_rejects_trust_bypasses(
+    needle: str, replacement: str, message: str
+) -> None:
+    text = RELEASE_RECOVERY_WORKFLOW.read_text(encoding="utf-8")
+    assert needle in text
+    with pytest.raises(RuntimeError, match=message):
+        check_release_recovery_workflow(text.replace(needle, replacement, 1))
+
+
+def test_release_please_publish_caller_requires_secret_inheritance() -> None:
+    text = RELEASE_PLEASE_WORKFLOW.read_text(encoding="utf-8").replace(
+        "    secrets: inherit\n",
+        "    secrets:\n      COMETAPI_KEY: ${{ secrets.COMETAPI_KEY }}\n",
+        1,
+    )
+    with pytest.raises(RuntimeError, match="inherit environment secrets"):
+        check_release_please_workflow(text)
 
 
 def test_current_release_please_config_has_reviewed_stable_cleanup() -> None:
@@ -1257,13 +1350,20 @@ def test_workflow_path_discovery_includes_yaml_and_yml(tmp_path: Path) -> None:
 
 
 def test_workflow_inventory_rejects_unreviewed_workflow(tmp_path: Path) -> None:
-    for name in ("ci.yml", "live-smoke.yml", "publish.yml", "release-please.yml"):
+    for name in (
+        "ci.yml",
+        "live-smoke.yml",
+        "publish.yml",
+        "release-please.yml",
+        "release-recovery.yml",
+    ):
         (tmp_path / name).write_text("name: reviewed\n", encoding="utf-8")
     assert {path.name for path in check_workflow_inventory(tmp_path)} == {
         "ci.yml",
         "live-smoke.yml",
         "publish.yml",
         "release-please.yml",
+        "release-recovery.yml",
     }
 
     (tmp_path / "rogue.yaml").write_text(
@@ -1277,7 +1377,12 @@ def test_workflow_inventory_rejects_unreviewed_workflow(tmp_path: Path) -> None:
 def test_workflow_inventory_rejects_expected_name_symlink(tmp_path: Path) -> None:
     workflow_root = tmp_path / "workflows"
     workflow_root.mkdir()
-    for name in ("live-smoke.yml", "publish.yml", "release-please.yml"):
+    for name in (
+        "live-smoke.yml",
+        "publish.yml",
+        "release-please.yml",
+        "release-recovery.yml",
+    ):
         (workflow_root / name).write_text("name: reviewed\n", encoding="utf-8")
     outside = tmp_path / "outside-ci.yml"
     outside.write_text("name: outside\n", encoding="utf-8")
@@ -1292,7 +1397,13 @@ def test_workflow_inventory_rejects_linked_directory(tmp_path: Path, linked_comp
     outside = tmp_path / "outside"
     outside_workflows = outside / "workflows"
     outside_workflows.mkdir(parents=True)
-    for name in ("ci.yml", "live-smoke.yml", "publish.yml", "release-please.yml"):
+    for name in (
+        "ci.yml",
+        "live-smoke.yml",
+        "publish.yml",
+        "release-please.yml",
+        "release-recovery.yml",
+    ):
         (outside_workflows / name).write_text("name: outside\n", encoding="utf-8")
 
     repository = tmp_path / "repository"

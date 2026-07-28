@@ -50,7 +50,10 @@ configuration later used an explicit `last-release-sha` bridge to establish the
 recovery alpha as the previous-release boundary. Maintainers enabled the
 repository variable only to start the stable release sequence, and human
 finalization removed the bridge. An unset or non-true variable prevents the
-corresponding gated job from executing.
+corresponding gated job from executing. `RELEASE_RECOVERY_TAG` and
+`RELEASE_RECOVERY_SHA` are absent by default and may exist only during an
+explicitly authorized recovery of that exact existing immutable release
+identity.
 The release live-model configuration resolves an unset or empty
 `COMETAPI_LIVE_MODEL` to `gpt-5.4`.
 
@@ -191,6 +194,12 @@ violations in one run and still returns non-zero when any violation exists.
   the GitHub API until that exact tag and commit are independently reported as
   immutable, then invokes the protected publication chain directly;
   workflow-token release events do not trigger a second workflow run.
+- `release-recovery.yml` is the only manual publication path. It requires an
+  exact immutable tag and commit, the protected default branch, and the
+  temporary `RELEASE_RECOVERY_TAG` and `RELEASE_RECOVERY_SHA` identity opt-in
+  before it calls the same protected publication chain. Delete both variables
+  immediately after success or failure. The workflow and reusable publication
+  jobs reject every rerun attempt.
 - `publish.yml` is called only with the independently verified immutable tag,
   commit, and default branch. It resolves the tag to the checked-out commit,
   fetches the protected default branch, and rejects a commit that is not
@@ -205,9 +214,14 @@ violations in one run and still returns non-zero when any violation exists.
 Third-party Actions are pinned to full commit SHAs. Workflow permissions are
 read-only by default. The reusable publication caller and protected publishing
 job declare `id-token: write`; the caller passes the maximum permission and
-only the publishing job requests the OIDC token.
+only the publishing job requests the OIDC token. Every repository-local caller
+of `publish.yml` declares `secrets: inherit`; without it, GitHub-hosted runners
+can silently resolve the called job's environment secret as empty. The semantic
+workflow checker enforces inheritance and the live job checks the credential
+before making a request.
 Publishing uses a protected `pypi` environment and concurrency control.
-Arbitrary-branch and manual publication are forbidden.
+Arbitrary-branch publication is forbidden. Manual publication is limited to the
+reviewed immutable-release recovery described below.
 
 ## Alpha release checklist (completed)
 
@@ -316,3 +330,41 @@ project metadata, lock file, and changelog must remain at the exact generated
 `0.1.0` version. If GitHub requires approval before checks run on the automated
 pull request, approve only that reviewed workflow execution and wait for every
 blocking check.
+
+## Immutable release publication recovery
+
+Use recovery only when an immutable GitHub release exists, its protected
+publication chain stopped before PyPI accepted the version, and a reviewed fix
+has already reached `main`. Do not create another tag or release, change the
+existing release, bypass live smoke, or publish an artifact retained from the
+failed run.
+
+Before dispatch, verify that the exact PyPI version is absent, the release is
+immutable and non-draft, its tag resolves to the supplied commit, that commit is
+reachable from protected `main`, and the repository-local caller uses
+`secrets: inherit`. Then enable only the one-time recovery gate and dispatch the
+workflow from `main` with the exact immutable identity:
+
+```bash
+gh variable set RELEASE_RECOVERY_TAG --body '<exact-tag>'
+gh variable set RELEASE_RECOVERY_SHA --body '<exact-commit>'
+gh workflow run release-recovery.yml --ref main \
+  -f release-tag='<exact-tag>' \
+  -f release-sha='<exact-commit>'
+```
+
+The run must rebuild and verify the exact tag, pass the credential preflight and
+bounded four-request live suite, wait for protected `pypi` approval, publish by
+OIDC, verify provenance and public digests, and pass the registry clean-install
+smoke. Delete the gate immediately after the run succeeds or stops:
+
+```bash
+gh variable delete RELEASE_RECOVERY_TAG
+gh variable delete RELEASE_RECOVERY_SHA
+```
+
+A recovery failure stops the sequence. Diagnose and land a separate reviewed
+fix before requesting another explicit recovery authorization; do not rerun a
+failed job merely to obtain a different result. The workflow enforces this by
+allowing only `github.run_attempt == 1` at both the recovery and publication
+boundaries.
