@@ -3,8 +3,8 @@
 Status: `0.1.0a1` released; `0.1.0` recovery in progress
 Last updated: 2026-07-28
 Repository contract: this roadmap is self-contained.
-Current gate: land and remotely verify the single-workflow stable publisher,
-then complete the explicitly authorized `0.1.0` recovery.
+Current gate: land and remotely verify the selector-descendant control-flow
+fix, then complete a newly authorized `0.1.0` recovery.
 
 ## Product target
 
@@ -463,6 +463,18 @@ existing Trusted Publisher intact. Stable remains unreleased until this change
 passes pull-request CI, reaches `main`, and a newly authorized recovery passes
 OIDC, provenance, and registry gates.
 
+[Recovery run 30357111315](https://github.com/cometapi-dev/cometapi-python/actions/runs/30357111315)
+verified the exact immutable release and passed the shared selector from the
+correct top-level workflow identity. GitHub nevertheless propagated the
+intentionally skipped Release Please ancestry to the selector descendants, so
+build, live smoke, publication, and registry verification were all skipped and
+the overall run incorrectly reported success. No live request or registry side
+effect occurred, and PyPI still returned 404 for `cometapi==0.1.0`. The
+permanent control-flow fix makes every selector descendant explicitly evaluate
+skipped ancestry while rejecting cancellation and reruns and requiring every
+direct dependency to succeed. Another recovery remains blocked until that fix
+passes review and reaches `main`, followed by fresh explicit authorization.
+
 ## `0.2.0`: Provider-native text adapters
 
 Planned scope:
@@ -515,10 +527,13 @@ attempt a request with an empty model. Immutable-release recovery additionally
 requires `RELEASE_RECOVERY_TAG` and `RELEASE_RECOVERY_SHA` to equal the exact
 dispatch inputs; keep both variables absent except for one explicitly authorized
 identity and delete them immediately after success or failure. Recovery and
-publication jobs reject rerun attempts. The PyPI action must execute directly in
-top-level `publish.yml`; workflow inventory, semantic checks, and mutation tests
-must reject reusable publishing, split publisher identities, additional OIDC
-consumers, or downstream use of raw dispatch inputs.
+publication jobs reject rerun attempts. Every job downstream of the mutually
+exclusive selector must explicitly evaluate skipped ancestry, reject
+cancellation, and require every direct dependency's result to equal `success`.
+The PyPI action must execute directly in top-level `publish.yml`; workflow
+inventory, semantic checks, and mutation tests must reject reusable publishing,
+split publisher identities, additional OIDC consumers, downstream use of raw
+dispatch inputs, or weakened selector-descendant conditions.
 
 ## Maintenance cadence
 

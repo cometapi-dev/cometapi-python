@@ -13,6 +13,9 @@ automation.
 - Execute PyPI Trusted Publishing directly in the single top-level
   `publish.yml` identity, and add regression gates that reject reusable
   publication, split attestation identities, and unverified recovery inputs.
+- Prevent GitHub's skipped-ancestry propagation from silently skipping the
+  release chain after a successful selector, while continuing to reject
+  cancellation, reruns, and every non-successful direct dependency.
 
 ## [0.1.0] - 2026-07-28
 

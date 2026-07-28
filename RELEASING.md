@@ -210,6 +210,11 @@ violations in one run and still returns non-zero when any violation exists.
   against the exact pre-publication digests and Trusted Publisher provenance
   before a clean install explicitly from `https://pypi.org/simple/`. An unset
   or empty live-model repository variable resolves to `gpt-5.4`.
+  Because the unused Release Please or recovery path is intentionally skipped,
+  every job after the selector must use `always() && !cancelled()`, reject
+  reruns, and require each direct dependency's result to equal `success`. This
+  makes GitHub evaluate the successful path without accepting cancellation,
+  failure, or a skipped direct dependency.
 
 Third-party Actions are pinned to full commit SHAs. Workflow permissions are
 read-only by default, and only the protected publishing job declares
@@ -368,7 +373,9 @@ A recovery failure stops the sequence. Diagnose and land a separate reviewed
 fix before requesting another explicit recovery authorization; do not rerun a
 failed job merely to obtain a different result. The workflow enforces this by
 allowing only `github.run_attempt == 1` for verification, selection, build,
-live smoke, publication, and registry verification.
+live smoke, publication, and registry verification. Every selector descendant
+also evaluates skipped ancestry with `always() && !cancelled()` and requires
+each direct dependency's result to equal `success`.
 
 [Recovery run 30353657522](https://github.com/cometapi-dev/cometapi-python/actions/runs/30353657522)
 passed immutable identity verification, the exact artifact rebuild, credential
@@ -378,3 +385,14 @@ caller produced an attestation Build Config URI for `release-recovery.yml`
 while the Trusted Publisher expected `publish.yml`. The permanent correction
 keeps attestations enabled and moves the PyPI action into the single top-level
 `publish.yml`; it does not weaken or reconfigure the Trusted Publisher.
+
+[Recovery run 30357111315](https://github.com/cometapi-dev/cometapi-python/actions/runs/30357111315)
+then passed immutable recovery verification and the shared release selector,
+but GitHub propagated the intentionally skipped Release Please ancestry to the
+plain downstream job conditions. Build, live smoke, publication, and registry
+verification were all skipped while the overall workflow incorrectly reported
+success. No live request or PyPI upload occurred, and `cometapi==0.1.0` remained
+absent. The permanent correction explicitly evaluates every selector descendant
+and requires all of its direct dependencies to succeed. Do not dispatch another
+recovery until that fix reaches `main` and a new recovery is explicitly
+authorized.

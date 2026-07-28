@@ -76,12 +76,28 @@ RECOVERY_JOB_CONDITION = (
     "vars.RELEASE_RECOVERY_SHA == inputs.release-sha"
 )
 SELECT_RELEASE_CONDITION = (
-    "always() && github.run_attempt == 1 && "
+    "always() && !cancelled() && github.run_attempt == 1 && "
     "( ( github.event_name == 'push' && needs.release-please.result == 'success' && "
     "needs.release-please.outputs.release-created == 'true' && "
     "needs.release-please.outputs.release-verified == 'true' ) || "
     "( github.event_name == 'workflow_dispatch' && "
     "needs.verify-recovery.result == 'success' ) )"
+)
+BUILD_JOB_CONDITION = (
+    "always() && !cancelled() && github.run_attempt == 1 && "
+    "needs.select-release.result == 'success'"
+)
+RELEASE_LIVE_JOB_CONDITION = (
+    "always() && !cancelled() && github.run_attempt == 1 && needs.build.result == 'success'"
+)
+PUBLISH_JOB_CONDITION = (
+    "always() && !cancelled() && github.run_attempt == 1 && "
+    "needs.build.result == 'success' && "
+    "needs.release-live-smoke.result == 'success'"
+)
+REGISTRY_JOB_CONDITION = (
+    "always() && !cancelled() && github.run_attempt == 1 && "
+    "needs.build.result == 'success' && needs.publish.result == 'success'"
 )
 SELECT_RELEASE_COMMAND = """\
 case "$EVENT_NAME" in
@@ -1066,7 +1082,10 @@ def check_publish_workflow(text: str, live_smoke_text: str) -> None:
         "steps.release.outputs.release_created == 'true'",
         RECOVERY_JOB_CONDITION,
         SELECT_RELEASE_CONDITION,
-        *(["github.run_attempt == 1"] * 4),
+        BUILD_JOB_CONDITION,
+        RELEASE_LIVE_JOB_CONDITION,
+        PUBLISH_JOB_CONDITION,
+        REGISTRY_JOB_CONDITION,
     ]
     if sorted(conditions) != sorted(expected_conditions):
         raise CheckError(
@@ -1224,6 +1243,12 @@ def check_publish_workflow(text: str, live_smoke_text: str) -> None:
             "steps",
         },
     }
+    expected_release_conditions = {
+        "build": BUILD_JOB_CONDITION,
+        "release-live-smoke": RELEASE_LIVE_JOB_CONDITION,
+        "publish": PUBLISH_JOB_CONDITION,
+        "verify-registry": REGISTRY_JOB_CONDITION,
+    }
     for name, job in (
         ("build", build),
         ("release-live-smoke", release_live),
@@ -1231,8 +1256,12 @@ def check_publish_workflow(text: str, live_smoke_text: str) -> None:
         ("verify-registry", registry),
     ):
         _require_exact_keys(job, expected_release_job_keys[name], f"release {name} job")
-        if job["if"] != "github.run_attempt == 1":
-            raise CheckError(f"release {name} job must run only on the first workflow attempt")
+        condition = " ".join(_scalar(job["if"], f"release {name} condition").split())
+        if condition != expected_release_conditions[name]:
+            raise CheckError(
+                f"release {name} job must evaluate skipped ancestry, reject cancellation "
+                "and reruns, and require every direct dependency to succeed"
+            )
         _require_step_working_directories(
             job,
             ({"Recheck immutable artifact digests": "release-bundle"} if name == "publish" else {}),
