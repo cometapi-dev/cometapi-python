@@ -29,13 +29,14 @@ Project links: [CometAPI](https://www.cometapi.com),
 
 ## Installation
 
-Install the stable release from PyPI with:
+After the protected publication workflow and public-registry verification
+succeed, install the stable release from PyPI with:
 
 ```bash
 python -m pip install 'cometapi==0.1.0'
 ```
 
-See the immutable
+After those gates succeed, the immutable
 [GitHub release](https://github.com/cometapi-dev/cometapi-python/releases/tag/v0.1.0)
 and exact [PyPI release](https://pypi.org/project/cometapi/0.1.0/) for the
 published artifact.

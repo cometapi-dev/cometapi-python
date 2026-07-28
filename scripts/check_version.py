@@ -67,7 +67,7 @@ APPROVED_RECOVERY_TAGS = {
 }
 
 
-def require_canonical_tag(tag: str, project_version: str) -> str:
+def _require_canonical_tag(tag: str, project_version: str) -> str:
     normalized = normalize_version(project_version)
     alpha = re.fullmatch(r"(?P<base>\d+\.\d+\.\d+)a(?P<number>\d+)", normalized)
     expected = (
@@ -310,7 +310,7 @@ def main() -> int:
     if args.expected:
         versions.append(("expected", args.expected))
     if args.tag:
-        versions.append(("tag", require_canonical_tag(args.tag, project)))
+        versions.append(("tag", _require_canonical_tag(args.tag, project)))
     for value in args.artifacts:
         path = Path(value)
         if not path.is_file():
