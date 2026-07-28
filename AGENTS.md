@@ -97,9 +97,9 @@ Post-alpha invariants:
 2. Keep `.github/CODEOWNERS` absent until a real multi-maintainer model exists.
 3. Keep scheduled and manually dispatched live smoke fail-closed behind
    `LIVE_SMOKE_ENABLED=true`, and keep `RELEASE_PLEASE_ENABLED` disabled outside
-   an explicitly authorized release sequence. The stable-readiness
-   configuration establishes the recovery alpha boundary with a reviewed and
-   tested `last-release-sha` bridge.
+   an explicitly authorized release sequence. The reviewed `last-release-sha`
+   bridge was used once to generate the stable release PR and must remain absent
+   after its human finalization.
 4. Treat the recorded public rules, security reporting, immutable releases, and
    protected environments as readiness invariants. Any drift invalidates the
    readiness claim until it is explicitly authorized, restored, and verified.
@@ -265,11 +265,10 @@ committed.
   `v0.1.0-alpha.1+recovery.1`, which maps to package version `0.1.0a1`.
   Later releases must use their ordinary canonical tag spelling.
 - Keep Release Please disabled outside an explicitly authorized release
-  sequence. Its stable-readiness configuration uses the reviewed and tested
-  `last-release-sha` bridge because the recovery tag's build metadata cannot be
-  inferred from the manifest. Remove the one-time bridge and prerelease
-  versioning controls in the human-finalized stable release PR before it is
-  merged.
+  sequence. The stable-readiness configuration used a reviewed and tested
+  `last-release-sha` bridge because the recovery tag's build metadata could not
+  be inferred from the manifest. The human-finalized stable release PR removed
+  that bridge and its prerelease-versioning controls; keep them absent.
 - Keep third-party Actions pinned to full commit SHAs. Grant `id-token: write`
   only to the reusable publication caller and the protected publishing job;
   the caller passes this maximum permission and only the publishing job uses

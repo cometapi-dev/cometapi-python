@@ -46,8 +46,9 @@ Long-lived PyPI tokens are not an accepted publication path. A successful
 upload is incomplete until provenance and a clean public-registry installation
 have been verified.
 
-Third-party GitHub Actions must be pinned to full commit SHAs. Only the
-publishing job may receive `id-token: write`.
+Third-party GitHub Actions must be pinned to full commit SHAs. The reusable
+workflow caller and protected publishing job may declare `id-token: write`, but
+only the publishing job may request the OIDC token.
 
 ## Scope
 

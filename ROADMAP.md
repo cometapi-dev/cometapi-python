@@ -314,9 +314,9 @@ Public Preview readiness evidence on 2026-07-27:
   `LIVE_SMOKE_ENABLED` opt-in was reset to `false` after the run.
 - At this Public Preview checkpoint, no tag, GitHub release, Trusted Publisher,
   PyPI OIDC publication, provenance, or public-registry installation existed.
-  Those later Registry Alpha actions are recorded below. Release Please remains
+  Those later Registry Alpha actions are recorded below. Release Please remained
   disabled until a separately reviewed and tested `last-release-sha` bridge
-  establishes the recovery alpha as its previous-release boundary.
+  established the recovery alpha as its previous-release boundary.
 
 Public Preview remains ready only while:
 
@@ -417,9 +417,9 @@ Accepted release evidence:
   its source-distribution SHA256 is
   `98d86829ef14771e8b7ec180d452c6638289f49c14a39b7207be5c47cb64cde7`.
 - `LIVE_SMOKE_ENABLED=false`. Release Please remains disabled outside an
-  explicitly authorized release sequence; the reviewed stable-readiness
-  configuration now establishes the recovery alpha boundary with
-  `last-release-sha`.
+  explicitly authorized release sequence. The reviewed stable-readiness
+  `last-release-sha` bridge generated the stable release PR and was removed
+  during human finalization.
 
 ## `0.1.0`: OpenAI protocol foundation
 
@@ -480,9 +480,10 @@ successfully in the canonical GitHub repository.
 Scheduled and manually dispatched live smoke must require
 `LIVE_SMOKE_ENABLED=true`; an unset or other value prevents live execution.
 Release Please requires `RELEASE_PLEASE_ENABLED=true` and remains disabled
-outside an explicitly authorized release sequence. Its stable-readiness
-configuration uses the reviewed `last-release-sha` bridge for the recovery
-alpha boundary. Release jobs must resolve an unset or empty
+outside an explicitly authorized release sequence. Its reviewed one-time
+`last-release-sha` bridge established the recovery alpha boundary, generated
+the stable release PR, and was removed during human finalization. Release jobs
+must resolve an unset or empty
 `COMETAPI_LIVE_MODEL` to `gpt-5.4` rather than attempt a request with an empty
 model.
 

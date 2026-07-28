@@ -141,9 +141,10 @@ recovery release uses SemVer build metadata in
 artifact identity: the PyPI version remains `0.1.0a1`.
 
 Release Please remains disabled outside an explicitly authorized release
-sequence. The stable-readiness configuration establishes the recovery commit
-as the previous-release boundary with a tested `last-release-sha` bridge, so
-the one-time build-metadata recovery tag cannot replay earlier history.
+sequence. The stable-readiness configuration used a tested `last-release-sha`
+bridge to establish the recovery commit as the previous-release boundary and
+generate the stable release PR without replaying earlier history. Human
+finalization then removed that one-time bridge.
 
 ## Rejected 0.1 approaches
 
