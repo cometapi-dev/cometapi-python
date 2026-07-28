@@ -153,6 +153,7 @@ jobs:
       - verify-recovery
     if: >-
       always() &&
+      !cancelled() &&
       github.run_attempt == 1 &&
       (
         (
@@ -205,7 +206,11 @@ jobs:
 
   build:
     name: Verify and build the immutable default-branch release
-    if: github.run_attempt == 1
+    if: >-
+      always() &&
+      !cancelled() &&
+      github.run_attempt == 1 &&
+      needs.select-release.result == 'success'
     needs:
       - select-release
     runs-on: ubuntu-latest
@@ -275,7 +280,11 @@ jobs:
 
   release-live-smoke:
     name: Verify the exact release commit against CometAPI
-    if: github.run_attempt == 1
+    if: >-
+      always() &&
+      !cancelled() &&
+      github.run_attempt == 1 &&
+      needs.build.result == 'success'
     needs:
       - build
     concurrency:
@@ -325,7 +334,12 @@ jobs:
 
   publish:
     name: Publish verified artifacts with PyPI OIDC
-    if: github.run_attempt == 1
+    if: >-
+      always() &&
+      !cancelled() &&
+      github.run_attempt == 1 &&
+      needs.build.result == 'success' &&
+      needs.release-live-smoke.result == 'success'
     needs:
       - build
       - release-live-smoke
@@ -355,7 +369,12 @@ jobs:
 
   verify-registry:
     name: Verify the public registry artifact
-    if: github.run_attempt == 1
+    if: >-
+      always() &&
+      !cancelled() &&
+      github.run_attempt == 1 &&
+      needs.build.result == 'success' &&
+      needs.publish.result == 'success'
     needs:
       - build
       - publish

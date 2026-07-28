@@ -310,7 +310,30 @@ def _remove_live_credential_preflight(text: str) -> str:
 
 
 def _allow_publication_rerun(text: str) -> str:
-    return text.replace("    if: github.run_attempt == 1\n", "    if: always()\n", 1)
+    build_start = text.index("  build:")
+    return text[:build_start] + text[build_start:].replace(
+        "      github.run_attempt == 1 &&\n",
+        "      github.run_attempt >= 1 &&\n",
+        1,
+    )
+
+
+def _allow_cancelled_release_job(text: str) -> str:
+    build_start = text.index("  build:")
+    return text[:build_start] + text[build_start:].replace(
+        "      !cancelled() &&\n",
+        "",
+        1,
+    )
+
+
+def _accept_skipped_release_dependency(text: str) -> str:
+    build_start = text.index("  build:")
+    return text[:build_start] + text[build_start:].replace(
+        "needs.select-release.result == 'success'",
+        "needs.select-release.result != 'failure'",
+        1,
+    )
 
 
 def _remove_release_selector_dependency(text: str) -> str:
@@ -362,6 +385,8 @@ PUBLICATION_BYPASSES: list[Callable[[str], str]] = [
     _remove_live_model_fallback,
     _remove_live_credential_preflight,
     _allow_publication_rerun,
+    _allow_cancelled_release_job,
+    _accept_skipped_release_dependency,
     _remove_release_selector_dependency,
     _use_unverified_release_input,
     _disable_publish_attestations,
@@ -476,6 +501,8 @@ jobs:
         "empty-live-model-bypass",
         "missing-live-credential-preflight",
         "publication-rerun-bypass",
+        "cancelled-release-job-bypass",
+        "skipped-release-dependency-bypass",
         "release-selector-dependency-bypass",
         "unverified-release-input-bypass",
         "disabled-publish-attestations-bypass",
@@ -876,8 +903,8 @@ def test_publisher_rejects_reusable_workflow_call_identity() -> None:
     ("needle", "replacement", "message"),
     [
         (
-            "always() &&\n      github.run_attempt == 1",
-            "github.run_attempt == 1",
+            "always() &&\n      !cancelled() &&\n      github.run_attempt == 1",
+            "!cancelled() &&\n      github.run_attempt == 1",
             "successfully verified path",
         ),
         (

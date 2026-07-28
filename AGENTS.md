@@ -118,6 +118,12 @@ Post-alpha invariants:
    attestation's Build Config URI to match the workflow identity used for the
    Trusted Publisher exchange. The workflow inventory and semantic tests must
    fail if this single-publisher boundary changes.
+8. Every release job downstream of the mutually exclusive release selector
+   must use `always() && !cancelled()` so GitHub evaluates it after the unused
+   release path is skipped, must reject workflow reruns, and must require every
+   direct dependency's `result` to equal `success`. A skipped, cancelled,
+   failed, or missing dependency must never make build, live smoke,
+   publication, or registry verification eligible.
 
 ## Repository independence
 
@@ -291,7 +297,9 @@ committed.
   `COMETAPI_KEY` scoped only to the protected live credential preflight and
   test. The semantic checker must reject reusable publication, split workflow
   identities, additional OIDC consumers, and raw dispatch inputs downstream of
-  the verified release selector.
+  the verified release selector. Every selector descendant must explicitly
+  evaluate skipped ancestry, reject cancellation and reruns, and require each
+  direct dependency to succeed.
 - Keep README, roadmap, compatibility matrix, examples, and changelog aligned
   with shipped behavior. Use currently supported model IDs.
 - All repository documentation is written in English.

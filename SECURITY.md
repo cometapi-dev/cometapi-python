@@ -54,6 +54,10 @@ the protected publishing job may declare `id-token: write`. The protected live
 job may reference `COMETAPI_KEY` only in its credential preflight and live-test
 steps. Recovery verification, release selection, and downstream publication
 jobs must reject workflow reruns so an old authorization cannot be replayed.
+Every job downstream of the mutually exclusive selector must explicitly
+evaluate skipped ancestry, reject cancellation, and require every direct
+dependency to succeed; skipped or failed release work must never be represented
+as an eligible publication path.
 
 ## Scope
 

@@ -153,6 +153,15 @@ checks its credential before checkout or any request. `scripts/check_workflows.p
 rejects split or reusable publisher identities, unverified selector inputs,
 additional OIDC consumers, and missing first-attempt guards.
 
+The Release Please and recovery paths are mutually exclusive, so one selector
+dependency is intentionally skipped on every run. GitHub propagates that
+skipped ancestry to later jobs even after the selector succeeds unless each
+selector descendant explicitly asks to be evaluated. Build, live smoke,
+publication, and registry verification therefore use `always() && !cancelled()`,
+reject every rerun, and require every direct dependency's result to equal
+`success`. This crosses only the unused branch's skipped ancestry; cancellation,
+failure, a skipped direct dependency, or a missing result remains fail-closed.
+
 The initial alpha has one release-identity exception. GitHub's immutable
 release tombstone permanently reserves `v0.1.0-alpha.1`, so the reviewed
 recovery release uses SemVer build metadata in
