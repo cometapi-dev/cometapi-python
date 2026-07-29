@@ -1017,7 +1017,10 @@ def test_release_please_config_accepts_stable_maintenance_cleanup(version: str) 
     )
 
 
-@pytest.mark.parametrize("version", ["0.1.01", "0.1.1-alpha.1", "0.2.0", "1.0.0"])
+@pytest.mark.parametrize(
+    "version",
+    ["0.1.01", "0.1.1-alpha.1", "0.1.1\u0662", "0.1.1\uff12", "0.2.0", "1.0.0"],
+)
 def test_release_please_config_rejects_versions_outside_stable_maintenance(
     version: str,
 ) -> None:

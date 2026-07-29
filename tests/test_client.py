@@ -46,7 +46,7 @@ def test_missing_key_raises_official_error_without_secret(
 
 
 @pytest.mark.parametrize("client_type", [CometAPI, AsyncCometAPI])
-@pytest.mark.parametrize("api_key", ["", "   "])
+@pytest.mark.parametrize("api_key", ["", "   ", "\ufeff", " \ufeff\t"])
 def test_explicit_blank_key_does_not_fall_back_to_environment(
     client_type: type[CometAPI] | type[AsyncCometAPI],
     api_key: str,
@@ -61,11 +61,13 @@ def test_explicit_blank_key_does_not_fall_back_to_environment(
 
 
 @pytest.mark.parametrize("client_type", [CometAPI, AsyncCometAPI])
+@pytest.mark.parametrize("environment_key", [" \t ", "\ufeff", " \ufeff\t"])
 def test_whitespace_environment_key_is_treated_as_missing(
     client_type: type[CometAPI] | type[AsyncCometAPI],
+    environment_key: str,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    monkeypatch.setenv("COMETAPI_KEY", " \t ")
+    monkeypatch.setenv("COMETAPI_KEY", environment_key)
     monkeypatch.setenv("OPENAI_API_KEY", "upstream-environment-key")
 
     with pytest.raises(OpenAIError) as caught:
@@ -93,7 +95,11 @@ def test_explicit_sync_key_is_trimmed() -> None:
     router = ContractRouter()
     http_client = sync_http_client(router)
 
-    with CometAPI(api_key=f"  {API_KEY}\t", base_url=BASE_URL, http_client=http_client) as client:
+    with CometAPI(
+        api_key=f" \ufeff{API_KEY}\ufeff\t",
+        base_url=BASE_URL,
+        http_client=http_client,
+    ) as client:
         client.models.list()
 
     assert router.requests[0].headers["authorization"] == f"Bearer {API_KEY}"
@@ -123,7 +129,7 @@ async def test_explicit_async_key_is_trimmed() -> None:
     http_client = async_http_client(router)
 
     async with AsyncCometAPI(
-        api_key=f"  {API_KEY}\t",
+        api_key=f" \ufeff{API_KEY}\ufeff\t",
         base_url=BASE_URL,
         http_client=http_client,
     ) as client:
@@ -171,7 +177,7 @@ def test_explicit_base_url_takes_precedence_over_environment(
 
 
 @pytest.mark.parametrize("client_type", [CometAPI, AsyncCometAPI])
-@pytest.mark.parametrize("base_url", ["", "   "])
+@pytest.mark.parametrize("base_url", ["", "   ", "\ufeff", " \ufeff\t"])
 def test_explicit_blank_base_url_does_not_fall_back_to_environment(
     client_type: type[CometAPI] | type[AsyncCometAPI],
     base_url: str,
@@ -184,7 +190,7 @@ def test_explicit_blank_base_url_does_not_fall_back_to_environment(
 
 
 def test_explicit_sync_string_base_url_is_trimmed() -> None:
-    client = CometAPI(api_key=API_KEY, base_url=f"  {BASE_URL}\t")
+    client = CometAPI(api_key=API_KEY, base_url=f" \ufeff{BASE_URL}\ufeff\t")
     try:
         assert str(client.base_url) == f"{BASE_URL}/"
     finally:
@@ -248,10 +254,12 @@ def test_default_base_url_is_used_when_no_override_exists(
         client.close()
 
 
+@pytest.mark.parametrize("environment_url", [" \t ", "\ufeff", " \ufeff\t"])
 def test_whitespace_environment_base_url_uses_cometapi_default(
+    environment_url: str,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    monkeypatch.setenv("COMETAPI_BASE_URL", " \t ")
+    monkeypatch.setenv("COMETAPI_BASE_URL", environment_url)
     monkeypatch.setenv("OPENAI_BASE_URL", "https://upstream.example.test/v1")
 
     client = CometAPI(api_key=API_KEY)
@@ -262,10 +270,12 @@ def test_whitespace_environment_base_url_uses_cometapi_default(
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize("environment_url", [" \t ", "\ufeff", " \ufeff\t"])
 async def test_async_whitespace_environment_base_url_uses_cometapi_default(
+    environment_url: str,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    monkeypatch.setenv("COMETAPI_BASE_URL", " \t ")
+    monkeypatch.setenv("COMETAPI_BASE_URL", environment_url)
     monkeypatch.setenv("OPENAI_BASE_URL", "https://upstream.example.test/v1")
 
     client = AsyncCometAPI(api_key=API_KEY)
