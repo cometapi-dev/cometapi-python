@@ -61,6 +61,12 @@ variable, then the default:
 | `api_key` | `COMETAPI_KEY` | Required |
 | `base_url` | `COMETAPI_BASE_URL` | `https://api.cometapi.com/v1` |
 
+Leading and trailing whitespace is removed from string API keys and base URLs.
+An explicitly blank string is invalid and never falls back to the environment
+or default. A blank `COMETAPI_KEY` is treated as missing, while a blank
+`COMETAPI_BASE_URL` uses the default CometAPI URL. Callable API keys and
+`httpx.URL` values retain their official OpenAI behavior.
+
 ## Usage
 
 ### Chat Completions
@@ -138,7 +144,9 @@ The constructor exposes a named, typed option set: `api_key`, `admin_api_key`,
 that documented custom HTTP client path. OpenAI provider routing and workload
 identity are deliberately excluded because they replace CometAPI routing or
 authentication; private underscore-prefixed OpenAI controls and arbitrary
-keywords are rejected.
+keywords are rejected. Inherited `copy` and `with_options` helpers are not part
+of the supported 0.1 surface and cannot be used to introduce those excluded
+routing or authentication options.
 
 ## Direct OpenAI interoperability
 

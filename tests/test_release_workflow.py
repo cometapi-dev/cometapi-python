@@ -1002,18 +1002,33 @@ def test_release_please_config_rejects_alpha_type_and_extra_updaters() -> None:
 
 
 def test_release_please_config_rejects_manifest_drift() -> None:
-    with pytest.raises(RuntimeError, match="reviewed bridge or stable version"):
+    with pytest.raises(RuntimeError, match=r"reviewed bridge or a stable 0\.1\.x version"):
         check_release_please_config(
             RELEASE_PLEASE_CONFIG.read_text(encoding="utf-8"),
             '{".": "0.1.0-alpha.2"}\n',
         )
 
 
-def test_release_please_config_accepts_exact_stable_cleanup() -> None:
+@pytest.mark.parametrize("version", ["0.1.0", "0.1.1", "0.1.42"])
+def test_release_please_config_accepts_stable_maintenance_cleanup(version: str) -> None:
     check_release_please_config(
         RELEASE_PLEASE_CONFIG.read_text(encoding="utf-8"),
-        '{".": "0.1.0"}\n',
+        f'{{".": "{version}"}}\n',
     )
+
+
+@pytest.mark.parametrize(
+    "version",
+    ["0.1.01", "0.1.1-alpha.1", "0.1.1\u0662", "0.1.1\uff12", "0.2.0", "1.0.0"],
+)
+def test_release_please_config_rejects_versions_outside_stable_maintenance(
+    version: str,
+) -> None:
+    with pytest.raises(RuntimeError, match=r"stable 0\.1\.x"):
+        check_release_please_config(
+            RELEASE_PLEASE_CONFIG.read_text(encoding="utf-8"),
+            f'{{".": "{version}"}}\n',
+        )
 
 
 def test_release_please_config_rejects_stable_manifest_with_bridge() -> None:

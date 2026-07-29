@@ -21,7 +21,7 @@ RELEASE_PLEASE_BASELINE_SHA = "31b68904141489ca04932edbf305ccf88af09372"
 RELEASE_PLEASE_LOCK_JSONPATH = "$.package[?(@.name.value == 'cometapi')].version"
 RELEASE_PLEASE_ACTION_SHA = "5c625bfb5d1ff62eadeeb3772007f7f66fdcf071"
 RELEASE_PLEASE_BRIDGE_VERSION = "0.1.0-alpha.1"
-RELEASE_PLEASE_STABLE_VERSION = "0.1.0"
+RELEASE_PLEASE_STABLE_VERSION_PATTERN = re.compile(r"0\.1\.(?:0|[1-9][0-9]*)")
 RELEASE_PLEASE_VERIFY_COMMAND = """\
 test -n "$EXPECTED_TAG"
 test -n "$EXPECTED_SHA"
@@ -953,7 +953,7 @@ def check_release_recovery_workflow(text: str) -> None:
 
 
 def check_release_please_config(text: str, manifest_text: str) -> None:
-    """Require either the reviewed bridge or its exact stable cleanup state."""
+    """Require either the reviewed bridge or a stable 0.1.x cleanup state."""
     try:
         value = cast(object, json.loads(text))
     except json.JSONDecodeError as error:
@@ -966,8 +966,14 @@ def check_release_please_config(text: str, manifest_text: str) -> None:
     manifest = _mapping(manifest_value, "Release Please manifest")
     _require_exact_keys(manifest, {"."}, "Release Please manifest")
     version = manifest["."]
-    if version not in {RELEASE_PLEASE_BRIDGE_VERSION, RELEASE_PLEASE_STABLE_VERSION}:
-        raise CheckError("Release Please manifest must be the reviewed bridge or stable version")
+    stable_version = (
+        isinstance(version, str)
+        and RELEASE_PLEASE_STABLE_VERSION_PATTERN.fullmatch(version) is not None
+    )
+    if version != RELEASE_PLEASE_BRIDGE_VERSION and not stable_version:
+        raise CheckError(
+            "Release Please manifest must be the reviewed bridge or a stable 0.1.x version"
+        )
 
     common_keys = {
         "$schema",
@@ -996,7 +1002,7 @@ def check_release_please_config(text: str, manifest_text: str) -> None:
             )
     else:
         _require_exact_keys(config, common_keys, "Release Please stable config")
-        if version != RELEASE_PLEASE_STABLE_VERSION:
+        if not stable_version:
             raise CheckError("Release Please may remove the one-time bridge only after stable")
     if config["release-type"] != "python":
         raise CheckError("Release Please must retain its Python release type")

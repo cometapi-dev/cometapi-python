@@ -15,6 +15,7 @@ from scripts._checks import (
     CANONICAL_SECURITY,
     CANONICAL_SUPPORT,
     CheckError,
+    read_project_version,
 )
 from scripts.check_version import require_public_preview_docs, require_releasable_docs
 
@@ -243,12 +244,13 @@ def test_public_preview_cli_reports_aggregated_violations_and_fails(
 
 
 def test_release_version_cli_accepts_current_stable_tag() -> None:
+    current_version = read_project_version()
     result = subprocess.run(
         [
             sys.executable,
             str(VERSION_SCRIPT),
             "--tag",
-            "v0.1.0",
+            f"v{current_version}",
             "--require-changelog",
         ],
         cwd=PROJECT_ROOT,
@@ -258,7 +260,7 @@ def test_release_version_cli_accepts_current_stable_tag() -> None:
     )
 
     assert result.returncode == 0, result.stderr
-    assert "version agreement passed: 0.1.0" in result.stdout
+    assert f"version agreement passed: {current_version}" in result.stdout
 
 
 def test_release_version_cli_accepts_approved_initial_alpha_recovery_tag(
