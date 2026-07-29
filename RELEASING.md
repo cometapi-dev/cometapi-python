@@ -184,6 +184,21 @@ violations in one run and still returns non-zero when any violation exists.
   per generation, a 30-second request timeout, concurrency one, a ten-minute
   workflow timeout, and stop on the first failure. Every trigger requires
   `LIVE_SMOKE_ENABLED=true`.
+- Before enabling `RELEASE_PLEASE_ENABLED` or merging the change intended to
+  open or update a release PR, verify the effective repository setting:
+
+  ```bash
+  gh api repos/cometapi-dev/cometapi-python/actions/permissions/workflow \
+    | jq -e '.default_workflow_permissions == "read" and .can_approve_pull_request_reviews == true'
+  ```
+
+  The organization policy must permit this repository setting, and the
+  repository setting must remain enabled as a release-automation invariant.
+  It does not grant default write access: workflow permissions remain read-only
+  unless a job explicitly requests a narrower write scope. Do not disable this
+  setting during release cleanup. If the check fails or is unavailable, stop
+  before the default-branch merge; do not rerun the failed release workflow or
+  manually replace its Release Please PR.
 - The `release-please` job in `publish.yml` maintains a human-reviewed version
   and changelog pull request from Conventional Commits after maintainers enable
   the `RELEASE_PLEASE_ENABLED` repository variable. A reviewed one-time
