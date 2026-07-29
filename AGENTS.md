@@ -50,9 +50,10 @@ proves only its own evidence layer. Never invent or mock missing evidence.
 
 ## Current milestone: Stable 0.1
 
-Stable 0.1 is complete: `cometapi==0.1.0` is publicly available and its release
-and registry trust chain has been verified. Do not begin 0.2 provider adapters
-without a separate maintainer request that authorizes that milestone.
+Stable 0.1 is complete: `cometapi==0.1.1` is the latest publicly available
+maintenance release, and its release and registry trust chain has been
+verified. Do not begin 0.2 provider adapters without a separate maintainer
+request that authorizes that milestone.
 
 Private Remote Validation, the sanitized first history, private initialization,
 pre-visibility closeout, public visibility configuration, Public Preview,
@@ -62,7 +63,19 @@ and version-tag rules, Private Vulnerability Reporting, immutable releases,
 protected environments, public default-branch CI, and protected release and
 registry evidence.
 
-The accepted stable release evidence is:
+The accepted `0.1.1` maintenance release evidence is:
+
+| Field | Value |
+| --- | --- |
+| Release commit and tag target | `576e7503a0a8c1103faca5143e4b8d576f8e8b44` |
+| Release tag | `v0.1.1` |
+| GitHub release | `https://github.com/cometapi-dev/cometapi-python/releases/tag/v0.1.1` |
+| Release workflow | `https://github.com/cometapi-dev/cometapi-python/actions/runs/30429821548` |
+| PyPI release | `https://pypi.org/project/cometapi/0.1.1/` |
+| Wheel SHA256 | `27e7904542f82fbbcd60e0de23a4a62c042420b6d004d00286d1f37d2ec4c5e5` |
+| Source SHA256 | `64c7cb87745032703b3374cc562ea00b979416c54908862dbcebd116b2dc44c8` |
+
+The accepted `0.1.0` stable release evidence is:
 
 | Field | Value |
 | --- | --- |
@@ -154,9 +167,9 @@ Post-stable invariants:
 
 ## Product contract
 
-The PyPI package name is `cometapi`. Version `0.1.0` exports only the public
-clients `CometAPI` and `AsyncCometAPI`; `CometClient` and `AsyncCometClient`
-must not exist as aliases.
+The PyPI package name is `cometapi`. The supported 0.1 line exports only the
+public clients `CometAPI` and `AsyncCometAPI`; `CometClient` and
+`AsyncCometClient` must not exist as aliases.
 
 The supported 0.1 operations are:
 

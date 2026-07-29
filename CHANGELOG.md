@@ -6,6 +6,11 @@ automation.
 
 ## [Unreleased]
 
+### Documentation
+
+- Record completed `0.1.1` publication, live, provenance, digest, and
+  public-registry verification evidence.
+
 ## [0.1.1] - 2026-07-29
 
 ### Bug Fixes
