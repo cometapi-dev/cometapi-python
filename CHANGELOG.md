@@ -6,19 +6,21 @@ automation.
 
 ## [Unreleased]
 
-### Fixed
+## [0.1.1] - 2026-07-29
 
+### Bug Fixes
+
+- Harden stable release recovery ([#21](https://github.com/cometapi-dev/cometapi-python/issues/21)) ([2e96574](https://github.com/cometapi-dev/cometapi-python/commit/2e96574ec886ffc875b56587beead9caf27b7a2d)).
+- Preserve PyPI publisher workflow identity ([#22](https://github.com/cometapi-dev/cometapi-python/issues/22)) ([ec420af](https://github.com/cometapi-dev/cometapi-python/commit/ec420af2966ef683660b58acff8d125e916fc623)).
+- Preserve selected release execution ([#23](https://github.com/cometapi-dev/cometapi-python/issues/23)) ([9cd6041](https://github.com/cometapi-dev/cometapi-python/commit/9cd60419130533d6920083e2f4bf295a3b5a4fd7)).
 - Reject explicitly blank API keys and base URLs without fallback, treat blank
   environment keys as missing, and use the default CometAPI URL for a blank
-  `COMETAPI_BASE_URL`.
-- Add a fail-closed immutable-release recovery path with an environment-secret
-  preflight before any live request.
-- Execute PyPI Trusted Publishing directly in the single top-level
-  `publish.yml` identity, and add regression gates that reject reusable
-  publication, split attestation identities, and unverified recovery inputs.
-- Prevent GitHub's skipped-ancestry propagation from silently skipping the
-  release chain after a successful selector, while continuing to reject
-  cancellation, reruns, and every non-successful direct dependency.
+  `COMETAPI_BASE_URL` ([d02b1db](https://github.com/cometapi-dev/cometapi-python/commit/d02b1dba277ac72229b772d29ea1870b569edd88)).
+
+### Documentation
+
+- Record stable release evidence ([#24](https://github.com/cometapi-dev/cometapi-python/issues/24)) ([60a21dd](https://github.com/cometapi-dev/cometapi-python/commit/60a21dd38795270ef40f9163a112de61566ba46d)).
+- Require Release Please permission preflight ([18de120](https://github.com/cometapi-dev/cometapi-python/commit/18de120c79b5a4fde5d125d56238f7f3b28e69bf)).
 
 ### Changed
 
@@ -26,11 +28,6 @@ automation.
   keys and base URLs. Applications that intentionally supplied surrounding
   whitespace must pass the intended credential or URL without that padding;
   callable keys and `httpx.URL` objects are unchanged.
-
-### Documentation
-
-- Record completed stable publication, provenance, digest, and clean-install
-  evidence for `cometapi==0.1.0`.
 
 ## [0.1.0] - 2026-07-28
 
@@ -89,3 +86,4 @@ automation.
 - The provisional single-maintainer `CODEOWNERS` requirement.
 
 [0.1.0]: https://github.com/cometapi-dev/cometapi-python/compare/v0.1.0-alpha.1%2Brecovery.1...v0.1.0
+[0.1.1]: https://github.com/cometapi-dev/cometapi-python/compare/v0.1.0...v0.1.1
