@@ -413,7 +413,7 @@ and requires all of its direct dependencies to succeed. A further recovery
 remained blocked until that fix reached `main` and a new recovery was explicitly
 authorized.
 
-### Completed stable release evidence
+### Completed `0.1.0` stable release evidence
 
 - The immutable non-draft [GitHub release](https://github.com/cometapi-dev/cometapi-python/releases/tag/v0.1.0)
   and lightweight tag `v0.1.0` resolve to release commit
@@ -439,5 +439,50 @@ authorized.
   installed `cometapi==0.1.0`, verified the public imports and version, and
   passed all README mocked-call examples.
 - `RELEASE_RECOVERY_TAG` and `RELEASE_RECOVERY_SHA` were deleted immediately
-  after recovery identity verification. `LIVE_SMOKE_ENABLED=false` is the only
-  remaining release-related repository variable.
+  after recovery identity verification. At that closeout,
+  `LIVE_SMOKE_ENABLED=false` was the only remaining release-related repository
+  variable.
+
+### Completed `0.1.1` maintenance release evidence
+
+- Configuration fix [PR #25](https://github.com/cometapi-dev/cometapi-python/pull/25)
+  passed [pull-request CI run 30419881169](https://github.com/cometapi-dev/cometapi-python/actions/runs/30419881169)
+  and squash-merged as `d02b1dba277ac72229b772d29ea1870b569edd88`.
+- The first
+  [Release Please run 30420057230](https://github.com/cometapi-dev/cometapi-python/actions/runs/30420057230)
+  failed before creating a pull request because the repository had not enabled
+  GitHub Actions pull-request creation. It created no tag, release, live
+  request, or PyPI file. The repository-level permission was restored without
+  changing the read-only default workflow permission, and
+  [PR #26](https://github.com/cometapi-dev/cometapi-python/pull/26)
+  recorded the required preflight as
+  `18de120c79b5a4fde5d125d56238f7f3b28e69bf`.
+- Fresh [Release Please run 30423490399](https://github.com/cometapi-dev/cometapi-python/actions/runs/30423490399)
+  created [release PR #27](https://github.com/cometapi-dev/cometapi-python/pull/27).
+  Its final head `7d24b4079b232c6c5e9b09b3d182ded230840ea8` passed
+  [all required CI in run 30424732041](https://github.com/cometapi-dev/cometapi-python/actions/runs/30424732041),
+  received human owner approval at that exact head, and squash-merged as
+  `576e7503a0a8c1103faca5143e4b8d576f8e8b44`. The release commit passed
+  [default-branch CI run 30429821579](https://github.com/cometapi-dev/cometapi-python/actions/runs/30429821579).
+- First-attempt [release run 30429821548](https://github.com/cometapi-dev/cometapi-python/actions/runs/30429821548)
+  created and verified immutable non-draft release
+  [v0.1.1](https://github.com/cometapi-dev/cometapi-python/releases/tag/v0.1.1)
+  at the exact release commit, rebuilt and clean-installed both artifacts,
+  passed the four-request exact-release live suite, received protected `pypi`
+  approval, published directly from top-level `publish.yml` by OIDC with
+  attestations, and passed public registry verification.
+- The exact [PyPI release](https://pypi.org/project/cometapi/0.1.1/) has wheel
+  SHA256 `27e7904542f82fbbcd60e0de23a4a62c042420b6d004d00286d1f37d2ec4c5e5`
+  and source-distribution SHA256
+  `64c7cb87745032703b3374cc562ea00b979416c54908862dbcebd116b2dc44c8`.
+  Both files match the retained pre-publication digest record. PyPI Integrity
+  API provenance identifies repository `cometapi-dev/cometapi-python`, workflow
+  `publish.yml`, environment `pypi`, release commit `576e7503`, and release
+  [run attempt 1](https://github.com/cometapi-dev/cometapi-python/actions/runs/30429821548/attempts/1).
+- An independent post-workflow verification downloaded both public files,
+  verified both provenance records with `pypi-attestations==0.0.29`, installed
+  `cometapi==0.1.1` from `https://pypi.org/simple/`, verified the public version
+  and imports, and passed supported mocked calls plus all README examples.
+- `RELEASE_PLEASE_ENABLED=false` and `LIVE_SMOKE_ENABLED=false`.
+  `RELEASE_RECOVERY_TAG` and `RELEASE_RECOVERY_SHA` are absent; no recovery tag
+  or recovery workflow was used for `0.1.1`.

@@ -144,6 +144,16 @@ top-level OIDC publication, public digest and provenance comparison, and clean
 registry install all passed. The selector-descendant conditions were therefore
 verified in GitHub's hosted scheduler, not only by local static checks.
 
+The same trust chain completed for maintenance release `0.1.1` in
+[release workflow run 30429821548](https://github.com/cometapi-dev/cometapi-python/actions/runs/30429821548).
+The immutable `v0.1.1` tag resolves to release commit
+`576e7503a0a8c1103faca5143e4b8d576f8e8b44`; exact-release live smoke, direct
+top-level OIDC publication, public digest and provenance comparison, and clean
+registry installation all passed. The public wheel SHA256 is
+`27e7904542f82fbbcd60e0de23a4a62c042420b6d004d00286d1f37d2ec4c5e5`, and the
+source-distribution SHA256 is
+`64c7cb87745032703b3374cc562ea00b979416c54908862dbcebd116b2dc44c8`.
+
 The scheduled/manual default-branch smoke is an operational canary only; it
 does not prove the release commit. `COMETAPI_KEY` is exposed only to the
 protected exact-release live job. OIDC permission is exposed only to the
