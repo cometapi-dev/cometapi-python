@@ -62,9 +62,11 @@ remains upstream-supported.
 
 | Behavior | Contract |
 | --- | --- |
-| API key | Explicit `api_key`, then `COMETAPI_KEY`; required |
-| Base URL | Explicit `base_url`, then `COMETAPI_BASE_URL`, then `https://api.cometapi.com/v1` |
+| API key | Trim explicit/environment strings; explicit blank is invalid, blank `COMETAPI_KEY` is missing; required |
+| Base URL | Trim explicit/environment strings; explicit blank is invalid, blank `COMETAPI_BASE_URL` uses `https://api.cometapi.com/v1` |
+| Callable key and `httpx.URL` | Preserve official deferred-key and URL-object behavior unchanged |
 | OpenAI options | Documented constructor options forwarded unchanged |
+| Inherited copy helpers | Unsupported and fail-closed for provider, workload-identity, and private-option injection |
 | Complete-key disclosure | Forbidden in CometAPI-generated errors and logs |
 
 Applications can configure `openai.OpenAI` or `openai.AsyncOpenAI` directly

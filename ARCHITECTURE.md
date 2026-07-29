@@ -42,8 +42,16 @@ Configuration follows one precedence rule:
 
 `api_key` resolves from `COMETAPI_KEY` and has no default. `base_url` resolves
 from `COMETAPI_BASE_URL` and defaults to
-`https://api.cometapi.com/v1`. Complete credentials must never appear in
-CometAPI-generated exceptions or logs.
+`https://api.cometapi.com/v1`. Direct and environment string values are
+trimmed. An explicitly blank value is rejected without fallback; a blank
+environment key is missing, while a blank environment base URL selects the
+default. Callable keys and `httpx.URL` objects pass through unchanged. Complete
+credentials must never appear in CometAPI-generated exceptions or logs.
+
+The inherited OpenAI `copy` and `with_options` helpers are outside the 0.1
+support contract. They must remain fail-closed for provider routing, workload
+identity, private credential controls, and injected keyword mappings rather
+than weakening the explicit CometAPI constructor boundary.
 
 ## Supported resource boundary
 

@@ -45,12 +45,35 @@ def test_missing_key_raises_official_error_without_secret(
     assert "Bearer" not in message
 
 
-def test_explicit_empty_key_does_not_fall_back_to_environment(
+@pytest.mark.parametrize("client_type", [CometAPI, AsyncCometAPI])
+@pytest.mark.parametrize("api_key", ["", "   "])
+def test_explicit_blank_key_does_not_fall_back_to_environment(
+    client_type: type[CometAPI] | type[AsyncCometAPI],
+    api_key: str,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     monkeypatch.setenv("COMETAPI_KEY", "environment-key")
-    with pytest.raises(OpenAIError):
-        CometAPI(api_key="")
+    with pytest.raises(OpenAIError) as caught:
+        client_type(api_key=api_key)
+
+    assert "environment-key" not in str(caught.value)
+    assert "environment-key" not in repr(caught.value)
+
+
+@pytest.mark.parametrize("client_type", [CometAPI, AsyncCometAPI])
+def test_whitespace_environment_key_is_treated_as_missing(
+    client_type: type[CometAPI] | type[AsyncCometAPI],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("COMETAPI_KEY", " \t ")
+    monkeypatch.setenv("OPENAI_API_KEY", "upstream-environment-key")
+
+    with pytest.raises(OpenAIError) as caught:
+        client_type()
+
+    message = str(caught.value)
+    assert "COMETAPI_KEY" in message
+    assert "upstream-environment-key" not in message
 
 
 def test_explicit_sync_key_takes_precedence_over_environment(
@@ -61,6 +84,16 @@ def test_explicit_sync_key_takes_precedence_over_environment(
     http_client = sync_http_client(router)
 
     with CometAPI(api_key=API_KEY, base_url=BASE_URL, http_client=http_client) as client:
+        client.models.list()
+
+    assert router.requests[0].headers["authorization"] == f"Bearer {API_KEY}"
+
+
+def test_explicit_sync_key_is_trimmed() -> None:
+    router = ContractRouter()
+    http_client = sync_http_client(router)
+
+    with CometAPI(api_key=f"  {API_KEY}\t", base_url=BASE_URL, http_client=http_client) as client:
         client.models.list()
 
     assert router.requests[0].headers["authorization"] == f"Bearer {API_KEY}"
@@ -84,10 +117,25 @@ async def test_explicit_async_key_takes_precedence_over_environment(
     assert router.requests[0].headers["authorization"] == f"Bearer {API_KEY}"
 
 
+@pytest.mark.asyncio
+async def test_explicit_async_key_is_trimmed() -> None:
+    router = ContractRouter()
+    http_client = async_http_client(router)
+
+    async with AsyncCometAPI(
+        api_key=f"  {API_KEY}\t",
+        base_url=BASE_URL,
+        http_client=http_client,
+    ) as client:
+        await client.models.list()
+
+    assert router.requests[0].headers["authorization"] == f"Bearer {API_KEY}"
+
+
 def test_sync_environment_key_is_used_when_key_is_omitted(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    monkeypatch.setenv("COMETAPI_KEY", API_KEY)
+    monkeypatch.setenv("COMETAPI_KEY", f"  {API_KEY}\t")
     router = ContractRouter()
     http_client = sync_http_client(router)
 
@@ -101,7 +149,7 @@ def test_sync_environment_key_is_used_when_key_is_omitted(
 async def test_async_environment_key_is_used_when_key_is_omitted(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    monkeypatch.setenv("COMETAPI_KEY", API_KEY)
+    monkeypatch.setenv("COMETAPI_KEY", f"  {API_KEY}\t")
     router = ContractRouter()
     http_client = async_http_client(router)
 
@@ -122,11 +170,32 @@ def test_explicit_base_url_takes_precedence_over_environment(
         client.close()
 
 
+@pytest.mark.parametrize("client_type", [CometAPI, AsyncCometAPI])
+@pytest.mark.parametrize("base_url", ["", "   "])
+def test_explicit_blank_base_url_does_not_fall_back_to_environment(
+    client_type: type[CometAPI] | type[AsyncCometAPI],
+    base_url: str,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("COMETAPI_BASE_URL", "https://environment.example.test/v1")
+
+    with pytest.raises(OpenAIError, match="base_url"):
+        client_type(api_key=API_KEY, base_url=base_url)
+
+
+def test_explicit_sync_string_base_url_is_trimmed() -> None:
+    client = CometAPI(api_key=API_KEY, base_url=f"  {BASE_URL}\t")
+    try:
+        assert str(client.base_url) == f"{BASE_URL}/"
+    finally:
+        client.close()
+
+
 def test_environment_base_url_is_used_when_explicit_url_is_omitted(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     environment_url = "https://environment.example.test/v1"
-    monkeypatch.setenv("COMETAPI_BASE_URL", environment_url)
+    monkeypatch.setenv("COMETAPI_BASE_URL", f"  {environment_url}\t")
     client = CometAPI(api_key=API_KEY)
     try:
         assert str(client.base_url) == f"{environment_url}/"
@@ -147,11 +216,20 @@ async def test_async_explicit_base_url_takes_precedence_over_environment(
 
 
 @pytest.mark.asyncio
+async def test_explicit_async_string_base_url_is_trimmed() -> None:
+    client = AsyncCometAPI(api_key=API_KEY, base_url=f"  {BASE_URL}\t")
+    try:
+        assert str(client.base_url) == f"{BASE_URL}/"
+    finally:
+        await client.close()
+
+
+@pytest.mark.asyncio
 async def test_async_environment_base_url_is_used_when_explicit_url_is_omitted(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     environment_url = "https://environment.example.test/v1"
-    monkeypatch.setenv("COMETAPI_BASE_URL", environment_url)
+    monkeypatch.setenv("COMETAPI_BASE_URL", f"  {environment_url}\t")
     client = AsyncCometAPI(api_key=API_KEY)
     try:
         assert str(client.base_url) == f"{environment_url}/"
@@ -170,11 +248,41 @@ def test_default_base_url_is_used_when_no_override_exists(
         client.close()
 
 
+def test_whitespace_environment_base_url_uses_cometapi_default(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("COMETAPI_BASE_URL", " \t ")
+    monkeypatch.setenv("OPENAI_BASE_URL", "https://upstream.example.test/v1")
+
+    client = CometAPI(api_key=API_KEY)
+    try:
+        assert str(client.base_url) == f"{DEFAULT_BASE_URL}/"
+    finally:
+        client.close()
+
+
+@pytest.mark.asyncio
+async def test_async_whitespace_environment_base_url_uses_cometapi_default(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("COMETAPI_BASE_URL", " \t ")
+    monkeypatch.setenv("OPENAI_BASE_URL", "https://upstream.example.test/v1")
+
+    client = AsyncCometAPI(api_key=API_KEY)
+    try:
+        assert str(client.base_url) == f"{DEFAULT_BASE_URL}/"
+    finally:
+        await client.close()
+
+
 def test_sync_callable_key_is_preserved() -> None:
     router = ContractRouter()
     http_client = sync_http_client(router)
+    calls = 0
 
     def key_provider() -> str:
+        nonlocal calls
+        calls += 1
         return API_KEY
 
     with CometAPI(
@@ -182,8 +290,10 @@ def test_sync_callable_key_is_preserved() -> None:
         base_url=BASE_URL,
         http_client=http_client,
     ) as client:
+        assert calls == 0
         client.models.list()
 
+    assert calls == 1
     assert router.requests[0].headers["authorization"] == f"Bearer {API_KEY}"
 
 
@@ -191,8 +301,11 @@ def test_sync_callable_key_is_preserved() -> None:
 async def test_async_callable_key_is_preserved() -> None:
     router = ContractRouter()
     http_client = async_http_client(router)
+    calls = 0
 
     async def key_provider() -> str:
+        nonlocal calls
+        calls += 1
         return API_KEY
 
     async with AsyncCometAPI(
@@ -200,8 +313,10 @@ async def test_async_callable_key_is_preserved() -> None:
         base_url=BASE_URL,
         http_client=http_client,
     ) as client:
+        assert calls == 0
         await client.models.list()
 
+    assert calls == 1
     assert router.requests[0].headers["authorization"] == f"Bearer {API_KEY}"
 
 
@@ -420,13 +535,16 @@ def test_sync_official_error_identity_and_key_non_leakage(
 ) -> None:
     caplog.set_level(logging.DEBUG)
     http_client = sync_http_client(unauthorized_handler)
+    padded_key = f"  {API_KEY}\t"
 
     with CometAPI(
-        api_key=API_KEY,
+        api_key=padded_key,
         base_url=BASE_URL,
         max_retries=0,
         http_client=http_client,
     ) as client:
+        assert API_KEY not in repr(client)
+        assert padded_key not in repr(client)
         with pytest.raises(AuthenticationError) as caught:
             if operation == "chat":
                 client.chat.completions.create(
@@ -442,6 +560,9 @@ def test_sync_official_error_identity_and_key_non_leakage(
     assert API_KEY not in str(caught.value)
     assert API_KEY not in repr(caught.value)
     assert API_KEY not in caplog.text
+    assert padded_key not in str(caught.value)
+    assert padded_key not in repr(caught.value)
+    assert padded_key not in caplog.text
 
 
 @pytest.mark.parametrize("operation", ["chat", "responses", "models"])
@@ -452,13 +573,16 @@ async def test_async_official_error_identity_and_key_non_leakage(
 ) -> None:
     caplog.set_level(logging.DEBUG)
     http_client = async_http_client(unauthorized_handler)
+    padded_key = f"  {API_KEY}\t"
 
     async with AsyncCometAPI(
-        api_key=API_KEY,
+        api_key=padded_key,
         base_url=BASE_URL,
         max_retries=0,
         http_client=http_client,
     ) as client:
+        assert API_KEY not in repr(client)
+        assert padded_key not in repr(client)
         with pytest.raises(AuthenticationError) as caught:
             if operation == "chat":
                 await client.chat.completions.create(
@@ -474,6 +598,9 @@ async def test_async_official_error_identity_and_key_non_leakage(
     assert API_KEY not in str(caught.value)
     assert API_KEY not in repr(caught.value)
     assert API_KEY not in caplog.text
+    assert padded_key not in str(caught.value)
+    assert padded_key not in repr(caught.value)
+    assert padded_key not in caplog.text
 
 
 def test_constructor_forwards_additional_public_openai_options() -> None:
@@ -570,3 +697,55 @@ def test_public_constructor_rejects_private_or_route_bypassing_options(
 ) -> None:
     with pytest.raises(TypeError, match="unexpected keyword argument"):
         client_type(api_key=API_KEY, **{option: value})  # pyright: ignore[reportArgumentType]
+
+
+COPY_BYPASS_OPTIONS = [
+    ("provider", object()),
+    (
+        "workload_identity",
+        {
+            "identity_provider_id": "provider",
+            "service_account_id": "service-account",
+            "provider": {"token_type": "jwt", "get_token": lambda: "token"},
+        },
+    ),
+    ("_enforce_credentials", False),
+    ("_extra_kwargs", {"provider": object()}),
+]
+
+
+@pytest.mark.parametrize("method_name", ["copy", "with_options"])
+@pytest.mark.parametrize(("option", "value"), COPY_BYPASS_OPTIONS)
+def test_sync_inherited_copy_options_cannot_bypass_cometapi_boundaries(
+    method_name: str,
+    option: str,
+    value: object,
+) -> None:
+    client = CometAPI(api_key=API_KEY, base_url=BASE_URL)
+    try:
+        method = client.copy if method_name == "copy" else client.with_options
+        with pytest.raises(TypeError, match="unexpected keyword argument"):
+            method(**{option: value})  # pyright: ignore[reportArgumentType]
+        assert client.api_key == API_KEY
+        assert str(client.base_url) == f"{BASE_URL}/"
+    finally:
+        client.close()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("method_name", ["copy", "with_options"])
+@pytest.mark.parametrize(("option", "value"), COPY_BYPASS_OPTIONS)
+async def test_async_inherited_copy_options_cannot_bypass_cometapi_boundaries(
+    method_name: str,
+    option: str,
+    value: object,
+) -> None:
+    client = AsyncCometAPI(api_key=API_KEY, base_url=BASE_URL)
+    try:
+        method = client.copy if method_name == "copy" else client.with_options
+        with pytest.raises(TypeError, match="unexpected keyword argument"):
+            method(**{option: value})  # pyright: ignore[reportArgumentType]
+        assert client.api_key == API_KEY
+        assert str(client.base_url) == f"{BASE_URL}/"
+    finally:
+        await client.close()

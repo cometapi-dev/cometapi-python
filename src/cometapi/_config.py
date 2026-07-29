@@ -14,17 +14,29 @@ _T = TypeVar("_T")
 
 def resolve_api_key(api_key: _T | None) -> _T | str:
     """Resolve an explicit API key before consulting ``COMETAPI_KEY``."""
+    if api_key is not None and not isinstance(api_key, str):
+        return api_key
+
     resolved = api_key if api_key is not None else os.environ.get("COMETAPI_KEY")
-    if resolved is None or (isinstance(resolved, str) and not resolved):
+    normalized = resolved.strip() if resolved is not None else ""
+    if not normalized:
         raise OpenAIError(
             "The CometAPI API key must be provided with the api_key client option "
             "or the COMETAPI_KEY environment variable."
         )
-    return resolved
+    return normalized
 
 
 def resolve_base_url(base_url: _T | None) -> _T | str:
     """Resolve an explicit base URL before environment and default values."""
     if base_url is not None:
+        if isinstance(base_url, str):
+            normalized = base_url.strip()
+            if not normalized:
+                raise OpenAIError("The CometAPI base_url client option must not be empty.")
+            return normalized
         return base_url
-    return os.environ.get("COMETAPI_BASE_URL") or DEFAULT_BASE_URL
+
+    environment_url = os.environ.get("COMETAPI_BASE_URL")
+    normalized = environment_url.strip() if environment_url is not None else ""
+    return normalized or DEFAULT_BASE_URL

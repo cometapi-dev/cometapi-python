@@ -33,6 +33,19 @@ claims remain limited to the evidence defined in this roadmap and
 | `0.3.0` CometAPI resources | Planned | First schema-backed typed CometAPI-specific resource. |
 | Media and task APIs | Planned | Coherent task lifecycle precedes individual media helpers. |
 
+## `0.1.x` maintenance
+
+Stable maintenance preserves the 0.1 public operation and constructor surface.
+String API keys and base URLs are trimmed at their direct or environment
+boundary. Explicit blank values fail without fallback; a blank environment key
+is missing, while a blank environment base URL selects the default CometAPI
+URL. Callable keys and `httpx.URL` values keep their official OpenAI semantics.
+Inherited `copy` and `with_options` helpers remain unsupported and fail-closed
+for provider routing, workload identity, and private-option injection.
+
+No maintenance release activates 0.2 provider adapters or adds a new resource,
+CLI, translation, or Go surface without a separate maintainer request.
+
 ## Repository foundation
 
 Deliverables:

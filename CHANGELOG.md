@@ -8,6 +8,9 @@ automation.
 
 ### Fixed
 
+- Reject explicitly blank API keys and base URLs without fallback, treat blank
+  environment keys as missing, and use the default CometAPI URL for a blank
+  `COMETAPI_BASE_URL`.
 - Add a fail-closed immutable-release recovery path with an environment-secret
   preflight before any live request.
 - Execute PyPI Trusted Publishing directly in the single top-level
@@ -16,6 +19,13 @@ automation.
 - Prevent GitHub's skipped-ancestry propagation from silently skipping the
   release chain after a successful selector, while continuing to reject
   cancellation, reruns, and every non-successful direct dependency.
+
+### Changed
+
+- Trim leading and trailing whitespace from direct and environment string API
+  keys and base URLs. Applications that intentionally supplied surrounding
+  whitespace must pass the intended credential or URL without that padding;
+  callable keys and `httpx.URL` objects are unchanged.
 
 ### Documentation
 
