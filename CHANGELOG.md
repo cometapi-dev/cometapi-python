@@ -4,6 +4,22 @@ All notable changes to this project are documented in this file. The project
 follows Semantic Versioning and uses Conventional Commits for release-PR
 automation.
 
+## [0.1.1](https://github.com/cometapi-dev/cometapi-python/compare/v0.1.0...v0.1.1) (2026-07-29)
+
+
+### Bug Fixes
+
+* harden stable release recovery ([#21](https://github.com/cometapi-dev/cometapi-python/issues/21)) ([2e96574](https://github.com/cometapi-dev/cometapi-python/commit/2e96574ec886ffc875b56587beead9caf27b7a2d))
+* preserve PyPI publisher workflow identity ([#22](https://github.com/cometapi-dev/cometapi-python/issues/22)) ([ec420af](https://github.com/cometapi-dev/cometapi-python/commit/ec420af2966ef683660b58acff8d125e916fc623))
+* preserve selected release execution ([#23](https://github.com/cometapi-dev/cometapi-python/issues/23)) ([9cd6041](https://github.com/cometapi-dev/cometapi-python/commit/9cd60419130533d6920083e2f4bf295a3b5a4fd7))
+* validate configuration whitespace ([d02b1db](https://github.com/cometapi-dev/cometapi-python/commit/d02b1dba277ac72229b772d29ea1870b569edd88))
+
+
+### Documentation
+
+* record stable release evidence ([#24](https://github.com/cometapi-dev/cometapi-python/issues/24)) ([60a21dd](https://github.com/cometapi-dev/cometapi-python/commit/60a21dd38795270ef40f9163a112de61566ba46d))
+* require Release Please permission preflight ([18de120](https://github.com/cometapi-dev/cometapi-python/commit/18de120c79b5a4fde5d125d56238f7f3b28e69bf))
+
 ## [Unreleased]
 
 ### Fixed
