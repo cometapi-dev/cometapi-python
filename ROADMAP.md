@@ -1,6 +1,6 @@
 # CometAPI Python SDK Roadmap
 
-Status: `0.1.2` stable maintenance in progress
+Status: `0.1.2` stable maintenance released
 Last updated: 2026-07-30
 Repository contract: this roadmap is self-contained.
 Current gate: maintain the verified stable 0.1 surface. Begin 0.2 only after a
@@ -13,12 +13,12 @@ to CometAPI while preserving official request, response, error, retry, timeout,
 sync, async, and streaming behavior.
 
 Private Remote Validation, Public Preview, the functional `0.1.0a1` Registry
-Alpha, stable `0.1.0`, and maintenance release `0.1.1` are complete for the
-sanitized public repository. Protected repository configuration, public
-default-branch CI, exact-release live smoke, PyPI OIDC publication, provenance,
-digest comparison, and public-registry smoke provide separate evidence layers.
-Maintenance `0.1.2` is active only to harden release automation and immutable
-package metadata; it does not activate 0.2 scope.
+Alpha, stable `0.1.0`, and maintenance releases `0.1.1` and `0.1.2` are complete
+for the sanitized public repository. Protected repository configuration,
+public default-branch CI, exact-release live smoke, PyPI OIDC publication,
+provenance, digest comparison, and public-registry smoke provide separate
+evidence layers. Only 0.1.x maintenance is active; `0.1.2` does not activate
+0.2 scope.
 Support and release claims remain limited to the evidence defined in this
 roadmap and `COMPATIBILITY.md`.
 
@@ -32,7 +32,7 @@ roadmap and `COMPATIBILITY.md`.
 | `0.1.0a1` Registry Alpha | Complete | Early adopters can install the functional prerelease from PyPI; every release and registry gate passed. |
 | `0.1.0` stable | Complete | Complete runtime, release-PR, example, provenance, and registry gates passed. |
 | `0.1.1` maintenance | Complete | Configuration validation and every stable release, live, provenance, and registry gate passed. |
-| `0.1.2` maintenance | In progress | Publication-neutral metadata and release-transport boundaries must pass every normal release gate before publication. |
+| `0.1.2` maintenance | Complete | Publication-neutral metadata and release-transport boundaries passed every normal release, live, provenance, and registry gate. |
 | `0.2.0` provider-native text | Planned | Optional official Anthropic and Gemini adapters. |
 | `0.3.0` CometAPI resources | Planned | First schema-backed typed CometAPI-specific resource. |
 | Media and task APIs | Planned | Coherent task lifecycle precedes individual media helpers. |
@@ -589,6 +589,55 @@ idempotent branch and pull-request maintenance can therefore recover from one
 isolated transport close, while immutable tag and GitHub Release creation can
 never be automatically replayed. This remains 0.1.x maintenance and does not
 authorize provider, resource, CLI, or 0.2 work.
+
+[Metadata and runtime PR #29](https://github.com/cometapi-dev/cometapi-python/pull/29)
+made the packaged README release-neutral, added wheel and source-distribution
+long-description assertions, and moved Release Please to its pinned v5 Node 24
+runtime. It passed
+[CI run 30509063138](https://github.com/cometapi-dev/cometapi-python/actions/runs/30509063138)
+and squash-merged as `67bd1893983c724d1cc81b824106b7c3d9418e97`.
+[Transport-boundary PR #31](https://github.com/cometapi-dev/cometapi-python/pull/31)
+passed
+[CI run 30510887049](https://github.com/cometapi-dev/cometapi-python/actions/runs/30510887049)
+and squash-merged as `a411bf5c4aeba341a2d4520a023ad0fe2c5ccee3`.
+The resulting first-attempt
+[Release Please run 30511071674](https://github.com/cometapi-dev/cometapi-python/actions/runs/30511071674)
+created and maintained
+[release PR #32](https://github.com/cometapi-dev/cometapi-python/pull/32).
+Its final head `322fdf40585f46aef64bc8b881ee2ce36c09c951` passed
+[all required CI in run 30511373822](https://github.com/cometapi-dev/cometapi-python/actions/runs/30511373822),
+received human owner approval at that exact head, and squash-merged as release
+commit `710c56491d9ef5f47cccff3ce837ab7e799455b0`. The release commit passed
+[default-branch CI run 30515861285](https://github.com/cometapi-dev/cometapi-python/actions/runs/30515861285).
+
+First-attempt
+[release run 30515861246](https://github.com/cometapi-dev/cometapi-python/actions/runs/30515861246)
+created and verified the immutable non-draft
+[GitHub release](https://github.com/cometapi-dev/cometapi-python/releases/tag/v0.1.2)
+and lightweight tag `v0.1.2` at that exact release commit. It rebuilt and
+clean-installed the exact artifacts, passed the four-request exact-release live
+suite, received protected `pypi` approval, published directly from top-level
+`publish.yml` through OIDC with attestations, and passed public registry
+verification without a rerun or recovery path.
+
+The exact [PyPI release](https://pypi.org/project/cometapi/0.1.2/) has wheel
+SHA256 `3f12c26ae1ae7a1de5ac19d8ef27a784b2bf592143c716493f1b0f35ec19daca`
+and source-distribution SHA256
+`21c8edc0586610de1a9a8cd39b54ed23d2b1e20552100f69f53938cb7678da3d`.
+Both files match the retained pre-publication digest record. Their PyPI
+Integrity API provenance names repository `cometapi-dev/cometapi-python`,
+workflow `publish.yml`, environment `pypi`, release commit `710c5649`, and
+[run attempt 1](https://github.com/cometapi-dev/cometapi-python/actions/runs/30515861246/attempts/1).
+An independent post-workflow verification downloaded both public files,
+verified both provenance records with `pypi-attestations==0.0.29`, installed
+`cometapi==0.1.2` from the public simple index, verified the public version and
+imports, and passed every supported mocked call and README example. The wheel's
+immutable long description contains the release-neutral 0.1.x installation
+guidance rather than a stale pre-publication version claim.
+
+`RELEASE_PLEASE_ENABLED=false` and `LIVE_SMOKE_ENABLED=false`. Recovery
+variables are absent. No recovery tag, workflow dispatch, or workflow rerun was
+used for `0.1.2`.
 
 ## `0.2.0`: Provider-native text adapters
 
