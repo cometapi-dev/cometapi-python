@@ -4,6 +4,20 @@ All notable changes to this project are documented in this file. The project
 follows Semantic Versioning and uses Conventional Commits for release-PR
 automation.
 
+## [0.1.2](https://github.com/cometapi-dev/cometapi-python/compare/v0.1.1...v0.1.2) (2026-07-30)
+
+
+### Bug Fixes
+
+* harden release metadata and runtime ([#29](https://github.com/cometapi-dev/cometapi-python/issues/29)) ([67bd189](https://github.com/cometapi-dev/cometapi-python/commit/67bd1893983c724d1cc81b824106b7c3d9418e97))
+* isolate release PR transport retries ([#31](https://github.com/cometapi-dev/cometapi-python/issues/31)) ([a411bf5](https://github.com/cometapi-dev/cometapi-python/commit/a411bf5c4aeba341a2d4520a023ad0fe2c5ccee3))
+
+
+### Documentation
+
+* finalize release please replacement ([#30](https://github.com/cometapi-dev/cometapi-python/issues/30)) ([ab19cf8](https://github.com/cometapi-dev/cometapi-python/commit/ab19cf8b6768630367b65d8fb4778ae4638fbce3))
+* record 0.1.1 release evidence ([#28](https://github.com/cometapi-dev/cometapi-python/issues/28)) ([e07b4e7](https://github.com/cometapi-dev/cometapi-python/commit/e07b4e7a16377a9bd61b21876d60da85ba9c03d8))
+
 ## [Unreleased]
 
 ### Fixed

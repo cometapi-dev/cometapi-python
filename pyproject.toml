@@ -1,6 +1,6 @@
 [project]
 name = "cometapi"
-version = "0.1.1"
+version = "0.1.2"
 description = "Typed OpenAI-compatible Python client for the CometAPI gateway"
 readme = "README.md"
 requires-python = ">=3.10"
