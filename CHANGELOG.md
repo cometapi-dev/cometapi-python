@@ -6,6 +6,21 @@ automation.
 
 ## [Unreleased]
 
+## [0.1.3] - 2026-07-30
+
+### Fixed
+
+- Prevent stale mutable release claims in persistent guidance and current-state
+  documentation ([#34](https://github.com/cometapi-dev/cometapi-python/issues/34))
+  ([c5b422c](https://github.com/cometapi-dev/cometapi-python/commit/c5b422cdff9d3751323b0aa470091b09db253d1e)).
+
+### Documentation
+
+- Record completed `0.1.2` publication, live, provenance, digest, and
+  public-registry verification evidence
+  ([#33](https://github.com/cometapi-dev/cometapi-python/issues/33))
+  ([0f71cca](https://github.com/cometapi-dev/cometapi-python/commit/0f71ccae27ce309f82ad06ae0ae872d5ec80835d)).
+
 ## [0.1.2] - 2026-07-30
 
 ### Fixed
@@ -104,3 +119,4 @@ automation.
 [0.1.0]: https://github.com/cometapi-dev/cometapi-python/compare/v0.1.0-alpha.1%2Brecovery.1...v0.1.0
 [0.1.1]: https://github.com/cometapi-dev/cometapi-python/compare/v0.1.0...v0.1.1
 [0.1.2]: https://github.com/cometapi-dev/cometapi-python/compare/v0.1.1...v0.1.2
+[0.1.3]: https://github.com/cometapi-dev/cometapi-python/compare/v0.1.2...v0.1.3
