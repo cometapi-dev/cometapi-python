@@ -525,3 +525,53 @@ authorized.
 - `RELEASE_PLEASE_ENABLED=false` and `LIVE_SMOKE_ENABLED=false`.
   `RELEASE_RECOVERY_TAG` and `RELEASE_RECOVERY_SHA` are absent; no recovery tag
   or recovery workflow was used for `0.1.1`.
+
+### Completed `0.1.2` maintenance release evidence
+
+- Metadata and runtime [PR #29](https://github.com/cometapi-dev/cometapi-python/pull/29)
+  made packaged long descriptions release-neutral, added artifact assertions,
+  pinned Release Please v5 to its Node 24 action commit, passed
+  [CI run 30509063138](https://github.com/cometapi-dev/cometapi-python/actions/runs/30509063138),
+  and squash-merged as `67bd1893983c724d1cc81b824106b7c3d9418e97`.
+- [Release Please run 30509764960](https://github.com/cometapi-dev/cometapi-python/actions/runs/30509764960)
+  encountered an Undici/global `fetch` closed-connection race and created or
+  updated no Git tree, commit, ref, pull request, tag, release, live request, or
+  registry state.
+  Transport-boundary [PR #31](https://github.com/cometapi-dev/cometapi-python/pull/31)
+  separated non-retryable immutable release creation from one bounded retry of
+  mutable PR maintenance, passed
+  [CI run 30510887049](https://github.com/cometapi-dev/cometapi-python/actions/runs/30510887049),
+  and squash-merged as `a411bf5c4aeba341a2d4520a023ad0fe2c5ccee3`.
+- Fresh first-attempt
+  [Release Please run 30511071674](https://github.com/cometapi-dev/cometapi-python/actions/runs/30511071674)
+  created and maintained
+  [release PR #32](https://github.com/cometapi-dev/cometapi-python/pull/32).
+  Its final head `322fdf40585f46aef64bc8b881ee2ce36c09c951` passed
+  [all required CI in run 30511373822](https://github.com/cometapi-dev/cometapi-python/actions/runs/30511373822),
+  received human owner approval at that exact head, and squash-merged as release
+  commit `710c56491d9ef5f47cccff3ce837ab7e799455b0`. The release commit passed
+  [default-branch CI run 30515861285](https://github.com/cometapi-dev/cometapi-python/actions/runs/30515861285).
+- First-attempt
+  [release run 30515861246](https://github.com/cometapi-dev/cometapi-python/actions/runs/30515861246)
+  created and independently verified immutable non-draft release
+  [v0.1.2](https://github.com/cometapi-dev/cometapi-python/releases/tag/v0.1.2)
+  at the exact release commit, rebuilt and clean-installed both artifacts,
+  passed the bounded four-request exact-release live suite, received protected
+  `pypi` approval, published directly from top-level `publish.yml` by OIDC with
+  attestations, and passed public registry verification.
+- The exact [PyPI release](https://pypi.org/project/cometapi/0.1.2/) has wheel
+  SHA256 `3f12c26ae1ae7a1de5ac19d8ef27a784b2bf592143c716493f1b0f35ec19daca`
+  and source-distribution SHA256
+  `21c8edc0586610de1a9a8cd39b54ed23d2b1e20552100f69f53938cb7678da3d`.
+  Both files match the retained pre-publication digest record. PyPI Integrity
+  API provenance identifies repository `cometapi-dev/cometapi-python`, workflow
+  `publish.yml`, environment `pypi`, release commit `710c5649`, and release
+  [run attempt 1](https://github.com/cometapi-dev/cometapi-python/actions/runs/30515861246/attempts/1).
+- An independent post-workflow verification downloaded both public files,
+  verified both provenance records with `pypi-attestations==0.0.29`, installed
+  `cometapi==0.1.2` from `https://pypi.org/simple/`, verified the public version
+  and imports, and passed supported mocked calls plus all README examples. The
+  wheel metadata contains the release-neutral 0.1.x installation guidance.
+- `RELEASE_PLEASE_ENABLED=false` and `LIVE_SMOKE_ENABLED=false`.
+  `RELEASE_RECOVERY_TAG` and `RELEASE_RECOVERY_SHA` are absent; no recovery tag,
+  workflow dispatch, or workflow rerun was used for `0.1.2`.
