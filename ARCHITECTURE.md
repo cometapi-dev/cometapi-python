@@ -128,6 +128,18 @@ local mocked/package evidence
     -> public registry digest, provenance, install, import, and mocked smoke
 ```
 
+The package metadata embeds `README.md` as its long description. Because wheel,
+sdist, and PyPI metadata are immutable, the README uses an unversioned install
+command and publication-neutral release language that remains accurate before
+and after a release. Source-document and artifact checks reject approval,
+unpublished, exact-version installation, and versioned release-link text; each
+artifact long description must also exactly match the source README.
+
+Release Please is pinned to the immutable `v5.0.0` commit whose action metadata
+uses `node24`. The workflow semantic contract fixes that SHA and runtime
+disposition so GitHub does not need to force a deprecated Node 20 action onto a
+newer runtime.
+
 This complete trust chain executed successfully in
 [release workflow run 30261746138](https://github.com/cometapi-dev/cometapi-python/actions/runs/30261746138)
 for release commit `31b68904141489ca04932edbf305ccf88af09372`, recovery tag

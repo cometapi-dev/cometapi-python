@@ -9,15 +9,36 @@ import tarfile
 import zipfile
 from pathlib import Path, PurePosixPath
 
-from _checks import (
-    CANONICAL_AUTHOR,
-    CANONICAL_PROJECT_URLS,
-    CheckError,
-    normalize_version,
-    parse_metadata,
-    read_project_version,
-    sha256_file,
-)
+try:
+    from ._checks import (
+        CANONICAL_AUTHOR,
+        CANONICAL_PROJECT_URLS,
+        PROJECT_ROOT,
+        PUBLIC_README_INSTALL_COMMAND,
+        CheckError,
+        metadata_description,
+        normalize_version,
+        parse_metadata,
+        public_readme_has_install_command,
+        public_readme_release_violations,
+        read_project_version,
+        sha256_file,
+    )
+except ImportError:  # Direct execution from the repository root.
+    from _checks import (
+        CANONICAL_AUTHOR,
+        CANONICAL_PROJECT_URLS,
+        PROJECT_ROOT,
+        PUBLIC_README_INSTALL_COMMAND,
+        CheckError,
+        metadata_description,
+        normalize_version,
+        parse_metadata,
+        public_readme_has_install_command,
+        public_readme_release_violations,
+        read_project_version,
+        sha256_file,
+    )
 
 REQUIRED_PACKAGE_FILES = {
     "cometapi/__init__.py",
@@ -88,7 +109,12 @@ def _safe_path(name: str, source: Path) -> PurePosixPath:
     return path
 
 
-def _check_metadata(raw: bytes, source: str, expected_version: str) -> None:
+def check_metadata(
+    raw: bytes,
+    source: str,
+    expected_version: str,
+    expected_description: str,
+) -> None:
     metadata = parse_metadata(raw, source)
     actual_version = normalize_version(str(metadata["Version"]))
     if actual_version != expected_version:
@@ -114,9 +140,23 @@ def _check_metadata(raw: bytes, source: str, expected_version: str) -> None:
     for label, expected in CANONICAL_PROJECT_URLS.items():
         if project_urls.get(label) != expected:
             raise CheckError(f"{source}: expected Project-URL {label}, {expected}")
+    description = metadata_description(metadata, source)
+    if description != expected_description:
+        raise CheckError(f"{source}: long description does not exactly match source README.md")
+    violations = public_readme_release_violations(description)
+    if violations:
+        raise CheckError(
+            f"{source}: long description contains publication-specific release text: "
+            + ", ".join(sorted(set(violations)))
+        )
+    if not public_readme_has_install_command(description):
+        raise CheckError(
+            f"{source}: long description must contain the unpinned stable install command "
+            f"{PUBLIC_README_INSTALL_COMMAND!r}"
+        )
 
 
-def _check_wheel(path: Path, expected_version: str) -> None:
+def _check_wheel(path: Path, expected_version: str, expected_description: str) -> None:
     expected_fragment = f"cometapi-{expected_version}-"
     if expected_fragment not in path.name:
         raise CheckError(f"{path.name}: filename does not contain {expected_fragment!r}")
@@ -142,8 +182,11 @@ def _check_wheel(path: Path, expected_version: str) -> None:
         metadata_names = [name for name in names if name.endswith(".dist-info/METADATA")]
         if len(metadata_names) != 1:
             raise CheckError(f"{path.name}: expected exactly one .dist-info/METADATA")
-        _check_metadata(
-            archive.read(metadata_names[0]), f"{path.name}:{metadata_names[0]}", expected_version
+        check_metadata(
+            archive.read(metadata_names[0]),
+            f"{path.name}:{metadata_names[0]}",
+            expected_version,
+            expected_description,
         )
         for source_name in ("cometapi/__init__.py", "cometapi/client.py"):
             text = archive.read(source_name).decode("utf-8")
@@ -151,7 +194,7 @@ def _check_wheel(path: Path, expected_version: str) -> None:
                 raise CheckError(f"{path.name}:{source_name}: legacy public client name remains")
 
 
-def _check_sdist(path: Path, expected_version: str) -> None:
+def _check_sdist(path: Path, expected_version: str, expected_description: str) -> None:
     expected_root = f"cometapi-{expected_version}"
     if path.name != f"{expected_root}.tar.gz":
         raise CheckError(f"{path.name}: expected sdist filename {expected_root}.tar.gz")
@@ -182,7 +225,12 @@ def _check_sdist(path: Path, expected_version: str) -> None:
         stream = archive.extractfile(metadata_members[0])
         if stream is None:
             raise CheckError(f"{path.name}: cannot read PKG-INFO")
-        _check_metadata(stream.read(), f"{path.name}:PKG-INFO", expected_version)
+        check_metadata(
+            stream.read(),
+            f"{path.name}:PKG-INFO",
+            expected_version,
+            expected_description,
+        )
 
 
 def _artifacts(arguments: list[str]) -> list[Path]:
@@ -206,12 +254,16 @@ def main() -> int:
     parser.add_argument("--expected-version", default=read_project_version())
     args = parser.parse_args()
     expected_version = normalize_version(args.expected_version)
+    try:
+        expected_description = (PROJECT_ROOT / "README.md").read_text(encoding="utf-8")
+    except (OSError, UnicodeError) as exc:
+        raise CheckError(f"cannot read source README.md: {exc}") from exc
     paths = _artifacts(args.artifacts)
     for path in paths:
         if path.suffix == ".whl":
-            _check_wheel(path, expected_version)
+            _check_wheel(path, expected_version, expected_description)
         else:
-            _check_sdist(path, expected_version)
+            _check_sdist(path, expected_version, expected_description)
         print(f"{sha256_file(path)}  {path}")
     print(f"artifact checks passed for cometapi {expected_version}")
     return 0

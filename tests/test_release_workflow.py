@@ -400,6 +400,24 @@ def test_current_publish_workflow_satisfies_semantic_contract() -> None:
     )
 
 
+def test_release_please_uses_node24_v5_pin() -> None:
+    text = RELEASE_PLEASE_WORKFLOW.read_text(encoding="utf-8")
+    assert (
+        "googleapis/release-please-action@45996ed1f6d02564a971a2fa1b5860e934307cf7 # v5.0.0, node24"
+    ) in text
+    check_release_please_workflow(text)
+
+
+def test_release_please_rejects_legacy_node20_pin() -> None:
+    text = RELEASE_PLEASE_WORKFLOW.read_text(encoding="utf-8").replace(
+        "45996ed1f6d02564a971a2fa1b5860e934307cf7",
+        "5c625bfb5d1ff62eadeeb3772007f7f66fdcf071",
+        1,
+    )
+    with pytest.raises(RuntimeError, match=r"5\.0\.0.*node24"):
+        check_release_please_workflow(text)
+
+
 @pytest.mark.parametrize("configured", [None, ""])
 def test_live_model_defaults_when_unset_or_empty(configured: str | None) -> None:
     assert resolve_live_model(configured) == "gpt-5.4"

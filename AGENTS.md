@@ -152,6 +152,16 @@ Post-stable invariants:
    direct dependency's `result` to equal `success`. A skipped, cancelled,
    failed, or missing dependency must never make build, live smoke,
    publication, or registry verification eligible.
+9. Keep Release Please pinned to the reviewed `v5.0.0` commit
+   `45996ed1f6d02564a971a2fa1b5860e934307cf7`, whose immutable action metadata
+   uses `node24`. The workflow semantic checker must reject any different pin.
+10. `README.md` is the distribution long description and must remain accurate
+    before and after publication. Use `python -m pip install cometapi`,
+    unversioned project links, and publication-neutral maintenance language.
+    Reject approval, unpublished, exact-version installation, and versioned
+    release-link text in both source and built artifact metadata, and require
+    each built long description to exactly match the source README. Post-release
+    evidence changes must not rewrite README release state.
 
 ## Repository independence
 
@@ -329,7 +339,9 @@ committed.
   evaluate skipped ancestry, reject cancellation and reruns, and require each
   direct dependency to succeed.
 - Keep README, roadmap, compatibility matrix, examples, and changelog aligned
-  with shipped behavior. Use currently supported model IDs.
+  with shipped behavior. README installation and availability guidance must be
+  publication-neutral because it is embedded in immutable distribution
+  metadata. Use currently supported model IDs.
 - All repository documentation is written in English.
 
 The Public Preview readiness record requires

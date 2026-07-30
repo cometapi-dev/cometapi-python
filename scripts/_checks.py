@@ -8,6 +8,7 @@ import re
 import sys
 from collections.abc import Iterable
 from email.message import Message
+from email.parser import Parser
 from pathlib import Path
 from typing import cast
 
@@ -31,6 +32,26 @@ CANONICAL_PROJECT_URLS = {
     "Support": f"{CANONICAL_REPOSITORY}/blob/main/SUPPORT.md",
     "Security": CANONICAL_SECURITY,
 }
+PUBLIC_README_INSTALL_COMMAND = "python -m pip install cometapi"
+PUBLIC_README_FORBIDDEN_PATTERNS = (
+    (r"(?i)\bpending[\s-]+owner(?:ship|s)?\b", "pending owner identity"),
+    (r"(?i)\bapproved\s+for\s+pypi\s+publication\b", "publication approval state"),
+    (r"(?i)\b(?:candidate|unreleased|unpublished)\b", "unpublished release state"),
+    (r"(?i)\bno\s+pypi\s+publication\b", "missing PyPI publication"),
+    (r"(?i)\b(?:has\s+)?not\s+been\s+published\b", "unpublished release state"),
+    (
+        r"(?i)\bdo\s+not\s+treat\b[^\n]*\bcurrently\s+available\b",
+        "temporary availability warning",
+    ),
+    (r"(?i)\blocal\s+candidate\b", "local-candidate narrative"),
+    (r"(?i)\b0\.1\.\d+(?:a\d+)?\s+is\s+(?:available|approved)\b", "versioned release state"),
+    (r"(?i)cometapi==\d+\.\d+\.\d+(?:a\d+)?", "version-pinned installation command"),
+    (r"https://pypi\.org/project/cometapi/\d", "versioned PyPI release link"),
+    (
+        r"https://github\.com/cometapi-dev/cometapi-python/releases/tag/v\d",
+        "versioned GitHub release link",
+    ),
+)
 
 
 class CheckError(RuntimeError):
@@ -96,23 +117,35 @@ def sha256_file(path: Path) -> str:
 
 def parse_metadata(raw: bytes, source: str) -> Message:
     """Parse package core metadata and require its identity fields."""
-    message = Message()
-    text = raw.decode("utf-8")
-    for line in text.splitlines():
-        if not line.strip():
-            break
-        if line[0].isspace():
-            current = message.get_payload()
-            message.set_payload(f"{current}\n{line}" if current else line)
-            continue
-        name, separator, value = line.partition(":")
-        if separator:
-            message[name] = value.strip()
+    try:
+        message = Parser().parsestr(raw.decode("utf-8"))
+    except (UnicodeDecodeError, ValueError) as exc:
+        raise CheckError(f"{source}: invalid metadata: {exc}") from exc
     if message.get("Name") != DIST_NAME:
         raise CheckError(f"{source}: expected Name: {DIST_NAME!r}")
     if message.get("Version") is None:
         raise CheckError(f"{source}: missing Version metadata")
     return message
+
+
+def metadata_description(message: Message, source: str) -> str:
+    """Return the rendered long description from a distribution metadata message."""
+    payload = message.get_payload()
+    if not isinstance(payload, str) or not payload.strip():
+        raise CheckError(f"{source}: missing long description metadata")
+    return payload
+
+
+def public_readme_release_violations(text: str) -> list[str]:
+    """Return transient or version-specific release statements in public README text."""
+    return [
+        label for pattern, label in PUBLIC_README_FORBIDDEN_PATTERNS if re.search(pattern, text)
+    ]
+
+
+def public_readme_has_install_command(text: str) -> bool:
+    """Return whether the public README contains the exact unpinned install command."""
+    return any(line.strip() == PUBLIC_README_INSTALL_COMMAND for line in text.splitlines())
 
 
 def require_equal_versions(items: Iterable[tuple[str, str]]) -> str:
