@@ -18,8 +18,11 @@ try:
         CANONICAL_SECURITY,
         CANONICAL_SUPPORT,
         DIST_NAME,
+        MUTABLE_PUBLISHED_VERSION_FIX,
+        PERSISTENT_DOCUMENTS,
         PUBLIC_README_INSTALL_COMMAND,
         CheckError,
+        mutable_published_version_claims,
         normalize_version,
         public_readme_has_install_command,
         public_readme_release_violations,
@@ -37,8 +40,11 @@ except ImportError:  # Direct execution from the repository root.
         CANONICAL_SECURITY,
         CANONICAL_SUPPORT,
         DIST_NAME,
+        MUTABLE_PUBLISHED_VERSION_FIX,
+        PERSISTENT_DOCUMENTS,
         PUBLIC_README_INSTALL_COMMAND,
         CheckError,
+        mutable_published_version_claims,
         normalize_version,
         public_readme_has_install_command,
         public_readme_release_violations,
@@ -90,20 +96,6 @@ def _require_canonical_tag(tag: str, project_version: str) -> str:
     return normalized
 
 
-PUBLIC_DOCUMENTS = (
-    "README.md",
-    "ROADMAP.md",
-    "CHANGELOG.md",
-    "AGENTS.md",
-    "RELEASING.md",
-    "COMPATIBILITY.md",
-    "ARCHITECTURE.md",
-    "CONTRIBUTING.md",
-    "SECURITY.md",
-    "SUPPORT.md",
-    "CODE_OF_CONDUCT.md",
-)
-
 FORBIDDEN_PUBLIC_PATTERNS = {
     r"(?i)registry alpha ready for owner action": "handoff state",
     r"(?i)pending owner action": "owner-action placeholder",
@@ -121,7 +113,7 @@ FORBIDDEN_PUBLIC_PATTERNS = {
 
 def _read_public_documents(violations: list[str]) -> dict[str, str]:
     documents: dict[str, str] = {}
-    for name in PUBLIC_DOCUMENTS:
+    for name in PERSISTENT_DOCUMENTS:
         try:
             documents[name] = Path(name).read_text(encoding="utf-8")
         except (OSError, UnicodeError) as exc:
@@ -168,6 +160,14 @@ def _check_standalone_links(documents: dict[str, str], violations: list[str]) ->
                 violations.append(f"{name}: link escapes the repository root: {raw_target!r}")
             elif not target.is_file():
                 violations.append(f"{name}: link target does not exist: {raw_target!r}")
+
+
+def _check_mutable_release_claims(documents: dict[str, str], violations: list[str]) -> None:
+    for name, text in documents.items():
+        for line, label in mutable_published_version_claims(text):
+            violation = f"{name}:{line}: contains {label}; {MUTABLE_PUBLISHED_VERSION_FIX}"
+            if violation not in violations:
+                violations.append(violation)
 
 
 def require_public_preview_docs() -> None:
@@ -224,6 +224,7 @@ def require_public_preview_docs() -> None:
             if needle in text:
                 violations.append(f"{name}: contains non-standalone {label}")
 
+    _check_mutable_release_claims(documents, violations)
     _check_standalone_links(documents, violations)
     if violations:
         raise CheckError(

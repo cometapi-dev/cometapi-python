@@ -83,7 +83,7 @@ uv run ruff check src tests scripts
 uv run ruff format --check src tests scripts
 uv run pyright
 uv run pytest -m "not live"
-uv run python scripts/check_version.py --require-changelog
+uv run python scripts/check_version.py --require-changelog --require-public-preview-docs
 uv run python scripts/check_secrets.py
 uv run python scripts/check_workflows.py
 rm -rf dist

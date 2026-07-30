@@ -50,10 +50,13 @@ proves only its own evidence layer. Never invent or mock missing evidence.
 
 ## Current milestone: Stable 0.1
 
-Stable 0.1 is complete: `cometapi==0.1.1` is the latest publicly available
-maintenance release, and its release and registry trust chain has been
-verified. Do not begin 0.2 provider adapters without a separate maintainer
-request that authorizes that milestone.
+Verified stable `0.1.x` maintenance releases are available from PyPI. The
+public PyPI registry is authoritative for the latest published version.
+`pyproject.toml` and `.release-please-manifest.json` are authoritative for the
+current repository candidate and must agree; a candidate must not be described
+as published. `ROADMAP.md`, `RELEASING.md`, and `CHANGELOG.md` retain exact
+versions only as dated immutable historical evidence. Do not begin 0.2 provider
+adapters without a separate maintainer request that authorizes that milestone.
 
 Private Remote Validation, the sanitized first history, private initialization,
 pre-visibility closeout, public visibility configuration, Public Preview,
@@ -174,6 +177,12 @@ Post-stable invariants:
     release-link text in both source and built artifact metadata, and require
     each built long description to exactly match the source README. Post-release
     evidence changes must not rewrite README release state.
+11. Never encode a mutable "latest/current published patch version" in
+    persistent guidance or current-state documentation. Query public PyPI when
+    current registry state is required. Keep candidate version truth in
+    `pyproject.toml` and `.release-please-manifest.json`, and keep exact released
+    versions only in immutable historical evidence. The document/version
+    checker must fail before merge or release when this boundary is violated.
 
 ## Repository independence
 
@@ -270,7 +279,7 @@ uv run ruff check src tests scripts
 uv run ruff format --check src tests scripts
 uv run pyright
 uv run pytest -m "not live"
-uv run python scripts/check_version.py --require-changelog
+uv run python scripts/check_version.py --require-changelog --require-public-preview-docs
 uv run python scripts/check_secrets.py
 uv run python scripts/check_workflows.py
 rm -rf dist

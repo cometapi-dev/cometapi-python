@@ -3,22 +3,27 @@ from __future__ import annotations
 import shutil
 import subprocess
 import sys
+import tarfile
+import zipfile
 from collections.abc import Callable
 from pathlib import Path
 
 import pytest
 
+from scripts import check_repository_independence
 from scripts._checks import (
     CANONICAL_AUTHOR,
     CANONICAL_COPYRIGHT,
     CANONICAL_PROJECT_URLS,
     CANONICAL_SECURITY,
     CANONICAL_SUPPORT,
+    MUTABLE_PUBLISHED_VERSION_FIX,
     PUBLIC_README_INSTALL_COMMAND,
     CheckError,
+    mutable_published_version_claims,
     read_project_version,
 )
-from scripts.check_artifacts import check_metadata
+from scripts.check_artifacts import check_metadata, check_sdist, check_wheel
 from scripts.check_version import require_public_preview_docs, require_releasable_docs
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
@@ -75,6 +80,11 @@ Initial alpha release.
         "COMPATIBILITY.md": "# Compatibility\n",
         "ARCHITECTURE.md": "# Architecture\n",
         "CONTRIBUTING.md": "# Contributing\n",
+        "CLAUDE.md": "@AGENTS.md.\n",
+        ".github/PULL_REQUEST_TEMPLATE.md": "# Pull request\n",
+        ".github/ISSUE_TEMPLATE/bug_report.yml": "name: Bug report\n",
+        ".github/ISSUE_TEMPLATE/config.yml": "blank_issues_enabled: false\n",
+        ".github/ISSUE_TEMPLATE/feature_request.yml": "name: Feature request\n",
     }
     for name, content in files.items():
         path = root / name
@@ -145,6 +155,242 @@ def test_public_preview_documents_accept_durable_public_content(
     releasable_documents: Path,
 ) -> None:
     require_public_preview_docs()
+
+
+@pytest.mark.parametrize(
+    ("document", "claim"),
+    [
+        (
+            "AGENTS.md",
+            "`cometapi==0.1.2` is the latest publicly available maintenance release.",
+        ),
+        ("README.md", "The **current PyPI release** is\n`0.1.2`."),
+        ("COMPATIBILITY.md", "LATEST stable version: **0.1.2**."),
+        ("ARCHITECTURE.md", "`0.1.2` remains the current stable release."),
+        ("ROADMAP.md", "Status: `0.1.2` stable maintenance released"),
+        ("AGENTS.md", "Latest PyPI release: `0.1.2`."),
+        ("README.md", "`0.1.2` is the latest PyPI release."),
+        ("COMPATIBILITY.md", "PyPI currently publishes `0.1.2`."),
+        ("ARCHITECTURE.md", "The currently published version is `0.1.2`."),
+        ("CONTRIBUTING.md", "The version currently available from PyPI is `0.1.2`."),
+        ("AGENTS.md", "Published version: `0.1.2`."),
+        ("README.md", "CometAPI `0.1.2` is available from PyPI."),
+        ("COMPATIBILITY.md", "Latest, stable distribution: `0.1.2`."),
+        ("ARCHITECTURE.md", "PyPI currently has CometAPI `0.1.2`."),
+        ("CONTRIBUTING.md", "The latest <strong>stable</strong> release is `0.1.2`."),
+        (
+            "AGENTS.md",
+            "Historical evidence: immutable tag `v0.1.1`.\n\nCurrent PyPI release: `0.1.2`.",
+        ),
+        ("README.md", "| Current | `0.1.2` |"),
+        (
+            "README.md",
+            "| Version | Status |\n| --- | --- |\n| `0.1.2` | Current |",
+        ),
+        (
+            "README.md",
+            "Current PyPI release: https://pypi.org/project/cometapi/0.1.2/",
+        ),
+        (
+            "README.md",
+            "The **latest stable version** is [`0.1.2`](https://example.invalid).",
+        ),
+        (
+            ".github/ISSUE_TEMPLATE/feature_request.yml",
+            "description: Current PyPI release is 0.1.2.",
+        ),
+        ("COMPATIBILITY.md", "| Status | Released | `0.1.2` |"),
+        ("ARCHITECTURE.md", "The workflow was repaired, so PyPI publishes `0.1.2`."),
+    ],
+    ids=[
+        "agents-old-claim",
+        "readme-markdown-newline",
+        "compatibility-case-markdown",
+        "version-first-current-claim",
+        "roadmap-status",
+        "latest-pypi-release",
+        "version-first-latest-pypi-release",
+        "pypi-currently-publishes",
+        "currently-published-version",
+        "version-currently-available-from-pypi",
+        "published-version",
+        "cometapi-version-available-from-pypi",
+        "punctuated-latest-distribution",
+        "pypi-currently-has-cometapi",
+        "html-latest-release",
+        "prior-immutable-evidence-does-not-exempt-current-claim",
+        "markdown-current-table",
+        "markdown-version-first-current-table",
+        "current-versioned-pypi-url",
+        "markdown-linked-version-label",
+        "issue-template-current-release",
+        "markdown-released-table",
+        "past-clause-does-not-exempt-current-publication",
+    ],
+)
+def test_public_preview_cli_rejects_mutable_published_patch_claims(
+    releasable_documents: Path,
+    document: str,
+    claim: str,
+) -> None:
+    version_script = _copy_version_checker(releasable_documents)
+    with (releasable_documents / document).open("a", encoding="utf-8") as stream:
+        stream.write(f"\n{claim}\n")
+
+    result = subprocess.run(
+        [sys.executable, str(version_script), "--require-public-preview-docs"],
+        cwd=releasable_documents,
+        text=True,
+        check=False,
+        capture_output=True,
+    )
+
+    assert result.returncode != 0
+    assert f"{document}:" in result.stderr
+    assert "mutable " in result.stderr
+    assert "patch" in result.stderr
+    assert MUTABLE_PUBLISHED_VERSION_FIX in result.stderr
+
+
+def test_releasable_cli_rejects_mutable_published_patch_claim(
+    releasable_documents: Path,
+) -> None:
+    version_script = _copy_version_checker(releasable_documents)
+    with (releasable_documents / "AGENTS.md").open("a", encoding="utf-8") as stream:
+        stream.write("\n`cometapi==0.1.2` is the latest publicly available release.\n")
+
+    result = subprocess.run(
+        [sys.executable, str(version_script), "--require-releasable-docs"],
+        cwd=releasable_documents,
+        text=True,
+        check=False,
+        capture_output=True,
+    )
+
+    assert result.returncode != 0
+    assert "AGENTS.md:" in result.stderr
+    assert "mutable latest/current published patch version" in result.stderr
+    assert MUTABLE_PUBLISHED_VERSION_FIX in result.stderr
+
+
+def test_public_preview_documents_allow_immutable_release_evidence(
+    releasable_documents: Path,
+) -> None:
+    evidence = """\
+## Completed 0.1.2 maintenance release evidence
+
+- Release `v0.1.2` at commit `710c56491d9ef5f47cccff3ce837ab7e799455b0`
+  completed workflow run 30515861246 on 2026-07-30.
+- https://pypi.org/project/cometapi/0.1.2/
+- https://github.com/cometapi-dev/cometapi-python/releases/tag/v0.1.2
+- Wheel SHA256: 3f12c26ae1ae7a1de5ac19d8ef27a784b2bf592143c716493f1b0f35ec19daca
+"""
+    for name in ("CHANGELOG.md", "ROADMAP.md", "RELEASING.md"):
+        with (releasable_documents / name).open("a", encoding="utf-8") as stream:
+            stream.write(evidence)
+
+    require_public_preview_docs()
+
+
+@pytest.mark.parametrize(
+    "statement",
+    [
+        "Current stable release of Ruff: 0.12.0.",
+        "Latest stable version of httpx is 0.28.1.",
+        "Current PyPI release of openai: 2.50.0.",
+        "Latest stable OpenAI release: 2.50.0.",
+        "As of 2026-07-30, the current PyPI release was 0.1.2.",
+        "## Release evidence — 2026-07-30\n\nAt publication, 0.1.2 was the current PyPI release.",
+        "Release v0.1.2 is the latest stable version in the historical 2026-07-30 snapshot.",
+        "Release 0.1.2 was published on 2026-07-30.",
+        "The immutable v0.1.2 tag resolves to release commit 710c5649.",
+        "PyPI version remains 0.1.0a1 in recovery identity evidence.",
+        "https://pypi.org/project/cometapi/0.1.2/",
+        "[PyPI 0.1.2](https://pypi.org/project/cometapi/0.1.2/)",
+        "The exact [PyPI release](https://pypi.org/project/cometapi/0.1.2/) is public.",
+    ],
+)
+def test_mutable_claim_detector_allows_attributed_or_historical_evidence(
+    statement: str,
+) -> None:
+    assert mutable_published_version_claims(statement) == []
+
+
+def test_releasable_cli_allows_next_patch_without_guidance_edits(
+    releasable_documents: Path,
+) -> None:
+    version_script = _copy_version_checker(releasable_documents)
+    _replace(releasable_documents, "pyproject.toml", "0.1.0a1", "0.1.3")
+    _replace(
+        releasable_documents,
+        ".release-please-manifest.json",
+        "0.1.0-alpha.1",
+        "0.1.3",
+    )
+    with (releasable_documents / "CHANGELOG.md").open("a", encoding="utf-8") as stream:
+        stream.write("\n## [0.1.3] - 2026-07-30\n\nPatch maintenance.\n")
+
+    command = [
+        sys.executable,
+        str(version_script),
+        "--require-changelog",
+        "--require-releasable-docs",
+    ]
+    initial = subprocess.run(
+        command,
+        cwd=releasable_documents,
+        text=True,
+        check=False,
+        capture_output=True,
+    )
+    assert initial.returncode == 0, initial.stderr
+    assert "version agreement passed: 0.1.3" in initial.stdout
+
+    durable_names = (
+        "AGENTS.md",
+        "ARCHITECTURE.md",
+        "COMPATIBILITY.md",
+        "CONTRIBUTING.md",
+        "README.md",
+    )
+    durable_before = {name: (releasable_documents / name).read_bytes() for name in durable_names}
+    _replace(releasable_documents, "pyproject.toml", "0.1.3", "0.1.4")
+    _replace(releasable_documents, ".release-please-manifest.json", "0.1.3", "0.1.4")
+    with (releasable_documents / "CHANGELOG.md").open("a", encoding="utf-8") as stream:
+        stream.write("\n## [0.1.4] - 2026-08-01\n\nPatch maintenance.\n")
+
+    result = subprocess.run(
+        command,
+        cwd=releasable_documents,
+        text=True,
+        check=False,
+        capture_output=True,
+    )
+
+    assert result.returncode == 0, result.stderr
+    assert "version agreement passed: 0.1.4" in result.stdout
+    assert {
+        name: (releasable_documents / name).read_bytes() for name in durable_names
+    } == durable_before
+
+
+def test_version_cli_rejects_project_manifest_disagreement(
+    releasable_documents: Path,
+) -> None:
+    version_script = _copy_version_checker(releasable_documents)
+    _replace(releasable_documents, ".release-please-manifest.json", "0.1.0-alpha.1", "0.1.4")
+
+    result = subprocess.run(
+        [sys.executable, str(version_script), "--require-public-preview-docs"],
+        cwd=releasable_documents,
+        text=True,
+        check=False,
+        capture_output=True,
+    )
+
+    assert result.returncode != 0
+    assert "version disagreement" in result.stderr
+    assert "release-please manifest=0.1.4" in result.stderr
 
 
 @pytest.mark.parametrize(
@@ -256,6 +502,117 @@ def test_artifact_metadata_requires_unpinned_install_command() -> None:
             "0.1.0a1",
             f"{description}\n",
         )
+
+
+def test_artifact_metadata_rejects_mutable_published_patch_claim() -> None:
+    description = (
+        "Stable 0.1.x maintenance releases are available from PyPI.\n"
+        "Latest stable version: `0.1.2`.\n"
+        f"{PUBLIC_README_INSTALL_COMMAND}"
+    )
+    with pytest.raises(
+        CheckError,
+        match="mutable latest/current published patch version",
+    ):
+        check_metadata(
+            _artifact_metadata(description),
+            "fixture:METADATA",
+            "0.1.0a1",
+            f"{description}\n",
+        )
+
+
+def test_wheel_rejects_mutable_claim_in_long_description(tmp_path: Path) -> None:
+    current_version = read_project_version()
+    built = tmp_path / "built-wheel"
+    subprocess.run(
+        ["uv", "build", "--wheel", "--out-dir", str(built)],
+        cwd=PROJECT_ROOT,
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+    source = built / f"cometapi-{current_version}-py3-none-any.whl"
+    mutated = tmp_path / source.name
+    with zipfile.ZipFile(source) as archive, zipfile.ZipFile(mutated, mode="w") as output:
+        for info in archive.infolist():
+            content = archive.read(info.filename)
+            if info.filename.endswith(".dist-info/METADATA"):
+                content = content.replace(
+                    b"\n\n",
+                    b"\n\nLatest stable version: `0.1.2`.\n",
+                    1,
+                )
+            output.writestr(info, content)
+
+    with pytest.raises(CheckError) as caught:
+        check_wheel(
+            mutated,
+            current_version,
+            (PROJECT_ROOT / "README.md").read_text(encoding="utf-8"),
+        )
+
+    message = str(caught.value)
+    assert ".dist-info/METADATA" in message
+    assert "long description does not exactly match source README.md" in message
+
+
+def test_sdist_rejects_mutable_claim_in_persistent_document(tmp_path: Path) -> None:
+    current_version = read_project_version()
+    built = tmp_path / "built"
+    subprocess.run(
+        ["uv", "build", "--sdist", "--out-dir", str(built)],
+        cwd=PROJECT_ROOT,
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+    source = built / f"cometapi-{current_version}.tar.gz"
+    extracted = tmp_path / "extracted"
+    extracted.mkdir()
+    with tarfile.open(source, mode="r:gz") as archive:
+        members = archive.getmembers()
+        assert all(
+            not Path(member.name).is_absolute()
+            and ".." not in Path(member.name).parts
+            and not (member.issym() or member.islnk() or member.isdev())
+            for member in members
+        )
+        archive.extractall(extracted)
+    root = extracted / f"cometapi-{current_version}"
+    with (root / "AGENTS.md").open("a", encoding="utf-8") as stream:
+        stream.write("\nThe current PyPI release is `0.1.2`.\n")
+    mutated = tmp_path / f"cometapi-{current_version}.tar.gz"
+    with tarfile.open(mutated, mode="w:gz") as archive:
+        archive.add(root, arcname=root.name)
+
+    with pytest.raises(CheckError) as caught:
+        check_sdist(
+            mutated,
+            current_version,
+            (PROJECT_ROOT / "README.md").read_text(encoding="utf-8"),
+        )
+
+    message = str(caught.value)
+    assert "AGENTS.md:" in message
+    assert "mutable latest/current published patch version" in message
+    assert MUTABLE_PUBLISHED_VERSION_FIX in message
+
+
+def test_copied_repository_verification_runs_public_document_gate() -> None:
+    commands = check_repository_independence.offline_check_commands()
+
+    version_commands = [command for command in commands if "scripts/check_version.py" in command]
+    assert version_commands == [
+        [
+            "uv",
+            "run",
+            "python",
+            "scripts/check_version.py",
+            "--require-changelog",
+            "--require-public-preview-docs",
+        ]
+    ]
 
 
 def test_artifact_metadata_must_match_source_readme_exactly() -> None:

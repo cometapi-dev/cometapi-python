@@ -13,10 +13,13 @@ try:
     from ._checks import (
         CANONICAL_AUTHOR,
         CANONICAL_PROJECT_URLS,
+        MUTABLE_PUBLISHED_VERSION_FIX,
         PROJECT_ROOT,
         PUBLIC_README_INSTALL_COMMAND,
+        SDIST_PUBLIC_DOCUMENTS,
         CheckError,
         metadata_description,
+        mutable_published_version_claims,
         normalize_version,
         parse_metadata,
         public_readme_has_install_command,
@@ -28,10 +31,13 @@ except ImportError:  # Direct execution from the repository root.
     from _checks import (
         CANONICAL_AUTHOR,
         CANONICAL_PROJECT_URLS,
+        MUTABLE_PUBLISHED_VERSION_FIX,
         PROJECT_ROOT,
         PUBLIC_README_INSTALL_COMMAND,
+        SDIST_PUBLIC_DOCUMENTS,
         CheckError,
         metadata_description,
+        mutable_published_version_claims,
         normalize_version,
         parse_metadata,
         public_readme_has_install_command,
@@ -156,7 +162,7 @@ def check_metadata(
         )
 
 
-def _check_wheel(path: Path, expected_version: str, expected_description: str) -> None:
+def check_wheel(path: Path, expected_version: str, expected_description: str) -> None:
     expected_fragment = f"cometapi-{expected_version}-"
     if expected_fragment not in path.name:
         raise CheckError(f"{path.name}: filename does not contain {expected_fragment!r}")
@@ -194,7 +200,7 @@ def _check_wheel(path: Path, expected_version: str, expected_description: str) -
                 raise CheckError(f"{path.name}:{source_name}: legacy public client name remains")
 
 
-def _check_sdist(path: Path, expected_version: str, expected_description: str) -> None:
+def check_sdist(path: Path, expected_version: str, expected_description: str) -> None:
     expected_root = f"cometapi-{expected_version}"
     if path.name != f"{expected_root}.tar.gz":
         raise CheckError(f"{path.name}: expected sdist filename {expected_root}.tar.gz")
@@ -205,11 +211,12 @@ def _check_sdist(path: Path, expected_version: str, expected_description: str) -
             raise CheckError(f"{path.name}: links and device members are forbidden")
         if any(item.parts[0] != expected_root for item in paths):
             raise CheckError(f"{path.name}: every member must be below {expected_root}/")
-        relative_files = {
-            PurePosixPath(*item.parts[1:]).as_posix()
+        relative_members = {
+            PurePosixPath(*item.parts[1:]).as_posix(): member
             for member, item in zip(members, paths, strict=True)
             if member.isfile()
         }
+        relative_files = set(relative_members)
         missing = REQUIRED_SDIST_FILES - relative_files
         if missing:
             raise CheckError(f"{path.name}: missing sdist files: {sorted(missing)}")
@@ -217,6 +224,20 @@ def _check_sdist(path: Path, expected_version: str, expected_description: str) -
         unexpected = sorted(relative_files - expected_files)
         if unexpected:
             raise CheckError(f"{path.name}: unexpected sdist files: {unexpected}")
+        for name in SDIST_PUBLIC_DOCUMENTS:
+            stream = archive.extractfile(relative_members[name])
+            if stream is None:
+                raise CheckError(f"{path.name}:{name}: cannot read public document")
+            try:
+                text = stream.read().decode("utf-8")
+            except UnicodeDecodeError as exc:
+                raise CheckError(f"{path.name}:{name}: document is not UTF-8: {exc}") from exc
+            claims = mutable_published_version_claims(text)
+            if claims:
+                line, label = claims[0]
+                raise CheckError(
+                    f"{path.name}:{name}:{line}: contains {label}; {MUTABLE_PUBLISHED_VERSION_FIX}"
+                )
         metadata_members = [
             member for member in members if PurePosixPath(member.name).name == "PKG-INFO"
         ]
@@ -261,9 +282,9 @@ def main() -> int:
     paths = _artifacts(args.artifacts)
     for path in paths:
         if path.suffix == ".whl":
-            _check_wheel(path, expected_version, expected_description)
+            check_wheel(path, expected_version, expected_description)
         else:
-            _check_sdist(path, expected_version, expected_description)
+            check_sdist(path, expected_version, expected_description)
         print(f"{sha256_file(path)}  {path}")
     print(f"artifact checks passed for cometapi {expected_version}")
     return 0
