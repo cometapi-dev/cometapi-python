@@ -19,7 +19,9 @@ except ImportError:  # Direct execution from the repository root.
 
 RELEASE_PLEASE_BASELINE_SHA = "31b68904141489ca04932edbf305ccf88af09372"
 RELEASE_PLEASE_LOCK_JSONPATH = "$.package[?(@.name.value == 'cometapi')].version"
-RELEASE_PLEASE_ACTION_SHA = "5c625bfb5d1ff62eadeeb3772007f7f66fdcf071"
+RELEASE_PLEASE_ACTION_SHA = "45996ed1f6d02564a971a2fa1b5860e934307cf7"
+RELEASE_PLEASE_ACTION_VERSION = "5.0.0"
+RELEASE_PLEASE_ACTION_RUNTIME = "node24"
 RELEASE_PLEASE_BRIDGE_VERSION = "0.1.0-alpha.1"
 RELEASE_PLEASE_STABLE_VERSION_PATTERN = re.compile(r"0\.1\.(?:0|[1-9][0-9]*)")
 RELEASE_PLEASE_VERIFY_COMMAND = """\
@@ -814,7 +816,10 @@ def check_release_please_workflow(text: str) -> None:
     if release_step.get("uses") != (
         f"googleapis/release-please-action@{RELEASE_PLEASE_ACTION_SHA}"
     ):
-        raise CheckError("Release Please must retain the release-please 17.3.0 action pin")
+        raise CheckError(
+            "Release Please must retain the release-please "
+            f"{RELEASE_PLEASE_ACTION_VERSION} ({RELEASE_PLEASE_ACTION_RUNTIME}) action pin"
+        )
     verify_matches = [
         (index, step)
         for index, step in enumerate(_workflow_steps(release_job, "Release Please job"))

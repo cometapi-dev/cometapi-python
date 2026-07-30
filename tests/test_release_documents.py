@@ -14,9 +14,11 @@ from scripts._checks import (
     CANONICAL_PROJECT_URLS,
     CANONICAL_SECURITY,
     CANONICAL_SUPPORT,
+    PUBLIC_README_INSTALL_COMMAND,
     CheckError,
     read_project_version,
 )
+from scripts.check_artifacts import check_metadata
 from scripts.check_version import require_public_preview_docs, require_releasable_docs
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
@@ -50,7 +52,8 @@ Security = "{CANONICAL_PROJECT_URLS["Security"]}"
         ".release-please-manifest.json": '{".": "0.1.0-alpha.1"}\n',
         "LICENSE": f"{CANONICAL_COPYRIGHT}\n",
         "README.md": (
-            "0.1.0a1 is approved for PyPI publication.\n"
+            f"Stable 0.1.x maintenance releases are available from PyPI.\n"
+            f"{PUBLIC_README_INSTALL_COMMAND}\n"
             + "\n".join(CANONICAL_PROJECT_URLS.values())
             + f"\n{CANONICAL_SUPPORT}\n"
         ),
@@ -113,6 +116,19 @@ def _change_conduct_contact(root: Path) -> None:
     _replace(root, "CODE_OF_CONDUCT.md", CANONICAL_SUPPORT, "conduct@example.invalid")
 
 
+def _artifact_metadata(description: str) -> bytes:
+    headers = [
+        "Metadata-Version: 2.4",
+        "Name: cometapi",
+        "Version: 0.1.0a1",
+        f"Author: {CANONICAL_AUTHOR}",
+        "Requires-Dist: openai<3.0.0,>=2.45.0",
+        "Description-Content-Type: text/markdown",
+    ]
+    headers.extend(f"Project-URL: {label}, {url}" for label, url in CANONICAL_PROJECT_URLS.items())
+    return ("\n".join(headers) + "\n\n" + description + "\n").encode()
+
+
 @pytest.fixture
 def releasable_documents(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
     _write_release_documents(tmp_path)
@@ -129,6 +145,133 @@ def test_public_preview_documents_accept_durable_public_content(
     releasable_documents: Path,
 ) -> None:
     require_public_preview_docs()
+
+
+@pytest.mark.parametrize(
+    "replacement",
+    [
+        "Pending owner identity must be filled.",
+        "Pending ownership confirmation must be filled.",
+        "Pending-owner identity must be filled.",
+        "0.1.0a1 is approved for PyPI publication.",
+        "python -m pip install 'cometapi==0.1.0a1'",
+        "https://pypi.org/project/cometapi/0.1.0a1/",
+        "https://github.com/cometapi-dev/cometapi-python/releases/tag/v0.1.0",
+    ],
+    ids=[
+        "pending-owner",
+        "pending-ownership",
+        "pending-owner-hyphen",
+        "approval-state",
+        "version-pin",
+        "pypi-version-link",
+        "github-version-link",
+    ],
+)
+def test_releasable_documents_reject_publication_specific_readme_state(
+    releasable_documents: Path,
+    replacement: str,
+) -> None:
+    readme = releasable_documents / "README.md"
+    if replacement.startswith("https://"):
+        readme.write_text(
+            readme.read_text(encoding="utf-8") + replacement + "\n",
+            encoding="utf-8",
+        )
+    else:
+        _replace(
+            releasable_documents,
+            "README.md",
+            "Stable 0.1.x maintenance releases are available from PyPI.\n"
+            f"{PUBLIC_README_INSTALL_COMMAND}",
+            replacement,
+        )
+
+    with pytest.raises(CheckError, match=r"publication-neutral release guidance|unpinned stable"):
+        require_releasable_docs("0.1.0a1")
+
+
+def test_releasable_documents_require_unpinned_install_command(
+    releasable_documents: Path,
+) -> None:
+    _replace(
+        releasable_documents,
+        "README.md",
+        PUBLIC_README_INSTALL_COMMAND,
+        "python -m pip install cometapi-sdk",
+    )
+
+    with pytest.raises(CheckError, match="unpinned stable install command"):
+        require_releasable_docs("0.1.0a1")
+
+
+def test_artifact_metadata_accepts_publication_neutral_long_description() -> None:
+    description = (
+        "Stable 0.1.x maintenance releases are available from PyPI.\n"
+        f"{PUBLIC_README_INSTALL_COMMAND}"
+    )
+    check_metadata(
+        _artifact_metadata(description),
+        "fixture:METADATA",
+        "0.1.0a1",
+        f"{description}\n",
+    )
+
+
+@pytest.mark.parametrize(
+    "description",
+    [
+        "Pending ownership confirmation.\npython -m pip install cometapi",
+        "Pending-owner confirmation.\npython -m pip install cometapi",
+        "0.1.0a1 is approved for PyPI publication.\npython -m pip install cometapi",
+        "python -m pip install 'cometapi==0.1.0a1'",
+        "python -m pip install cometapi\nhttps://pypi.org/project/cometapi/0.1.0a1/",
+    ],
+    ids=[
+        "pending-ownership",
+        "pending-owner-hyphen",
+        "approval-state",
+        "version-pin",
+        "versioned-release-link",
+    ],
+)
+def test_artifact_metadata_rejects_publication_specific_long_description(
+    description: str,
+) -> None:
+    with pytest.raises(CheckError, match="long description contains publication-specific"):
+        check_metadata(
+            _artifact_metadata(description),
+            "fixture:METADATA",
+            "0.1.0a1",
+            f"{description}\n",
+        )
+
+
+def test_artifact_metadata_requires_unpinned_install_command() -> None:
+    description = "Stable 0.1.x maintenance releases are available from PyPI."
+    with pytest.raises(CheckError, match="unpinned stable install command"):
+        check_metadata(
+            _artifact_metadata(description),
+            "fixture:METADATA",
+            "0.1.0a1",
+            f"{description}\n",
+        )
+
+
+def test_artifact_metadata_must_match_source_readme_exactly() -> None:
+    expected = (
+        "Stable 0.1.x maintenance releases are available from PyPI.\n"
+        f"{PUBLIC_README_INSTALL_COMMAND}"
+    )
+    changed = expected.replace("Stable 0.1.x", "The stable 0.1.x")
+
+    with pytest.raises(CheckError, match="exactly match source README"):
+        check_metadata(
+            _artifact_metadata(changed),
+            "fixture:METADATA",
+            "0.1.0a1",
+            f"{expected}\n",
+        )
 
 
 def test_public_preview_documents_reject_non_https_canonical_project_url(

@@ -346,8 +346,9 @@ Public Preview remains ready only while:
   self-review.
 - Default-branch CI is rerun successfully after the public configuration.
 - The fail-closed content gate reports all violations together and then passes,
-  repository self-containment and package gates pass, and the README accurately
-  states prerelease and registry availability.
+  repository self-containment and package gates pass, and the README uses
+  publication-neutral stable installation guidance suitable for immutable
+  distribution metadata.
 - An explicitly authorized protected live smoke passes within the four-request,
   16-output-token, 30-second-per-request, concurrency-one, stop-on-first-failure
   budget.

@@ -6,6 +6,13 @@ automation.
 
 ## [Unreleased]
 
+### Fixed
+
+- Pin Release Please to its reviewed Node 24 action and reject regressions to
+  the deprecated Node 20 runtime.
+- Keep the README and built distribution long description publication-neutral,
+  with an unpinned stable installation command and no transient approval state.
+
 ### Documentation
 
 - Record completed `0.1.1` publication, live, provenance, digest, and

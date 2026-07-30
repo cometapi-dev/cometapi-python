@@ -167,11 +167,26 @@ secret separation, and checkout-before-bundle-download ordering. Its git-backed
 tests exercise accepted and rejected release histories locally; they still do
 not emulate GitHub Actions.
 
+The Release Please step is pinned to
+`googleapis/release-please-action@45996ed1f6d02564a971a2fa1b5860e934307cf7`
+(`v5.0.0`), whose immutable action metadata selects `node24`. The semantic
+checker rejects any other pin so the workflow cannot silently regress to the
+deprecated Node 20 runtime.
+
 Release mode (`check_version.py --require-releasable-docs`) also fails closed
 until project authorship, the canonical GitHub repository URL, the copyright
-holder, security and support contacts, and the approved README/changelog
-release state are present. Public Preview validation reports all discovered
-violations in one run and still returns non-zero when any violation exists.
+holder, security and support contacts, a publication-neutral README, and a dated
+changelog release section are present. Public Preview validation reports all
+discovered violations in one run and still returns non-zero when any violation
+exists.
+
+`pyproject.toml` embeds `README.md` as the immutable distribution long
+description. The README therefore uses the unpinned
+`python -m pip install cometapi` command and unversioned project links. Release
+PRs and post-release evidence changes must not introduce approval, unpublished,
+or exact-version availability statements. Artifact inspection applies the same
+policy to wheel `METADATA` and sdist `PKG-INFO`, so source and registry-facing
+descriptions cannot drift.
 
 ## Workflow responsibilities
 
@@ -326,7 +341,7 @@ feature or fix pull request
     -> required offline CI
     -> merge to the default branch
     -> automated release pull request
-    -> human finalization of stable docs, metadata, and one-time bridge cleanup
+    -> human review of generated versions, changelog, and durable metadata
     -> required release-PR CI, review, and merge
     -> immutable tag and GitHub release
     -> bounded API verification of immutable tag and commit identity
@@ -340,15 +355,15 @@ feature or fix pull request
     -> roadmap milestone marked released
 ```
 
-Stable `0.1.0` additionally requires the complete blocking Python matrix,
+Stable `0.1.0` additionally required the complete blocking Python matrix,
 executed README examples against the built package, trusted live evidence, and
-reviewed release-PR and changelog agreement. Before the stable release PR is
-merged, its finalization commit must state that `0.1.0` is approved for PyPI
-publication, use the stable installation command and classifier, and remove the
-one-time `last-release-sha` plus prerelease-versioning controls. The manifest,
+reviewed release-PR and changelog agreement. Its one-time finalization removed
+the `last-release-sha` and prerelease-versioning controls. Later maintenance
+releases keep those controls absent and must retain publication-neutral README
+metadata throughout the release and post-release sequence. The manifest,
 project metadata, lock file, and changelog must remain at the exact generated
-`0.1.0` version. If GitHub requires approval before checks run on the automated
-pull request, approve only that reviewed workflow execution and wait for every
+version. If GitHub requires approval before checks run on the automated pull
+request, approve only that reviewed workflow execution and wait for every
 blocking check.
 
 ## Immutable release publication recovery

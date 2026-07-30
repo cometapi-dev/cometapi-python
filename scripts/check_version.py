@@ -18,8 +18,11 @@ try:
         CANONICAL_SECURITY,
         CANONICAL_SUPPORT,
         DIST_NAME,
+        PUBLIC_README_INSTALL_COMMAND,
         CheckError,
         normalize_version,
+        public_readme_has_install_command,
+        public_readme_release_violations,
         read_project_metadata,
         read_project_version,
         read_release_manifest,
@@ -34,8 +37,11 @@ except ImportError:  # Direct execution from the repository root.
         CANONICAL_SECURITY,
         CANONICAL_SUPPORT,
         DIST_NAME,
+        PUBLIC_README_INSTALL_COMMAND,
         CheckError,
         normalize_version,
+        public_readme_has_install_command,
+        public_readme_release_violations,
         read_project_metadata,
         read_project_version,
         read_release_manifest,
@@ -230,39 +236,16 @@ def require_releasable_docs(project_version: str) -> None:
     require_public_preview_docs()
 
     readme = Path("README.md").read_text(encoding="utf-8")
-    if "pending owner" in readme.casefold():
-        raise CheckError("README.md still contains pending owner identity or contact metadata")
-    readme_status = " ".join(re.sub(r"[^\w.]+", " ", readme).split())
-    unpublished_patterns = (
-        r"\bcandidate\b",
-        r"\bno\s+pypi\s+publication\b",
-        r"\b(?:has\s+)?not\s+been\s+published\b",
-        r"\bdo\s+not\s+treat\b[^\n]*\bcurrently\s+available\b",
-        r"\blocal\s+0\.1\.0a1\s+registry\s+alpha\s+candidate\b",
-        r"\blocal\s+candidate\b",
-    )
-    present = [
-        pattern
-        for pattern in unpublished_patterns
-        if re.search(pattern, readme_status, flags=re.IGNORECASE)
-    ]
-    if present:
+    violations = public_readme_release_violations(readme)
+    if violations:
         raise CheckError(
-            "README.md still describes the release as local or unpublished; "
-            "remove every stale status statement before tagging"
+            "README.md must use publication-neutral release guidance; found: "
+            + ", ".join(sorted(set(violations)))
         )
-    if (
-        re.search(
-            rf"\b{re.escape(normalize_version(project_version))}\s+is\s+approved\s+for\s+"
-            r"pypi\s+publication\b",
-            readme_status,
-            flags=re.IGNORECASE,
-        )
-        is None
-    ):
+    if not public_readme_has_install_command(readme):
         raise CheckError(
-            "README.md must explicitly state '<version> is approved for PyPI publication' "
-            "before tagging"
+            "README.md must contain the unpinned stable install command "
+            f"{PUBLIC_README_INSTALL_COMMAND!r}"
         )
 
     changelog = Path("CHANGELOG.md").read_text(encoding="utf-8")
