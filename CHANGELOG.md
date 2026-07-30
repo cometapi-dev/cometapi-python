@@ -10,6 +10,8 @@ automation.
 
 - Pin Release Please to its reviewed Node 24 action and reject regressions to
   the deprecated Node 20 runtime.
+- Separate non-retryable immutable release creation from PR-only maintenance,
+  with exactly one bounded retry for an isolated pull-request transport failure.
 - Keep the README and built distribution long description publication-neutral,
   with an unpinned stable installation command and no transient approval state.
 

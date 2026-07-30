@@ -22,8 +22,26 @@ RELEASE_PLEASE_LOCK_JSONPATH = "$.package[?(@.name.value == 'cometapi')].version
 RELEASE_PLEASE_ACTION_SHA = "45996ed1f6d02564a971a2fa1b5860e934307cf7"
 RELEASE_PLEASE_ACTION_VERSION = "5.0.0"
 RELEASE_PLEASE_ACTION_RUNTIME = "node24"
+RELEASE_PLEASE_ACTION = f"googleapis/release-please-action@{RELEASE_PLEASE_ACTION_SHA}"
 RELEASE_PLEASE_BRIDGE_VERSION = "0.1.0-alpha.1"
 RELEASE_PLEASE_STABLE_VERSION_PATTERN = re.compile(r"0\.1\.(?:0|[1-9][0-9]*)")
+RELEASE_PR_CONDITION = "steps.release.outputs.release_created != 'true'"
+RELEASE_PR_RETRY_CONDITION = (
+    "steps.release.outputs.release_created != 'true' && steps.release-pr.outcome == 'failure'"
+)
+RELEASE_VERIFY_CONDITION = "steps.release.outputs.release_created == 'true'"
+REVIEWED_RELEASE_PR_FIRST_ATTEMPT: dict[str, object] = {
+    "name": "Open or update the release PR",
+    "id": "release-pr",
+    "if": RELEASE_PR_CONDITION,
+    "continue-on-error": "true",
+    "uses": RELEASE_PLEASE_ACTION,
+    "with": {
+        "config-file": "release-please-config.json",
+        "manifest-file": ".release-please-manifest.json",
+        "skip-github-release": "true",
+    },
+}
 RELEASE_PLEASE_VERIFY_COMMAND = """\
 test -n "$EXPECTED_TAG"
 test -n "$EXPECTED_SHA"
@@ -772,7 +790,9 @@ def check_release_please_workflow(text: str) -> None:
     _require_step_names(
         release_job,
         [
-            "Open or update the release PR, or create its approved release",
+            "Create the approved immutable release",
+            "Open or update the release PR",
+            "Retry release PR maintenance once",
             "Verify the immutable release created by Release Please",
         ],
         "Release Please job",
@@ -797,45 +817,64 @@ def check_release_please_workflow(text: str) -> None:
         "Release Please job",
     )
     _require_step_working_directories(release_job, {}, "Release Please job")
-    _, release_step = _named_action_step(
-        release_job,
-        "Open or update the release PR, or create its approved release",
-        "googleapis/release-please-action",
-        "Release Please job",
+    release_step, release_pr_step, retry_release_pr_step, verify_step = _workflow_steps(
+        release_job, "Release Please job"
     )
-    _require_options(
-        release_step,
-        {
-            "config-file": "release-please-config.json",
-            "manifest-file": ".release-please-manifest.json",
-        },
-        "Release Please action",
-    )
-    if release_step.get("id") != "release":
-        raise CheckError("Release Please action must expose its reviewed release outputs")
-    if release_step.get("uses") != (
-        f"googleapis/release-please-action@{RELEASE_PLEASE_ACTION_SHA}"
-    ):
-        raise CheckError(
-            "Release Please must retain the release-please "
-            f"{RELEASE_PLEASE_ACTION_VERSION} ({RELEASE_PLEASE_ACTION_RUNTIME}) action pin"
-        )
-    verify_matches = [
-        (index, step)
-        for index, step in enumerate(_workflow_steps(release_job, "Release Please job"))
-        if step.get("name") == "Verify the immutable release created by Release Please"
+    common_options = {
+        "config-file": "release-please-config.json",
+        "manifest-file": ".release-please-manifest.json",
+    }
+    reviewed_steps = [
+        (
+            release_step,
+            "release",
+            common_options | {"skip-github-pull-request": "true"},
+            {"name", "id", "uses", "with"},
+        ),
+        (
+            release_pr_step,
+            "release-pr",
+            common_options | {"skip-github-release": "true"},
+            {"name", "id", "if", "continue-on-error", "uses", "with"},
+        ),
+        (
+            retry_release_pr_step,
+            "retry-release-pr",
+            common_options | {"skip-github-release": "true"},
+            {"name", "id", "if", "uses", "with"},
+        ),
     ]
-    if len(verify_matches) != 1:
-        raise CheckError("Release Please job must contain its immutable-release verification")
-    _, verify_step = verify_matches[0]
+    for step, expected_id, options, keys in reviewed_steps:
+        _require_exact_keys(step, keys, f"Release Please {expected_id} step")
+        if step.get("id") != expected_id:
+            raise CheckError(f"Release Please {expected_id} step must retain its reviewed id")
+        if step.get("uses") != RELEASE_PLEASE_ACTION:
+            raise CheckError(
+                "Release Please must retain the release-please "
+                f"{RELEASE_PLEASE_ACTION_VERSION} ({RELEASE_PLEASE_ACTION_RUNTIME}) action pin"
+            )
+        _require_options(step, options, f"Release Please {expected_id} action")
+    if release_pr_step.get("if") != RELEASE_PR_CONDITION:
+        raise CheckError("Release Please must run PR maintenance only when no release was created")
+    if release_pr_step.get("continue-on-error") != "true":
+        raise CheckError("Release Please must permit exactly one bounded PR-maintenance retry")
+    retry_condition = " ".join(
+        _scalar(retry_release_pr_step.get("if"), "Release Please PR retry condition").split()
+    )
+    if retry_condition != RELEASE_PR_RETRY_CONDITION:
+        raise CheckError("Release Please PR retry must require the first PR-only attempt to fail")
+    _require_exact_keys(
+        verify_step,
+        {"name", "id", "if", "env", "run"},
+        "Release Please immutable-release verification",
+    )
     if verify_step.get("run") != RELEASE_PLEASE_VERIFY_COMMAND or "uses" in verify_step:
         raise CheckError("Release Please immutable-release verification is not exact")
-    if verify_step.get("id") != "verify-release" or verify_step.get("if") != (
-        "steps.release.outputs.release_created == 'true'"
+    if (
+        verify_step.get("id") != "verify-release"
+        or verify_step.get("if") != RELEASE_VERIFY_CONDITION
     ):
         raise CheckError("Release Please must verify only the release it just created")
-    if any(key in verify_step for key in ("continue-on-error", "shell", "working-directory")):
-        raise CheckError("Release Please immutable-release verification must fail closed")
     if _secret_references(release_job):
         raise CheckError("Release Please must not depend on repository credentials")
 
@@ -1084,13 +1123,15 @@ def check_publish_workflow(text: str, live_smoke_text: str) -> None:
     for mapping in _walk_mappings(workflow, "publish workflow"):
         if "if" in mapping:
             conditions.append(" ".join(_scalar(mapping["if"], "release condition").split()))
-        if "continue-on-error" in mapping:
+        if "continue-on-error" in mapping and mapping != REVIEWED_RELEASE_PR_FIRST_ATTEMPT:
             raise CheckError("release gates must not be allowed to continue on error")
         if "defaults" in mapping or "shell" in mapping:
             raise CheckError("release gates must not override command execution")
     expected_conditions = [
         RELEASE_PLEASE_JOB_CONDITION,
-        "steps.release.outputs.release_created == 'true'",
+        RELEASE_PR_CONDITION,
+        RELEASE_PR_RETRY_CONDITION,
+        RELEASE_VERIFY_CONDITION,
         RECOVERY_JOB_CONDITION,
         SELECT_RELEASE_CONDITION,
         BUILD_JOB_CONDITION,

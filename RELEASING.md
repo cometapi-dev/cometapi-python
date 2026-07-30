@@ -173,6 +173,24 @@ The Release Please step is pinned to
 checker rejects any other pin so the workflow cannot silently regress to the
 deprecated Node 20 runtime.
 
+The job invokes the pinned action release-only first with
+`skip-github-pull-request: true`. That step cannot continue on error and is
+never retried. If it succeeds without creating a release, PR-only maintenance
+uses `skip-github-release: true`; its first attempt is the single Release Please
+step allowed to continue on error, and a second identical attempt runs only
+after that first PR attempt fails. A second failure ends the job. This permits
+one bounded retry for mutable, idempotent branch and pull-request maintenance
+without ever automatically retrying immutable tag or GitHub Release creation.
+
+[Run 30509764960](https://github.com/cometapi-dev/cometapi-python/actions/runs/30509764960)
+failed in the PR workflow with Undici/global `fetch` reporting
+`other side closed`. It had built the candidate and reached the write boundary,
+but created or updated no branch, pull request, tag, GitHub Release, live
+request, or registry artifact. Read-only inspection ruled out a stale release
+branch and missing pull-request permission. Treat that run as isolated
+transport-failure evidence; do not rerun it or reinterpret it as an
+authorization failure.
+
 Release mode (`check_version.py --require-releasable-docs`) also fails closed
 until project authorship, the canonical GitHub repository URL, the copyright
 holder, security and support contacts, a publication-neutral README, and a dated
@@ -220,10 +238,16 @@ descriptions cannot drift.
   `last-release-sha` bridge established the recovery release boundary and was
   removed during human finalization of the stable release PR. Keep the variable
   disabled except while executing an explicitly authorized release sequence.
-  When it creates an approved release with the GitHub workflow token, it polls
-  the GitHub API until that exact tag and commit are independently reported as
-  immutable, then selects it for the downstream chain in the same workflow;
-  workflow-token release events do not trigger a second workflow.
+  The job checks for and creates an approved release through its non-retryable
+  release-only invocation before it performs retryable PR-only maintenance. If
+  a release is created with the GitHub workflow token, it polls the GitHub API
+  until that exact tag and commit are independently reported as immutable, then
+  selects it for the downstream chain in the same workflow; workflow-token
+  release events do not trigger a second workflow. If the release-only
+  invocation fails, immediately set `RELEASE_PLEASE_ENABLED=false`, inspect tag
+  and GitHub Release state read-only, and stop. Do not make another main push or
+  use recovery until the exact external state is known and recovery is
+  separately authorized.
 - The `verify-recovery` path in `publish.yml` is the only manual publication
   path. It requires an exact immutable tag and commit, the protected default
   branch, and the temporary `RELEASE_RECOVERY_TAG` and `RELEASE_RECOVERY_SHA`

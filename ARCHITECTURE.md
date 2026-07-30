@@ -140,6 +140,24 @@ uses `node24`. The workflow semantic contract fixes that SHA and runtime
 disposition so GitHub does not need to force a deprecated Node 20 action onto a
 newer runtime.
 
+Release Please execution is split at the mutability boundary. The first pinned
+action invocation is release-only (`skip-github-pull-request: true`) and is
+neither continued on error nor retried. Only when that invocation succeeds
+without creating a release does PR-only maintenance run
+(`skip-github-release: true`). The first PR-only attempt is allowed to continue
+on error solely so one identical conditional retry can follow; the second
+failure ends the job. Updating a branch or pull request is mutable and
+idempotent, while retrying immutable tag or GitHub Release creation could leave
+ambiguous external state and is forbidden.
+
+[Release Please run 30509764960](https://github.com/cometapi-dev/cometapi-python/actions/runs/30509764960)
+isolated the motivating failure to the action's Undici/global `fetch`: the PR
+workflow reached its write boundary and then failed with `other side closed`
+before any branch, pull-request, tag, GitHub Release, live, or registry write.
+The existing release branch and repository pull-request permission were not the
+cause. This is negative transport evidence, not evidence of a stale branch or
+authorization drift.
+
 This complete trust chain executed successfully in
 [release workflow run 30261746138](https://github.com/cometapi-dev/cometapi-python/actions/runs/30261746138)
 for release commit `31b68904141489ca04932edbf305ccf88af09372`, recovery tag
