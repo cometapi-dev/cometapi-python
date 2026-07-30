@@ -1,6 +1,6 @@
 # CometAPI Python SDK Roadmap
 
-Status: `0.1.2` stable maintenance released
+Status: Stable `0.1.x` maintenance active
 Last updated: 2026-07-30
 Repository contract: this roadmap is self-contained.
 Current gate: maintain the verified stable 0.1 surface. Begin 0.2 only after a
@@ -12,13 +12,13 @@ The SDK provides the shortest reliable path from an OpenAI Python integration
 to CometAPI while preserving official request, response, error, retry, timeout,
 sync, async, and streaming behavior.
 
-Private Remote Validation, Public Preview, the functional `0.1.0a1` Registry
-Alpha, stable `0.1.0`, and maintenance releases `0.1.1` and `0.1.2` are complete
-for the sanitized public repository. Protected repository configuration,
-public default-branch CI, exact-release live smoke, PyPI OIDC publication,
-provenance, digest comparison, and public-registry smoke provide separate
-evidence layers. Only 0.1.x maintenance is active; `0.1.2` does not activate
-0.2 scope.
+Private Remote Validation, Public Preview, the functional Registry Alpha, the
+first stable release, and verified `0.1.x` maintenance releases are complete
+for the sanitized public repository and recorded below as immutable evidence.
+Protected repository configuration, public default-branch CI, exact-release
+live smoke, PyPI OIDC publication, provenance, digest comparison, and
+public-registry smoke provide separate evidence layers. Only 0.1.x maintenance
+is active; no maintenance release activates 0.2 scope.
 Support and release claims remain limited to the evidence defined in this
 roadmap and `COMPATIBILITY.md`.
 

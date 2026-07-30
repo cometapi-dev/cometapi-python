@@ -44,10 +44,8 @@ jobs:
         run: uv run pyright
       - name: Run offline unit and contract tests
         run: uv run pytest -m "not live"
-      - name: Check release version agreement
-        run: uv run python scripts/check_version.py --require-changelog
-      - name: Check canonical public content and identity
-        run: uv run python scripts/check_version.py --require-public-preview-docs
+      - name: Check version agreement and durable public content
+        run: uv run python scripts/check_version.py --require-changelog --require-public-preview-docs
       - name: Scan for credentials and scope mistakes
         run: uv run python scripts/check_secrets.py
       - name: Validate workflow syntax with checksum-pinned actionlint

@@ -10,7 +10,10 @@ import subprocess
 import tempfile
 from pathlib import Path
 
-from _checks import PROJECT_ROOT, CheckError
+try:
+    from ._checks import PROJECT_ROOT, CheckError
+except ImportError:  # Direct execution from the repository root.
+    from _checks import PROJECT_ROOT, CheckError
 
 IGNORED_NAMES = {
     ".cache",
@@ -74,8 +77,9 @@ def _run(root: Path, command: list[str]) -> None:
     subprocess.run(command, cwd=root, env=_environment(), check=True, timeout=1200)
 
 
-def _offline_checks(root: Path) -> None:
-    commands = [
+def offline_check_commands() -> list[list[str]]:
+    """Return the ordered standalone command templates."""
+    return [
         ["uv", "lock", "--check"],
         ["uv", "sync", "--locked"],
         ["uv", "run", "ruff", "check", "src", "tests", "scripts"],
@@ -83,12 +87,12 @@ def _offline_checks(root: Path) -> None:
         ["uv", "run", "pyright"],
         ["uv", "run", "pytest", "-m", "not live"],
         ["uv", "run", "python", "scripts/check_secrets.py"],
-        ["uv", "run", "python", "scripts/check_version.py", "--require-changelog"],
         [
             "uv",
             "run",
             "python",
             "scripts/check_version.py",
+            "--require-changelog",
             "--require-public-preview-docs",
         ],
         ["uv", "run", "python", "scripts/check_workflows.py"],
@@ -96,14 +100,15 @@ def _offline_checks(root: Path) -> None:
         ["uv", "build"],
         ["uv", "run", "twine", "check", "dist/*"],
         ["uv", "run", "python", "scripts/check_artifacts.py"],
+        ["uv", "run", "python", "scripts/check_clean_install.py", "dist/*"],
     ]
-    for command in commands:
+
+
+def _offline_checks(root: Path) -> None:
+    for command in offline_check_commands():
         if command[-1] == "dist/*":
-            artifacts = _distribution_paths(root)
-            command = command[:-1] + artifacts
+            command = command[:-1] + _distribution_paths(root)
         _run(root, command)
-    artifacts = _distribution_paths(root)
-    _run(root, ["uv", "run", "python", "scripts/check_clean_install.py", *artifacts])
 
 
 def _distribution_paths(root: Path) -> list[str]:

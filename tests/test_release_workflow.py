@@ -400,6 +400,24 @@ def test_current_publish_workflow_satisfies_semantic_contract() -> None:
     )
 
 
+@pytest.mark.parametrize(
+    "needle",
+    [
+        " --require-releasable-docs --print-version)",
+        " --require-releasable-docs dist/*",
+    ],
+    ids=["source-tag-gate", "artifact-version-gate"],
+)
+def test_publish_contract_requires_releasable_document_gate(needle: str) -> None:
+    text = PUBLISH_WORKFLOW.read_text(encoding="utf-8")
+    assert needle in text
+    with pytest.raises(RuntimeError):
+        check_publish_workflow(
+            text.replace(needle, needle.replace(" --require-releasable-docs", ""), 1),
+            LIVE_SMOKE_WORKFLOW.read_text(encoding="utf-8"),
+        )
+
+
 def test_release_please_uses_split_node24_v5_execution() -> None:
     text = RELEASE_PLEASE_WORKFLOW.read_text(encoding="utf-8")
     action = (
@@ -1319,8 +1337,9 @@ def test_ci_contract_rejects_extra_skip_dependency_job() -> None:
     "needle",
     [
         "      - name: Check lock consistency\n        run: uv lock --check\n",
-        "      - name: Check canonical public content and identity\n"
-        "        run: uv run python scripts/check_version.py --require-public-preview-docs\n",
+        "      - name: Check version agreement and durable public content\n"
+        "        run: uv run python scripts/check_version.py --require-changelog "
+        "--require-public-preview-docs\n",
         "      - name: Verify from a copied standalone repository\n"
         "        run: python scripts/check_repository_independence.py\n",
         "      - name: Recheck retained artifact digests\n"
@@ -1337,9 +1356,11 @@ def test_ci_contract_rejects_missing_private_validation_gate(needle: str) -> Non
 
 def test_ci_contract_rejects_commented_public_content_decoy() -> None:
     text = CI_WORKFLOW.read_text(encoding="utf-8").replace(
-        "      - name: Check canonical public content and identity\n"
-        "        run: uv run python scripts/check_version.py --require-public-preview-docs\n",
-        "      # run: uv run python scripts/check_version.py --require-public-preview-docs\n",
+        "      - name: Check version agreement and durable public content\n"
+        "        run: uv run python scripts/check_version.py --require-changelog "
+        "--require-public-preview-docs\n",
+        "      # run: uv run python scripts/check_version.py --require-changelog "
+        "--require-public-preview-docs\n",
         1,
     )
     with pytest.raises(RuntimeError, match="public-preview-docs"):
