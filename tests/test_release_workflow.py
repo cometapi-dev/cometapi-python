@@ -400,11 +400,12 @@ def test_current_publish_workflow_satisfies_semantic_contract() -> None:
     )
 
 
-def test_release_please_uses_node24_v5_pin() -> None:
+def test_release_please_uses_split_node24_v5_execution() -> None:
     text = RELEASE_PLEASE_WORKFLOW.read_text(encoding="utf-8")
-    assert (
+    action = (
         "googleapis/release-please-action@45996ed1f6d02564a971a2fa1b5860e934307cf7 # v5.0.0, node24"
-    ) in text
+    )
+    assert text.count(action) == 3
     check_release_please_workflow(text)
 
 
@@ -416,6 +417,47 @@ def test_release_please_rejects_legacy_node20_pin() -> None:
     )
     with pytest.raises(RuntimeError, match=r"5\.0\.0.*node24"):
         check_release_please_workflow(text)
+
+
+@pytest.mark.parametrize(
+    ("needle", "replacement"),
+    [
+        (
+            '          skip-github-pull-request: "true"',
+            '          skip-github-pull-request: "false"',
+        ),
+        (
+            '          skip-github-release: "true"',
+            '          skip-github-release: "false"',
+        ),
+        ("        continue-on-error: true", "        continue-on-error: false"),
+        (
+            "          steps.release-pr.outcome == 'failure'",
+            "          steps.release-pr.conclusion == 'failure'",
+        ),
+        (
+            "        id: release\n        uses:",
+            "        id: release\n        continue-on-error: true\n        uses:",
+        ),
+        (
+            "        id: retry-release-pr\n        if:",
+            "        id: retry-release-pr\n        continue-on-error: true\n        if:",
+        ),
+    ],
+    ids=[
+        "release-step-can-maintain-pr",
+        "pr-step-can-create-release",
+        "first-pr-attempt-cannot-fail",
+        "retry-does-not-use-outcome",
+        "release-step-retryable",
+        "second-pr-attempt-retryable",
+    ],
+)
+def test_release_please_rejects_unsafe_retry_boundaries(needle: str, replacement: str) -> None:
+    text = RELEASE_PLEASE_WORKFLOW.read_text(encoding="utf-8")
+    assert needle in text
+    with pytest.raises(RuntimeError):
+        check_release_please_workflow(text.replace(needle, replacement, 1))
 
 
 @pytest.mark.parametrize("configured", [None, ""])

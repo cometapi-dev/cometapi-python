@@ -155,6 +155,18 @@ Post-stable invariants:
 9. Keep Release Please pinned to the reviewed `v5.0.0` commit
    `45996ed1f6d02564a971a2fa1b5860e934307cf7`, whose immutable action metadata
    uses `node24`. The workflow semantic checker must reject any different pin.
+   Invoke that action release-only first with `skip-github-pull-request: true`;
+   that immutable tag-and-GitHub-Release path must never continue on error or be
+   retried. Only after it succeeds without creating a release may PR-only
+   maintenance run with `skip-github-release: true`. Its first attempt is the
+   sole Release Please step allowed to continue on error, and one identical
+   second attempt may run only when that first PR attempt fails. Mutable branch
+   and pull-request maintenance is idempotent and may use this bounded retry;
+   immutable release creation may not. If the release-only invocation fails,
+   immediately disable `RELEASE_PLEASE_ENABLED`, inspect tag and GitHub Release
+   state read-only, and stop. Do not use another main push or recovery path
+   until the exact external state is known and recovery is separately
+   authorized.
 10. `README.md` is the distribution long description and must remain accurate
     before and after publication. Use `python -m pip install cometapi`,
     unversioned project links, and publication-neutral maintenance language.

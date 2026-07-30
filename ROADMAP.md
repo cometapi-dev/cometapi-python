@@ -1,7 +1,7 @@
 # CometAPI Python SDK Roadmap
 
-Status: `0.1.1` stable maintenance released
-Last updated: 2026-07-29
+Status: `0.1.2` stable maintenance in progress
+Last updated: 2026-07-30
 Repository contract: this roadmap is self-contained.
 Current gate: maintain the verified stable 0.1 surface. Begin 0.2 only after a
 separate maintainer request authorizes its provider schemas and live contracts.
@@ -17,6 +17,8 @@ Alpha, stable `0.1.0`, and maintenance release `0.1.1` are complete for the
 sanitized public repository. Protected repository configuration, public
 default-branch CI, exact-release live smoke, PyPI OIDC publication, provenance,
 digest comparison, and public-registry smoke provide separate evidence layers.
+Maintenance `0.1.2` is active only to harden release automation and immutable
+package metadata; it does not activate 0.2 scope.
 Support and release claims remain limited to the evidence defined in this
 roadmap and `COMPATIBILITY.md`.
 
@@ -30,6 +32,7 @@ roadmap and `COMPATIBILITY.md`.
 | `0.1.0a1` Registry Alpha | Complete | Early adopters can install the functional prerelease from PyPI; every release and registry gate passed. |
 | `0.1.0` stable | Complete | Complete runtime, release-PR, example, provenance, and registry gates passed. |
 | `0.1.1` maintenance | Complete | Configuration validation and every stable release, live, provenance, and registry gate passed. |
+| `0.1.2` maintenance | In progress | Publication-neutral metadata and release-transport boundaries must pass every normal release gate before publication. |
 | `0.2.0` provider-native text | Planned | Optional official Anthropic and Gemini adapters. |
 | `0.3.0` CometAPI resources | Planned | First schema-backed typed CometAPI-specific resource. |
 | Media and task APIs | Planned | Coherent task lifecycle precedes individual media helpers. |
@@ -567,6 +570,26 @@ imports, and passed every supported mocked call and README example.
 `RELEASE_PLEASE_ENABLED=false` and `LIVE_SMOKE_ENABLED=false`. Recovery
 variables are absent. No recovery tag or recovery workflow was used.
 
+## `0.1.2`: Release metadata and transport maintenance
+
+[Release Please run 30509764960](https://github.com/cometapi-dev/cometapi-python/actions/runs/30509764960)
+failed while maintaining the `0.1.2` release PR. The pinned v5 action had built
+the candidate and reached its PR write boundary when Undici/global `fetch`
+reported `other side closed`. It created or updated no branch, pull request,
+tag, GitHub Release, live request, PyPI file, or other registry state. Read-only
+inspection showed that neither the existing release branch nor repository
+pull-request permission caused the failure.
+
+Release Please now executes according to external-state reversibility. A
+release-only invocation (`skip-github-pull-request: true`) runs first without
+`continue-on-error` and without retry. Only if no release was created does
+PR-only maintenance (`skip-github-release: true`) run; its first attempt may
+continue on error solely to permit one identical conditional retry. Mutable,
+idempotent branch and pull-request maintenance can therefore recover from one
+isolated transport close, while immutable tag and GitHub Release creation can
+never be automatically replayed. This remains 0.1.x maintenance and does not
+authorize provider, resource, CLI, or 0.2 work.
+
 ## `0.2.0`: Provider-native text adapters
 
 Planned scope:
@@ -596,8 +619,10 @@ The repository maintains three independently auditable workflows:
   four requests, 16 output tokens per generation, a 30-second request timeout,
   concurrency one, a ten-minute workflow timeout, and stop on first failure.
 - `publish.yml`: the single top-level release and PyPI Trusted Publisher
-  identity. Its gated push path maintains the human-reviewed Release Please PR
-  and independently verifies a created release. Its explicitly enabled manual
+  identity. Its gated push path first attempts non-retryable release-only
+  creation, then, only when no release exists, permits one bounded retry for
+  PR-only maintenance. It independently verifies a created release. Its
+  explicitly enabled manual
   path recovers an independently verified existing immutable release only from
   the protected default branch. An exact selector feeds both paths into tag,
   commit, and default-branch ancestry verification, artifact rebuild, protected

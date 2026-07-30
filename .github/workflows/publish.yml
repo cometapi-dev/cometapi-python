@@ -43,12 +43,32 @@ jobs:
       contents: write
       pull-requests: write
     steps:
-      - name: Open or update the release PR, or create its approved release
+      - name: Create the approved immutable release
         id: release
         uses: googleapis/release-please-action@45996ed1f6d02564a971a2fa1b5860e934307cf7 # v5.0.0, node24
         with:
           config-file: release-please-config.json
           manifest-file: .release-please-manifest.json
+          skip-github-pull-request: "true"
+      - name: Open or update the release PR
+        id: release-pr
+        if: steps.release.outputs.release_created != 'true'
+        continue-on-error: true
+        uses: googleapis/release-please-action@45996ed1f6d02564a971a2fa1b5860e934307cf7 # v5.0.0, node24
+        with:
+          config-file: release-please-config.json
+          manifest-file: .release-please-manifest.json
+          skip-github-release: "true"
+      - name: Retry release PR maintenance once
+        id: retry-release-pr
+        if: >-
+          steps.release.outputs.release_created != 'true' &&
+          steps.release-pr.outcome == 'failure'
+        uses: googleapis/release-please-action@45996ed1f6d02564a971a2fa1b5860e934307cf7 # v5.0.0, node24
+        with:
+          config-file: release-please-config.json
+          manifest-file: .release-please-manifest.json
+          skip-github-release: "true"
       - name: Verify the immutable release created by Release Please
         id: verify-release
         if: steps.release.outputs.release_created == 'true'
