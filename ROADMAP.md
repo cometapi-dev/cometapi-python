@@ -33,6 +33,7 @@ roadmap and `COMPATIBILITY.md`.
 | `0.1.0` stable | Complete | Complete runtime, release-PR, example, provenance, and registry gates passed. |
 | `0.1.1` maintenance | Complete | Configuration validation and every stable release, live, provenance, and registry gate passed. |
 | `0.1.2` maintenance | Complete | Publication-neutral metadata and release-transport boundaries passed every normal release, live, provenance, and registry gate. |
+| `0.1.3` maintenance | Complete | Mutable-release-claim detection passed every normal release, live, provenance, and registry gate. |
 | `0.2.0` provider-native text | Planned | Optional official Anthropic and Gemini adapters. |
 | `0.3.0` CometAPI resources | Planned | First schema-backed typed CometAPI-specific resource. |
 | Media and task APIs | Planned | Coherent task lifecycle precedes individual media helpers. |
@@ -638,6 +639,67 @@ guidance rather than a stale pre-publication version claim.
 `RELEASE_PLEASE_ENABLED=false` and `LIVE_SMOKE_ENABLED=false`. Recovery
 variables are absent. No recovery tag, workflow dispatch, or workflow rerun was
 used for `0.1.2`.
+
+## `0.1.3`: Durable release-claim maintenance
+
+[Implementation PR #34](https://github.com/cometapi-dev/cometapi-python/pull/34)
+removed the mutable published-patch claim from persistent guidance and extended
+the existing document/version checker across pull-request CI, release source and
+artifact verification, copied standalone repositories, wheel metadata, and
+source-distribution documents. Its mutation tests reject current/latest
+published-patch claims while allowing version-neutral guidance and immutable
+historical evidence. They also prove that a synchronized candidate bump does
+not require persistent-document edits. The PR passed
+[CI run 30547956809](https://github.com/cometapi-dev/cometapi-python/actions/runs/30547956809)
+and squash-merged as `c5b422cdff9d3751323b0aa470091b09db253d1e`, which passed
+[default-branch CI run 30548315922](https://github.com/cometapi-dev/cometapi-python/actions/runs/30548315922).
+
+First-attempt
+[Release Please run 30548315785](https://github.com/cometapi-dev/cometapi-python/actions/runs/30548315785)
+created [release PR #35](https://github.com/cometapi-dev/cometapi-python/pull/35).
+The generated head `4728f111ada71cfb538da35ad14a5540294d2338`
+used a link-style changelog heading, so
+[CI run 30548348489](https://github.com/cometapi-dev/cometapi-python/actions/runs/30548348489)
+failed the exact changelog-heading contract. The scoped finalization commit
+`b26c6e645fec131e9b1cd9360bf79651c32808ce` restored the required dated
+heading. That exact head passed all required checks in
+[CI run 30548842807](https://github.com/cometapi-dev/cometapi-python/actions/runs/30548842807),
+received human owner approval, and squash-merged as release commit
+`45429f373bbd11314ec43ba81904fdbb78db2522`. The release commit passed
+[default-branch CI run 30550533622](https://github.com/cometapi-dev/cometapi-python/actions/runs/30550533622).
+
+First-attempt
+[release run 30550536000](https://github.com/cometapi-dev/cometapi-python/actions/runs/30550536000)
+created and independently verified the immutable non-draft
+[GitHub release](https://github.com/cometapi-dev/cometapi-python/releases/tag/v0.1.3)
+and lightweight tag `v0.1.3` at that exact release commit. It rebuilt and
+clean-installed the exact artifacts, passed the bounded four-request
+exact-release live suite, received protected `pypi` approval, published
+directly from top-level `publish.yml` by OIDC with attestations, and passed
+public registry verification. The release workflow used neither a rerun nor a
+recovery path.
+
+The exact [PyPI release](https://pypi.org/project/cometapi/0.1.3/) has wheel
+SHA256 `9ac2f8062a8554943649bffd7ec859fc90491f76bbe2b0165327722201417d6f`
+and source-distribution SHA256
+`07ded54606d50f44b689dad38cf93a74e1175370efaa33be84a3c01240d48e66`.
+Both public files match the retained pre-publication digest record. PyPI
+Integrity API provenance identifies repository
+`cometapi-dev/cometapi-python`, workflow `publish.yml`, environment `pypi`,
+release commit `45429f37`, and release
+[run attempt 1](https://github.com/cometapi-dev/cometapi-python/actions/runs/30550536000/attempts/1).
+An independent post-workflow verification downloaded both public files,
+verified both provenance records with `pypi-attestations==0.0.29`, installed
+`cometapi==0.1.3` from `https://pypi.org/simple/`, verified the public version
+and imports, passed the canonical supported-operation mocked-call smoke and all
+four README examples, and then passed the release commit's full ten-case
+supported-operation contract suite against that public installation. The
+workflow's initial public-index probe saw normal CDN propagation lag; its
+bounded retry then completed the same registry smoke successfully.
+
+`RELEASE_PLEASE_ENABLED=false` and `LIVE_SMOKE_ENABLED=false`.
+`RELEASE_RECOVERY_TAG` and `RELEASE_RECOVERY_SHA` are absent; no recovery tag,
+workflow dispatch, or release-workflow rerun was used for `0.1.3`.
 
 ## `0.2.0`: Provider-native text adapters
 
