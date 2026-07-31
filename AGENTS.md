@@ -161,8 +161,9 @@ Post-stable invariants:
     parsing is renderer-dependent and must fail the version gate before merge or
     release. The same gate must reject any `Unreleased` level-two heading.
 13. A validated release-evidence block binds one canonical publication workflow
-    run to its machine-readable identity marker and may contain no other Actions
-    run URL. Keep preparatory implementation, CI, Release Please, failed-attempt,
+    run URL without an attempt suffix to its machine-readable identity marker and
+    may contain no other Actions run URL. Record attempt provenance as plain
+    text. Keep preparatory implementation, CI, Release Please, failed-attempt,
     and recovery history outside that block. The document gate must reject
     non-canonical, wrapped, encoded, control-obfuscated, malformed, or
     contradictory workflow URLs regardless of prose or Markdown labeling, and

@@ -627,7 +627,6 @@ def test_release_evidence_rejects_contradictory_labeled_identity_values(
     for name in ("ROADMAP.md", "RELEASING.md"):
         with (releasable_documents / name).open("a", encoding="utf-8") as stream:
             stream.write(evidence)
-
     with pytest.raises(CheckError) as caught:
         require_public_preview_docs()
 
@@ -664,6 +663,94 @@ def test_release_evidence_rejects_ancillary_workflow_run(
     assert "workflow run" in message
     assert "contradicts its release-identity marker" in message
     assert "outside the immutable evidence block" in message
+
+
+def test_release_evidence_rejects_duplicate_canonical_workflow_url(
+    releasable_documents: Path,
+) -> None:
+    canonical = "https://github.com/cometapi-dev/cometapi-python/actions/runs/30515861246"
+    evidence = _release_evidence_block().replace(
+        f"- Release workflow {canonical}",
+        f"- Release workflow [primary]({canonical}) and [duplicate]({canonical})",
+        1,
+    )
+    for name in ("ROADMAP.md", "RELEASING.md"):
+        with (releasable_documents / name).open("a", encoding="utf-8") as stream:
+            stream.write(evidence)
+    _replace(
+        releasable_documents,
+        "CHANGELOG.md",
+        "# Changelog\n",
+        "# Changelog\n\n## [0.1.2] - 2026-07-30\n\nHistory.\n",
+    )
+
+    with pytest.raises(CheckError) as caught:
+        require_public_preview_docs()
+
+    message = str(caught.value)
+    assert "must contain exactly one canonical release workflow URL" in message
+    assert "release-evidence block for 0.1.2" in message
+
+
+def test_release_evidence_rejects_base_and_attempt_workflow_urls(
+    releasable_documents: Path,
+) -> None:
+    canonical = "https://github.com/cometapi-dev/cometapi-python/actions/runs/30515861246"
+    evidence = _release_evidence_block().replace(
+        f"- Release workflow {canonical}",
+        f"- Release workflow {canonical}\n- Provenance {canonical}/attempts/1",
+        1,
+    )
+    for name in ("ROADMAP.md", "RELEASING.md"):
+        with (releasable_documents / name).open("a", encoding="utf-8") as stream:
+            stream.write(evidence)
+    _replace(
+        releasable_documents,
+        "CHANGELOG.md",
+        "# Changelog\n",
+        "# Changelog\n\n## [0.1.2] - 2026-07-30\n\nHistory.\n",
+    )
+
+    with pytest.raises(CheckError) as caught:
+        require_public_preview_docs()
+
+    message = str(caught.value)
+    assert "must contain exactly one canonical release workflow URL" in message
+    assert "record the attempt number as plain provenance text" in message
+
+
+@pytest.mark.parametrize(
+    "obfuscated",
+    [
+        "\uff48\uff54\uff54\uff50\uff53\uff1a\uff0f\uff0f\uff47\uff49\uff54"
+        "\uff48\uff55\uff42\uff0e\uff43\uff4f\uff4d\uff0f\uff43\uff4f\uff4d"
+        "\uff45\uff54\uff41\uff50\uff49\uff0d\uff44\uff45\uff56\uff0f\uff43"
+        "\uff4f\uff4d\uff45\uff54\uff41\uff50\uff49\uff0d\uff50\uff59\uff54"
+        "\uff48\uff4f\uff4e\uff0f\uff41\uff43\uff54\uff49\uff4f\uff4e\uff53"
+        "\uff0f\uff52\uff55\uff4e\uff53\uff0f\uff13\uff10\uff15\uff11\uff15"
+        "\uff18\uff16\uff11\uff12\uff14\uff16",
+        "\uff3brun\uff3d\uff08https://github.com/cometapi-dev/cometapi-python/actions/"
+        "runs/30515861246\uff09",
+    ],
+)
+def test_release_evidence_rejects_nfkc_obfuscated_workflow_url(
+    releasable_documents: Path,
+    obfuscated: str,
+) -> None:
+    canonical = "https://github.com/cometapi-dev/cometapi-python/actions/runs/30515861246"
+    evidence = _release_evidence_block().replace(canonical, obfuscated, 1)
+    for name in ("ROADMAP.md", "RELEASING.md"):
+        with (releasable_documents / name).open("a", encoding="utf-8") as stream:
+            stream.write(evidence)
+    _replace(
+        releasable_documents,
+        "CHANGELOG.md",
+        "# Changelog\n",
+        "# Changelog\n\n## [0.1.2] - 2026-07-30\n\nHistory.\n",
+    )
+
+    with pytest.raises(CheckError, match="non-canonical Actions URL"):
+        require_public_preview_docs()
 
 
 @pytest.mark.parametrize(
@@ -949,8 +1036,6 @@ def test_release_evidence_accepts_canonical_raw_html_anchor(
         "cometapi-dev/cometapi-python/actions/runs/30515861246",
         "- Release workflow (https://github.com/cometapi-dev/cometapi-python/actions/"
         "runs/30515861246); verified",
-        "- Release workflow https://github.com/cometapi-dev/cometapi-python/actions/"
-        "runs/30515861246/attempts/1.",
     ],
 )
 def test_release_evidence_accepts_canonical_markdown_link(
@@ -974,6 +1059,32 @@ def test_release_evidence_accepts_canonical_markdown_link(
     )
 
     require_public_preview_docs()
+
+
+def test_release_evidence_rejects_attempt_url_as_canonical_workflow(
+    releasable_documents: Path,
+) -> None:
+    evidence = _release_evidence_block().replace(
+        "https://github.com/cometapi-dev/cometapi-python/actions/runs/30515861246",
+        "https://github.com/cometapi-dev/cometapi-python/actions/runs/30515861246/attempts/1",
+        1,
+    )
+    for name in ("ROADMAP.md", "RELEASING.md"):
+        with (releasable_documents / name).open("a", encoding="utf-8") as stream:
+            stream.write(evidence)
+    _replace(
+        releasable_documents,
+        "CHANGELOG.md",
+        "# Changelog\n",
+        "# Changelog\n\n## [0.1.2] - 2026-07-30\n\nHistory.\n",
+    )
+
+    with pytest.raises(CheckError) as caught:
+        require_public_preview_docs()
+
+    message = str(caught.value)
+    assert "must contain exactly one canonical release workflow URL" in message
+    assert "record the attempt number as plain provenance text" in message
 
 
 def test_release_evidence_rejects_reused_reference_destination(

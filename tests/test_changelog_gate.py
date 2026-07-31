@@ -182,6 +182,8 @@ def test_changelog_parser_allows_non_unreleased_renderings(example: str) -> None
         "<h2>Archived release</h2>",
         '<H2 class="history">Archived release</H2>',
         "Intro <h2>Archived release</h2>",
+        "<h2\f>Archived release</h2>",
+        "<h2\fclass=history>Archived release</h2>",
     ],
 )
 def test_changelog_parser_rejects_all_raw_html_level_two_headings(heading: str) -> None:

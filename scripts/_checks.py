@@ -784,7 +784,9 @@ def _canonical_actions_run_violations(
         )
 
     direct = unicodedata.normalize("NFKC", body)
-    variants = [direct]
+    variants = [body]
+    if direct != body:
+        variants.append(direct)
     control_obfuscation = has_obfuscated_control(direct)
     converged = False
     for _ in range(len(direct) + 1):
@@ -805,67 +807,74 @@ def _canonical_actions_run_violations(
             break
         variants.append(decoded)
 
-    normalized = variants[-1]
-    normalized_paths = list(_ACTIONS_PATH.finditer(normalized))
     try:
         from markdown_it import MarkdownIt
     except ImportError as exc:
         raise CheckError("release-evidence Markdown validation requires markdown-it-py") from exc
 
-    bindings: list[int] = []
-    used_sentinels = {path.group("run") for path in normalized_paths}
-    for index, path in enumerate(normalized_paths):
-        run_start, run_end = path.span("run")
-        width = run_end - run_start
-        sentinel_value = 10 ** (width - 1) + index
-        sentinel = str(sentinel_value)
-        while len(sentinel) == width and sentinel in used_sentinels:
-            sentinel_value += 1
+    def rendered_bindings(
+        source: str,
+    ) -> tuple[list[re.Match[str]], list[tuple[str, str | None]], list[int]]:
+        paths = list(_ACTIONS_PATH.finditer(source))
+        identities = [(path.group("run"), path.group("attempt")) for path in paths]
+        bindings: list[int] = []
+        used_sentinels = {path.group("run") for path in paths}
+        for index, path in enumerate(paths):
+            run_start, run_end = path.span("run")
+            width = run_end - run_start
+            sentinel_value = 10 ** (width - 1) + index
             sentinel = str(sentinel_value)
-        if len(sentinel) != width:
-            raise CheckError("too many Actions URL occurrences to bind unambiguously")
-        used_sentinels.add(sentinel)
-        mutated = normalized[:run_start] + sentinel + normalized[run_end:]
-        identity = (sentinel, path.group("attempt") or None)
-        destinations: Counter[tuple[str, str | None]] = Counter()
-        parser = MarkdownIt("commonmark", {"html": True})
-        for token in parser.parse(mutated):
-            if token.type == "inline":
-                link_depth = 0
-                html_parser = _ActionsAnchorParser()
-                for child in token.children or []:
-                    if child.type == "link_open":
-                        link_depth += 1
-                        target = child.attrGet("href")
-                        if isinstance(target, str):
-                            destination = _CANONICAL_ACTIONS_DESTINATION.fullmatch(target)
-                            if destination is not None:
-                                destinations[
-                                    (destination.group("run"), destination.group("attempt"))
-                                ] += 1
-                    elif child.type == "link_close":
-                        link_depth = max(0, link_depth - 1)
-                    elif child.type == "html_inline":
-                        html_parser.feed(child.content)
-                    elif child.type == "text" and link_depth == 0 and html_parser.anchor_depth == 0:
-                        destinations.update(_bare_actions_destinations(child.content))
-                html_parser.close()
-                destinations.update(html_parser.destinations)
-            elif token.type == "html_block":
-                html_parser = _ActionsAnchorParser()
-                html_parser.feed(token.content)
-                html_parser.close()
-                destinations.update(html_parser.destinations)
-        bindings.append(destinations[identity])
+            while len(sentinel) == width and sentinel in used_sentinels:
+                sentinel_value += 1
+                sentinel = str(sentinel_value)
+            if len(sentinel) != width:
+                raise CheckError("too many Actions URL occurrences to bind unambiguously")
+            used_sentinels.add(sentinel)
+            mutated = source[:run_start] + sentinel + source[run_end:]
+            identity = (sentinel, path.group("attempt") or None)
+            destinations: Counter[tuple[str, str | None]] = Counter()
+            parser = MarkdownIt("commonmark", {"html": True})
+            for token in parser.parse(mutated):
+                if token.type == "inline":
+                    link_depth = 0
+                    html_parser = _ActionsAnchorParser()
+                    for child in token.children or []:
+                        if child.type == "link_open":
+                            link_depth += 1
+                            target = child.attrGet("href")
+                            if isinstance(target, str):
+                                destination = _CANONICAL_ACTIONS_DESTINATION.fullmatch(target)
+                                if destination is not None:
+                                    destinations[
+                                        (destination.group("run"), destination.group("attempt"))
+                                    ] += 1
+                        elif child.type == "link_close":
+                            link_depth = max(0, link_depth - 1)
+                        elif child.type == "html_inline":
+                            html_parser.feed(child.content)
+                        elif (
+                            child.type == "text"
+                            and link_depth == 0
+                            and html_parser.anchor_depth == 0
+                        ):
+                            destinations.update(_bare_actions_destinations(child.content))
+                    html_parser.close()
+                    destinations.update(html_parser.destinations)
+                elif token.type == "html_block":
+                    html_parser = _ActionsAnchorParser()
+                    html_parser.feed(token.content)
+                    html_parser.close()
+                    destinations.update(html_parser.destinations)
+            bindings.append(destinations[identity])
+        return paths, identities, bindings
+
+    rendered_variants = [rendered_bindings(variant) for variant in variants]
+    normalized_paths, normalized_identities, bindings = rendered_variants[-1]
 
     malformed = control_obfuscation or not converged or any(count != 1 for count in bindings)
-    normalized_identities = [
-        (match.group("run"), match.group("attempt")) for match in normalized_paths
-    ]
     malformed = malformed or any(
-        [(match.group("run"), match.group("attempt")) for match in _ACTIONS_PATH.finditer(variant)]
-        != normalized_identities
-        for variant in variants[:-1]
+        identities != normalized_identities or variant_bindings != bindings
+        for _, identities, variant_bindings in rendered_variants[:-1]
     )
 
     if malformed:
@@ -874,8 +883,7 @@ def _canonical_actions_run_violations(
                 line,
                 f"release-evidence block for {version} contains a non-canonical Actions URL; "
                 "use the exact repository /actions/runs/<positive-id> URL as plain Markdown "
-                "text, an autolink, or a link destination, with an optional "
-                "/attempts/<positive-id> suffix",
+                "text, an autolink, or a link destination without an attempt suffix",
             )
         )
     run_values = {match.group("run") for match in normalized_paths}
@@ -888,10 +896,24 @@ def _canonical_actions_run_violations(
                 "outside the immutable evidence block",
             )
         )
-    canonical_workflow_count = sum(
-        count == 1 and path.group("run") == expected_run
+    matching_base_count = sum(
+        count == 1 and path.group("run") == expected_run and path.group("attempt") is None
         for path, count in zip(normalized_paths, bindings, strict=True)
     )
+    canonical_workflow_count = (
+        1
+        if normalized_identities == [(expected_run, None)] and bindings == [1] and not malformed
+        else 0
+    )
+    if len(normalized_paths) != 1 or matching_base_count != 1:
+        findings.append(
+            (
+                line,
+                f"release-evidence block for {version} must contain exactly one canonical "
+                "release workflow URL without an attempt suffix and no other Actions URL; "
+                "record the attempt number as plain provenance text",
+            )
+        )
     return findings, canonical_workflow_count
 
 
@@ -1049,10 +1071,9 @@ def exact_release_version_violations(
     if document == "CHANGELOG.md":
         return []
     if document in RELEASE_EVIDENCE_DOCUMENTS:
-        structural = unicodedata.normalize("NFKC", text)
         searchable, marker_findings, _ = _evidence_block_violations(
             document,
-            structural,
+            text,
         )
         normalized_searchable = _normalized_document_text(searchable)
         searchable = normalized_searchable
@@ -1074,8 +1095,7 @@ def release_evidence_identities(
     """Return internally validated immutable identities from an evidence document."""
     if document not in RELEASE_EVIDENCE_DOCUMENTS:
         return {}
-    structural = unicodedata.normalize("NFKC", text)
-    _, findings, identities = _evidence_block_violations(document, structural)
+    _, findings, identities = _evidence_block_violations(document, text)
     if findings:
         rendered = "; ".join(f"{document}:{line}: {label}" for line, label in findings)
         raise CheckError(rendered)

@@ -206,12 +206,13 @@ valid on every patch release. Use only canonical Markdown for level-two
 headings; raw HTML H2 semantics vary by renderer and therefore fail closed.
 
 Each validated release-evidence block contains the immutable release identity
-and only its canonical publication workflow. Preparatory implementation CI,
-Release Please, failed-publication, and recovery history remains outside the
-block. The document gate binds every source occurrence to exactly one rendered
-navigation destination and rejects every different run identity plus wrapped,
-encoded, control-obfuscated, or malformed Actions URLs regardless of prose or
-Markdown labeling.
+and only its canonical publication workflow URL without an attempt suffix.
+Record attempt provenance as plain text. Preparatory implementation CI, Release
+Please, failed-publication, and recovery history remains outside the block. The
+document gate binds every source occurrence to exactly one rendered navigation
+destination and rejects every different run identity plus wrapped, encoded,
+control-obfuscated, or malformed Actions URLs regardless of prose or Markdown
+labeling.
 
 Release mode (`check_version.py --require-releasable-docs`) also fails closed
 until project authorship, the canonical GitHub repository URL, the copyright
@@ -562,8 +563,8 @@ authorized.
   `64c7cb87745032703b3374cc562ea00b979416c54908862dbcebd116b2dc44c8`.
   Both files match the retained pre-publication digest record. PyPI Integrity
   API provenance identifies repository `cometapi-dev/cometapi-python`, workflow
-  `publish.yml`, environment `pypi`, release commit `576e7503`, and release
-  [run attempt 1](https://github.com/cometapi-dev/cometapi-python/actions/runs/30429821548/attempts/1).
+  `publish.yml`, environment `pypi`, release commit `576e7503`, and release run
+  attempt 1.
 - An independent post-workflow verification downloaded both public files,
   verified both provenance records with `pypi-attestations==0.0.29`, installed
   `cometapi==0.1.1` from `https://pypi.org/simple/`, verified the public version
@@ -618,8 +619,8 @@ authorized.
   `21c8edc0586610de1a9a8cd39b54ed23d2b1e20552100f69f53938cb7678da3d`.
   Both files match the retained pre-publication digest record. PyPI Integrity
   API provenance identifies repository `cometapi-dev/cometapi-python`, workflow
-  `publish.yml`, environment `pypi`, release commit `710c5649`, and release
-  [run attempt 1](https://github.com/cometapi-dev/cometapi-python/actions/runs/30515861246/attempts/1).
+  `publish.yml`, environment `pypi`, release commit `710c5649`, and release run
+  attempt 1.
 - An independent post-workflow verification downloaded both public files,
   verified both provenance records with `pypi-attestations==0.0.29`, installed
   `cometapi==0.1.2` from `https://pypi.org/simple/`, verified the public version
@@ -676,8 +677,8 @@ authorized.
   `07ded54606d50f44b689dad38cf93a74e1175370efaa33be84a3c01240d48e66`.
   Both files match the retained pre-publication digest record. PyPI Integrity
   API provenance identifies repository `cometapi-dev/cometapi-python`, workflow
-  `publish.yml`, environment `pypi`, release commit `45429f37`, and release
-  [run attempt 1](https://github.com/cometapi-dev/cometapi-python/actions/runs/30550536000/attempts/1).
+  `publish.yml`, environment `pypi`, release commit `45429f37`, and release run
+  attempt 1.
 - Independent post-workflow verification downloaded both public files,
   verified both provenance records with `pypi-attestations==0.0.29`, installed
   `cometapi==0.1.3` from `https://pypi.org/simple/`, verified the public version

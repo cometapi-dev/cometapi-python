@@ -168,8 +168,9 @@ ambiguous external state and is forbidden.
 Immutable run, tag, commit, registry, and digest records live only in the
 validated release-evidence blocks in `ROADMAP.md` and `RELEASING.md`. Each
 block binds only the canonical publication run through its machine-readable
-identity; preparatory implementation, CI, Release Please, failed-attempt, and
-recovery history stays outside the block. The checker rejects every other run
+identity, without an attempt suffix; attempt provenance remains plain text.
+Preparatory implementation, CI, Release Please, failed-attempt, and recovery
+history stays outside the block. The checker rejects every other run
 identity and binds every source occurrence to exactly one rendered Markdown or
 HTML navigation destination after bounded normalization. Wrapped, encoded,
 control-obfuscated, malformed, or contradictory Actions URLs fail closed, so

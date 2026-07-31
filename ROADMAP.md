@@ -579,8 +579,8 @@ and source-distribution SHA256
 `64c7cb87745032703b3374cc562ea00b979416c54908862dbcebd116b2dc44c8`.
 Both files matched the retained pre-publication digest record. Their PyPI
 Integrity API provenance names repository `cometapi-dev/cometapi-python`,
-workflow `publish.yml`, environment `pypi`, release commit `576e7503`, and
-[run attempt 1](https://github.com/cometapi-dev/cometapi-python/actions/runs/30429821548/attempts/1).
+workflow `publish.yml`, environment `pypi`, release commit `576e7503`, and run
+attempt 1.
 An independent post-workflow verification downloaded both public files,
 verified their provenance with `pypi-attestations==0.0.29`, installed
 `cometapi==0.1.1` from the public simple index, checked version and public
@@ -651,8 +651,8 @@ and source-distribution SHA256
 `21c8edc0586610de1a9a8cd39b54ed23d2b1e20552100f69f53938cb7678da3d`.
 Both files match the retained pre-publication digest record. Their PyPI
 Integrity API provenance names repository `cometapi-dev/cometapi-python`,
-workflow `publish.yml`, environment `pypi`, release commit `710c5649`, and
-[run attempt 1](https://github.com/cometapi-dev/cometapi-python/actions/runs/30515861246/attempts/1).
+workflow `publish.yml`, environment `pypi`, release commit `710c5649`, and run
+attempt 1.
 An independent post-workflow verification downloaded both public files,
 verified both provenance records with `pypi-attestations==0.0.29`, installed
 `cometapi==0.1.2` from the public simple index, verified the public version and
@@ -716,8 +716,7 @@ and source-distribution SHA256
 Both public files match the retained pre-publication digest record. PyPI
 Integrity API provenance identifies repository
 `cometapi-dev/cometapi-python`, workflow `publish.yml`, environment `pypi`,
-release commit `45429f37`, and release
-[run attempt 1](https://github.com/cometapi-dev/cometapi-python/actions/runs/30550536000/attempts/1).
+release commit `45429f37`, and release run attempt 1.
 An independent post-workflow verification downloaded both public files,
 verified both provenance records with `pypi-attestations==0.0.29`, installed
 `cometapi==0.1.3` from `https://pypi.org/simple/`, verified the public version

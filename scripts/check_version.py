@@ -246,7 +246,7 @@ def _raw_h2_heading_lines(text: str) -> list[int]:
         )
         for candidate in candidates:
             visible_html = re.sub(r"<!--.*?-->", "", candidate.content, flags=re.DOTALL)
-            for match in re.finditer(r"(?i)<[ \t\r\n]*h2(?=[ \t\r\n>/])", visible_html):
+            for match in re.finditer(r"(?i)<[ \t\r\n\f]*h2(?=[ \t\r\n\f>/])", visible_html):
                 relative_line = visible_html.count("\n", 0, match.start())
                 lines.add(token.map[0] + relative_line + 1)
     return sorted(lines)
