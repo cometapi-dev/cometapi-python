@@ -166,6 +166,10 @@ def _actions_path_has_canonical_url(
     if canonical is None:
         return False
 
+    for link in _MARKDOWN_LINK.finditer(text):
+        if link.start("target") <= path.start() and path.end() <= link.end("target"):
+            return _CANONICAL_ACTIONS_URL.fullmatch(link.group("target")) is not None
+
     for attribute in _RAW_HTML_URL_ATTRIBUTE.finditer(text):
         if attribute.start("url") <= path.start() and path.end() <= attribute.end("url"):
             return _CANONICAL_ACTIONS_URL.fullmatch(attribute.group("url")) is not None
@@ -186,10 +190,7 @@ def _actions_path_has_canonical_url(
     if boundary == "<":
         return canonical.start() >= 2 and text[canonical.start() - 2].isspace()
     if boundary == "(":
-        before_boundary = canonical.start() - 2
-        return (
-            before_boundary < 0 or text[before_boundary].isspace() or text[before_boundary] == "]"
-        )
+        return canonical.start() == 1 or text[canonical.start() - 2].isspace()
     return False
 
 
