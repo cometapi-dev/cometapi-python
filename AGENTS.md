@@ -160,10 +160,11 @@ Post-stable invariants:
     The version gate must reject any `Unreleased` level-two heading before merge
     or release.
 13. A validated release-evidence block binds one canonical publication workflow
-    run to its machine-readable identity marker. Every ancillary Actions run URL
-    in that block requires an exact workflow-reference marker. The document gate
-    must reject non-canonical URLs and undeclared, unused, malformed, duplicate,
-    or contradictory run identities regardless of prose or Markdown labeling.
+    run to its machine-readable identity marker and may contain no other Actions
+    run URL. Keep preparatory implementation, CI, Release Please, failed-attempt,
+    and recovery history outside that block. The document gate must reject
+    non-canonical, wrapped, malformed, or contradictory workflow URLs regardless
+    of prose or Markdown labeling.
 
 ## Repository independence
 

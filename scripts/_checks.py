@@ -8,6 +8,7 @@ import json
 import re
 import sys
 import unicodedata
+from collections import Counter
 from collections.abc import Iterable
 from dataclasses import dataclass
 from datetime import date
@@ -81,14 +82,10 @@ RELEASE_EVIDENCE_IDENTITY = re.compile(
     r"wheel-sha256=(?P<wheel>[0-9a-f]{64}) "
     r"sdist-sha256=(?P<sdist>[0-9a-f]{64}) -->$"
 )
-RELEASE_EVIDENCE_WORKFLOW_REFERENCE = re.compile(
-    r"^<!-- cometapi-release-workflow-reference "
-    r"run=(?P<run>[1-9]\d*) -->$"
-)
+_ANY_RELEASE_EVIDENCE_IDENTITY = re.compile(r"(?m)^.*cometapi-release-identity.*$")
 _ANY_RELEASE_EVIDENCE_WORKFLOW_REFERENCE = re.compile(
     r"(?m)^.*cometapi-release-workflow-reference.*$"
 )
-_ANY_RELEASE_EVIDENCE_IDENTITY = re.compile(r"(?m)^.*cometapi-release-identity.*$")
 _ANY_RELEASE_EVIDENCE_MARKER = re.compile(r"(?m)^.*cometapi-release-evidence:.*$")
 _EXACT_VERSION = (
     r"(?:v\s*)?\d+\s*\.\s*\d+\s*\.\s*\d+"
@@ -137,9 +134,15 @@ _FIRST_PARTY_MARKDOWN_TARGET = re.compile(
 _HTTP_URL = re.compile(r"https?://[^\s<>)\]]+", re.IGNORECASE)
 _RECOVERY_TAGS = {"0.1.0a1": "v0.1.0-alpha.1+recovery.1"}
 _FULL_COMMIT = re.compile(r"(?<![0-9a-f])[0-9a-f]{40}(?![0-9a-f])", re.IGNORECASE)
-_ACTIONS_RUN = re.compile(
-    rf"(?<![^\s(<]){re.escape(CANONICAL_REPOSITORY)}/actions/runs/"
-    r"[1-9]\d*(?:/attempts/[1-9]\d*)?(?=$|[\s)>])"
+_ACTIONS_PREFIX = f"{CANONICAL_REPOSITORY}/actions/runs/"
+_ACTIONS_PATH = re.compile(
+    r"actions/runs/(?P<run>\d+)(?:/attempts/(?P<attempt>\d+))?",
+    re.IGNORECASE,
+)
+_CANONICAL_ACTIONS_URL = re.compile(
+    rf"(?<![^\s<(]){re.escape(_ACTIONS_PREFIX)}(?P<run>[1-9]\d*)"
+    r"(?:/attempts/(?P<attempt>[1-9]\d*))?"
+    r"(?=$|[\s<>\"')\]}]|[.,;:!?](?=$|\s))"
 )
 _WHEEL_DIGEST = re.compile(
     r"\bwheel\s+sha256\b[^0-9a-f]{0,96}(?P<digest>[0-9a-f]{64})(?![0-9a-f])",
@@ -512,37 +515,13 @@ def _identity_violations(
         sdist_sha256=match.group("sdist"),
     )
     findings: list[tuple[int, str]] = []
-    workflow_references: set[str] = set()
-    workflow_reference_lines = [
-        value for value in nonempty if "cometapi-release-workflow-reference" in value
-    ]
-    for reference_line in _ANY_RELEASE_EVIDENCE_WORKFLOW_REFERENCE.findall(body):
-        if reference_line.strip() not in workflow_reference_lines:
-            findings.append(
-                (line, f"release-evidence block for {version} has malformed workflow reference")
-            )
-    for reference_line in workflow_reference_lines:
-        reference = RELEASE_EVIDENCE_WORKFLOW_REFERENCE.fullmatch(reference_line)
-        if reference is None:
-            findings.append(
-                (line, f"release-evidence block for {version} has malformed workflow reference")
-            )
-            continue
-        run = reference.group("run")
-        if run in workflow_references:
-            findings.append(
-                (
-                    line,
-                    f"release-evidence block for {version} duplicates workflow reference run {run}",
-                )
-            )
-        workflow_references.add(run)
-    if identity.workflow_run in workflow_references:
+    if _ANY_RELEASE_EVIDENCE_WORKFLOW_REFERENCE.search(body) is not None:
         findings.append(
             (
                 line,
-                f"release-evidence block for {version} must not classify its canonical "
-                "publication run as an ancillary workflow reference",
+                f"release-evidence block for {version} contains an obsolete workflow-reference "
+                "marker; remove it and keep preparatory workflow history outside the immutable "
+                "evidence block",
             )
         )
     expected_tag = _canonical_release_tag(version)
@@ -572,8 +551,9 @@ def _identity_violations(
         ),
         "exact release commit": re.compile(re.escape(identity.commit), re.IGNORECASE),
         "exact release workflow URL": re.compile(
-            rf"{re.escape(CANONICAL_REPOSITORY)}/actions/runs/{identity.workflow_run}"
+            rf"(?<![^\s<(]){re.escape(_ACTIONS_PREFIX)}{identity.workflow_run}"
             r"(?:/attempts/[1-9]\d*)?"
+            r"(?=$|[\s<>\"')\]}]|[.,;:!?](?=$|\s))"
         ),
         "exact wheel SHA256": re.compile(
             rf"\bwheel\s+sha256\b[^0-9a-f]{{0,96}}{identity.wheel_sha256}(?![0-9a-f])",
@@ -610,32 +590,8 @@ def _identity_violations(
             before_commit,
         ):
             release_commit_values.add(commit.group(0).lower())
-    # Prose may cite only the canonical publication run or an exact ancillary run
-    # declared by a typed machine-readable reference.
-    release_run_values = {
-        run.group(0).split("/actions/runs/", 1)[1].split("/", 1)[0]
-        for run in _ACTIONS_RUN.finditer(prose)
-    }
-    unreferenced_workflow_runs = set(workflow_references) - release_run_values
-    if unreferenced_workflow_runs:
-        findings.append(
-            (
-                line,
-                f"release-evidence block for {version} declares ancillary workflow runs "
-                "that have no exact canonical Actions URL in the block",
-            )
-        )
-    undeclared_release_runs = release_run_values - {
-        identity.workflow_run,
-        *workflow_references,
-    }
     labeled_values = (
         ("release commit", release_commit_values, identity.commit),
-        (
-            "release workflow run",
-            undeclared_release_runs | {identity.workflow_run},
-            identity.workflow_run,
-        ),
         (
             "wheel SHA256",
             {
@@ -715,6 +671,99 @@ def _identity_violations(
                 )
             )
     return identity, findings
+
+
+def _canonical_actions_run_violations(
+    body: str,
+    version: str,
+    expected_run: str,
+    line: int,
+) -> list[tuple[int, str]]:
+    """Require every Actions URL in immutable evidence to name one canonical run."""
+    findings: list[tuple[int, str]] = []
+    normalized = unicodedata.normalize("NFKC", body)
+    direct = normalized
+    markdown_unescaped = re.sub(r"\\([/\\.:?&=%#])", r"\1", normalized)
+    browser_normalized = re.sub(
+        r"(?i)(https?://[^\s<>)\]]*)\\([^\s<>)\]]*)",
+        lambda match: match.group(0).replace("\\", "/"),
+        markdown_unescaped,
+    )
+    for _ in range(3):
+        decoded = html.unescape(direct)
+        if decoded == direct:
+            break
+        direct = decoded
+
+    path_matches = list(_ACTIONS_PATH.finditer(direct))
+    canonical_matches = list(_CANONICAL_ACTIONS_URL.finditer(direct))
+    malformed = any(
+        not any(
+            url.start() <= path.start() and path.end() <= url.end() for url in canonical_matches
+        )
+        for path in path_matches
+    )
+
+    percent_decoded = direct
+    for _ in range(3):
+        decoded = unquote(percent_decoded)
+        if decoded == percent_decoded:
+            break
+        percent_decoded = decoded
+    direct_paths = Counter((match.group("run"), match.group("attempt")) for match in path_matches)
+    decoded_paths = Counter(
+        (match.group("run"), match.group("attempt"))
+        for match in _ACTIONS_PATH.finditer(percent_decoded)
+    )
+    malformed = malformed or any(
+        count > direct_paths[identity] for identity, count in decoded_paths.items()
+    )
+    normalized_paths = Counter(
+        (match.group("run"), match.group("attempt")) for match in _ACTIONS_PATH.finditer(normalized)
+    )
+    malformed = malformed or any(
+        count > normalized_paths[identity] for identity, count in direct_paths.items()
+    )
+    unescaped_paths = Counter(
+        (match.group("run"), match.group("attempt"))
+        for match in _ACTIONS_PATH.finditer(markdown_unescaped)
+    )
+    malformed = malformed or any(
+        count > normalized_paths[identity] for identity, count in unescaped_paths.items()
+    )
+    browser_paths = Counter(
+        (match.group("run"), match.group("attempt"))
+        for match in _ACTIONS_PATH.finditer(browser_normalized)
+    )
+    malformed = malformed or any(
+        count > normalized_paths[identity] for identity, count in browser_paths.items()
+    )
+
+    if malformed:
+        findings.append(
+            (
+                line,
+                f"release-evidence block for {version} contains a non-canonical Actions URL; "
+                "use the exact repository /actions/runs/<positive-id> URL with an optional "
+                "/attempts/<positive-id> suffix",
+            )
+        )
+    run_values = (
+        {run for run, _attempt in direct_paths}
+        | {run for run, _attempt in decoded_paths}
+        | {run for run, _attempt in unescaped_paths}
+        | {run for run, _attempt in browser_paths}
+    )
+    if run_values - {expected_run}:
+        findings.append(
+            (
+                line,
+                f"release-evidence block for {version} contains a release workflow run that "
+                "contradicts its release-identity marker; keep preparatory workflow history "
+                "outside the immutable evidence block",
+            )
+        )
+    return findings
 
 
 def _evidence_block_violations(
@@ -812,6 +861,14 @@ def _evidence_block_violations(
         )
         findings.extend(identity_findings)
         if identity is not None:
+            findings.extend(
+                _canonical_actions_run_violations(
+                    body,
+                    version,
+                    identity.workflow_run,
+                    start_line,
+                )
+            )
             if version in identities:
                 findings.append((start_line, f"duplicate release-evidence block for {version}"))
             else:

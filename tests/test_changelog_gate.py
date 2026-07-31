@@ -86,6 +86,24 @@ def test_changelog_parser_rejects_obfuscated_mutable_versions(claim: str) -> Non
         "  ## [Unreleased]",
         "   ## **Unreleased**",
         "## [Un\u200breleased]",
+        "## Un**released**",
+        "## *Unreleased*",
+        "## [Un](https://example.invalid)released",
+        "## [Unreleased](https://example.invalid)",
+        "## `Un`released",
+        "## `Unreleased`",
+        "## Un<em>released</em>",
+        "## Un<!-- split -->released",
+        "## Un&#x72;eleased",
+        "## \uff35\uff4e\uff52\uff45\uff4c\uff45\uff41\uff53\uff45\uff44",
+        "## Un\u034freleased",
+        "Unreleased\n----------",
+        "> ## Unreleased",
+        "<h2>Un<em>released</em></h2>",
+        "<h2>Unreleased",
+        "<h2>Unreleased<h2>Archive</h2>",
+        "<h2>Unreleased</h3>",
+        "Intro <h2>Unreleased</h2>",
     ],
 )
 @pytest.mark.parametrize("position", ["before", "between", "after"])
@@ -110,6 +128,41 @@ def test_changelog_parser_rejects_unmanaged_unreleased_heading(
     assert "unmanaged Unreleased heading is forbidden" in message
     assert "remove it" in message
     assert "Release Please" in message
+
+
+@pytest.mark.parametrize("indent", ["", " ", "  ", "   "])
+def test_changelog_parser_rejects_rendered_unreleased_heading_indentation(
+    indent: str,
+) -> None:
+    text = _history(
+        f"{indent}## [Un](https://example.invalid)released",
+        "## [0.1.3] - 2026-07-30",
+    )
+
+    with pytest.raises(CheckError, match="unmanaged Unreleased heading is forbidden"):
+        changelog_release_dates(text)
+
+
+@pytest.mark.parametrize(
+    "example",
+    [
+        "Paragraph.\n\n    ## Unreleased",
+        "```markdown\n## Unreleased\n```",
+        "### Unreleased",
+        "##Unreleased",
+        "## Un released",
+        "## Un<br>released",
+        "## Un*released",
+        "## [Current](https://example.invalid/Unreleased)",
+        '## <span title="Unreleased">Current</span>',
+        "## `Current Unreleased`",
+        "## Unrelea\u0301sed",
+    ],
+)
+def test_changelog_parser_allows_non_unreleased_renderings(example: str) -> None:
+    text = _history("## [0.1.3] - 2026-07-30") + "\n" + example + "\n"
+
+    assert changelog_release_dates(text) == {"0.1.3": "2026-07-30"}
 
 
 @pytest.mark.parametrize(

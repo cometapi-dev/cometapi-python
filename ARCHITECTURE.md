@@ -164,11 +164,12 @@ ambiguous external state and is forbidden.
 
 Immutable run, tag, commit, registry, and digest records live only in the
 validated release-evidence blocks in `ROADMAP.md` and `RELEASING.md`. Each
-block binds the canonical publication run through its machine-readable identity
-and binds every ancillary workflow URL through an exact reference marker. The
-checker requires a canonical URL and rejects undeclared or unused run identities,
-so Markdown wording cannot disguise a contradictory workflow. Architecture
-documents mechanisms and boundaries, not a second historical ledger.
+block binds only the canonical publication run through its machine-readable
+identity; preparatory implementation, CI, Release Please, failed-attempt, and
+recovery history stays outside the block. The checker rejects every other run
+identity plus wrapped or malformed Actions URLs, so Markdown wording cannot
+disguise a contradictory workflow. Architecture documents mechanisms and
+boundaries, not a second historical ledger.
 
 The scheduled/manual default-branch smoke is an operational canary only; it
 does not prove the release commit. `COMETAPI_KEY` is exposed only to the

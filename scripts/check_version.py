@@ -9,10 +9,14 @@ import re
 import unicodedata
 from dataclasses import dataclass
 from datetime import date
+from html.parser import HTMLParser
 from itertools import pairwise
 from pathlib import Path
 from typing import cast
 from urllib.parse import unquote, urlsplit
+
+from markdown_it import MarkdownIt
+from markdown_it.token import Token
 
 try:
     from ._checks import (
@@ -78,7 +82,6 @@ _CHANGELOG_VERSION_HEADING_CANDIDATE = re.compile(
     rf"^##[ \t]+\[?(?P<version>{_CHANGELOG_VERSION})(?:\]|[ \t])",
     re.IGNORECASE,
 )
-_CHANGELOG_LEVEL_TWO_HEADING = re.compile(r"^ {0,3}##(?!#)[ \t]+(?P<label>.*)$")
 _CHANGELOG_REFERENCE_CANDIDATE = re.compile(
     rf"^\[(?P<version>{_CHANGELOG_VERSION})\]:[ \t]*(?P<url>\S+)[ \t]*$",
     re.IGNORECASE,
@@ -179,15 +182,129 @@ def _changelog_preamble_end(text: str) -> int:
     return heading.start() if heading is not None else len(text)
 
 
-def _is_changelog_unreleased_heading(line: str) -> bool:
-    heading = _CHANGELOG_LEVEL_TWO_HEADING.fullmatch(line)
-    if heading is None:
-        return False
-    label = html.unescape(unicodedata.normalize("NFKC", heading.group("label")))
-    label = re.sub(r"</?[A-Za-z][^>]*>", " ", label)
-    label = "".join("" if unicodedata.category(value) in {"Cf", "Mn"} else value for value in label)
+def _visible_inline_text(tokens: list[Token]) -> str:
+    visible: list[str] = []
+    for token in tokens:
+        if token.type in {"text", "code_inline"}:
+            visible.append(token.content)
+        elif token.type in {"softbreak", "hardbreak"}:
+            visible.append(" ")
+        elif token.type == "html_inline" and re.fullmatch(
+            r"(?is)<br\s*/?>",
+            token.content.strip(),
+        ):
+            visible.append(" ")
+        elif token.type == "image":
+            visible.append(_visible_inline_text(token.children or []) or token.content)
+    return "".join(visible)
+
+
+class _RawH2Collector(HTMLParser):
+    def __init__(self) -> None:
+        super().__init__(convert_charrefs=True)
+        self.headings: list[tuple[int, str]] = []
+        self._line: int | None = None
+        self._parts: list[str] = []
+
+    def handle_starttag(
+        self,
+        tag: str,
+        attrs: list[tuple[str, str | None]],
+    ) -> None:
+        del attrs
+        if tag.casefold() == "h2" and self._line is not None:
+            self._close_heading()
+        if tag.casefold() == "h2":
+            self._line = self.getpos()[0]
+            self._parts = []
+        elif tag.casefold() == "br" and self._line is not None:
+            self._parts.append(" ")
+
+    def handle_startendtag(
+        self,
+        tag: str,
+        attrs: list[tuple[str, str | None]],
+    ) -> None:
+        self.handle_starttag(tag, attrs)
+
+    def handle_endtag(self, tag: str) -> None:
+        if tag.casefold() == "h2" and self._line is not None:
+            self._close_heading()
+
+    def handle_data(self, data: str) -> None:
+        if self._line is not None:
+            self._parts.append(data)
+
+    @property
+    def collecting(self) -> bool:
+        return self._line is not None
+
+    def handle_entityref(self, name: str) -> None:
+        if self._line is not None:
+            self._parts.append(html.unescape(f"&{name};"))
+
+    def handle_charref(self, name: str) -> None:
+        if self._line is not None:
+            self._parts.append(html.unescape(f"&#{name};"))
+
+    def close(self) -> None:
+        super().close()
+        if self._line is not None:
+            self._close_heading()
+
+    def _close_heading(self) -> None:
+        assert self._line is not None
+        self.headings.append((self._line, "".join(self._parts)))
+        self._line = None
+        self._parts = []
+
+
+def _visible_heading_is_unreleased(label: str) -> bool:
+    label = html.unescape(unicodedata.normalize("NFKC", label))
+    label = "".join(
+        ""
+        if unicodedata.category(value) == "Cf"
+        or (unicodedata.category(value) == "Mn" and unicodedata.combining(value) == 0)
+        else value
+        for value in label
+    )
     words = re.findall(r"[A-Za-z]+", label)
     return bool(words and words[0].casefold() == "unreleased")
+
+
+def _unreleased_heading_lines(text: str) -> list[int]:
+    tokens = MarkdownIt("commonmark", {"html": True}).parse(text)
+    lines: set[int] = set()
+    for index, token in enumerate(tokens):
+        if token.type == "heading_open" and token.tag == "h2" and token.map is not None:
+            inline = tokens[index + 1] if index + 1 < len(tokens) else None
+            if (
+                inline is not None
+                and inline.type == "inline"
+                and _visible_heading_is_unreleased(_visible_inline_text(inline.children or []))
+            ):
+                lines.add(token.map[0] + 1)
+        elif token.type == "inline" and token.map is not None:
+            collector = _RawH2Collector()
+            for child in token.children or []:
+                if child.type == "html_inline":
+                    collector.feed(child.content)
+                elif collector.collecting and child.type in {"text", "code_inline"}:
+                    collector.handle_data(child.content)
+                elif collector.collecting and child.type in {"softbreak", "hardbreak"}:
+                    collector.handle_data(" ")
+            collector.close()
+            for relative_line, label in collector.headings:
+                if _visible_heading_is_unreleased(label):
+                    lines.add(token.map[0] + relative_line)
+        elif token.type == "html_block" and token.map is not None:
+            collector = _RawH2Collector()
+            collector.feed(token.content)
+            collector.close()
+            for relative_line, label in collector.headings:
+                if _visible_heading_is_unreleased(label):
+                    lines.add(token.map[0] + relative_line)
+    return sorted(lines)
 
 
 def _changelog_mutable_region_violations(
@@ -212,6 +329,7 @@ def _changelog_mutable_region_violations(
 
 
 def _parse_changelog_releases(text: str) -> list[_ChangelogRelease]:
+    unreleased_lines = set(_unreleased_heading_lines(text))
     text = _mask_nonprose_changelog_regions(text)
     releases: list[_ChangelogRelease] = []
     violations: list[str] = []
@@ -249,7 +367,7 @@ def _parse_changelog_releases(text: str) -> list[_ChangelogRelease]:
                 "heading: '## [version] - YYYY-MM-DD' or Release Please's canonical "
                 "compare-link form"
             )
-        elif _is_changelog_unreleased_heading(line):
+        if line_number in unreleased_lines:
             violations.append(
                 f"CHANGELOG.md:{line_number}: unmanaged Unreleased heading is forbidden; "
                 "remove it, record changes in Conventional Commits, and let Release Please "
