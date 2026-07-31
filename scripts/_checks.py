@@ -690,7 +690,7 @@ def _canonical_actions_run_violations(
         decoded = re.sub(r"\\([/\\.:?&=%#])", r"\1", decoded)
         decoded = decoded.replace("\t", "").replace("\n", "").replace("\r", "")
         decoded = re.sub(
-            r"(?i)(https?://[^\s<>)\]]*)\\([^\s<>)\]]*)",
+            r"(?i)(https?:[^\s<>)\]]*)\\([^\s<>)\]]*)",
             lambda match: match.group(0).replace("\\", "/"),
             decoded,
         )
