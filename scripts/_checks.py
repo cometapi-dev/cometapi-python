@@ -683,17 +683,17 @@ def _canonical_actions_run_violations(
     findings: list[tuple[int, str]] = []
     normalized = unicodedata.normalize("NFKC", body)
     direct = normalized
-    markdown_unescaped = re.sub(r"\\([/\\.:?&=%#])", r"\1", normalized)
-    browser_normalized = re.sub(
-        r"(?i)(https?://[^\s<>)\]]*)\\([^\s<>)\]]*)",
-        lambda match: match.group(0).replace("\\", "/"),
-        markdown_unescaped,
-    )
     for _ in range(3):
         decoded = html.unescape(direct)
         if decoded == direct:
             break
         direct = decoded
+    markdown_unescaped = re.sub(r"\\([/\\.:?&=%#])", r"\1", direct)
+    browser_normalized = re.sub(
+        r"(?i)(https?://[^\s<>)\]]*)\\([^\s<>)\]]*)",
+        lambda match: match.group(0).replace("\\", "/"),
+        markdown_unescaped,
+    )
 
     path_matches = list(_ACTIONS_PATH.finditer(direct))
     canonical_matches = list(_CANONICAL_ACTIONS_URL.finditer(direct))
