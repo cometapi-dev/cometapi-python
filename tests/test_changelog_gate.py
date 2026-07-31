@@ -97,6 +97,8 @@ def test_changelog_parser_rejects_obfuscated_mutable_versions(claim: str) -> Non
         "## Un&#x72;eleased",
         "## \uff35\uff4e\uff52\uff45\uff4c\uff45\uff41\uff53\uff45\uff44",
         "## Un\u034freleased",
+        "## Un\u202edesaeler\u202c",
+        "## Un\u2067released\u2069",
         "## Current Unreleased",
         "Next release (Unreleased)\n-------------------------",
         "Unreleased\n----------",

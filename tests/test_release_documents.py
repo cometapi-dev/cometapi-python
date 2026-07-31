@@ -700,6 +700,12 @@ def test_release_evidence_rejects_obsolete_workflow_reference_marker(
         "actions/runs/30511373822",
         "https://evil.example/#https://github.com/cometapi-dev/cometapi-python/"
         "actions/runs/30511373822",
+        "https://evil.example/?next=(https://github.com/cometapi-dev/cometapi-python/"
+        "actions/runs/30515861246)",
+        "https://evil.example/#(https://github.com/cometapi-dev/cometapi-python/"
+        "actions/runs/30515861246)",
+        "mailto:(https://github.com/cometapi-dev/cometapi-python/actions/runs/30515861246)",
+        "prefix<https://github.com/cometapi-dev/cometapi-python/actions/runs/30515861246>",
         "http://github.com/cometapi-dev/cometapi-python/actions/runs/30511373822",
         "https://evil.example/?next=https%3A%2F%2Fgithub.com%2Fcometapi-dev%2F"
         "cometapi-python%2Factions%2Fruns%2F30511373822",
@@ -746,6 +752,29 @@ def test_release_evidence_rejects_noncanonical_workflow_reference_url(
 
     assert "non-canonical Actions URL" in str(caught.value)
     assert "/actions/runs/<positive-id>" in str(caught.value)
+
+
+def test_release_evidence_accepts_canonical_raw_html_anchor(
+    releasable_documents: Path,
+) -> None:
+    evidence = _release_evidence_block().replace(
+        "- Release workflow https://github.com/cometapi-dev/cometapi-python/actions/runs/"
+        "30515861246",
+        '- Release workflow <a href="https://github.com/cometapi-dev/cometapi-python/'
+        'actions/runs/30515861246">canonical publication run</a>',
+        1,
+    )
+    for name in ("ROADMAP.md", "RELEASING.md"):
+        with (releasable_documents / name).open("a", encoding="utf-8") as stream:
+            stream.write(evidence)
+    _replace(
+        releasable_documents,
+        "CHANGELOG.md",
+        "# Changelog\n",
+        "# Changelog\n\n## [0.1.2] - 2026-07-30\n\nHistory.\n",
+    )
+
+    require_public_preview_docs()
 
 
 def test_fenced_release_evidence_is_not_accepted_as_history(

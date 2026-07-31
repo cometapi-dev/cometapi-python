@@ -132,6 +132,7 @@ _FIRST_PARTY_MARKDOWN_TARGET = re.compile(
     r")(?=$|[/?#>])"
 )
 _HTTP_URL = re.compile(r"https?://[^\s<>)\]]+", re.IGNORECASE)
+_URLISH_TOKEN = re.compile(r"https?:[^\s<>\"']+", re.IGNORECASE)
 _RECOVERY_TAGS = {"0.1.0a1": "v0.1.0-alpha.1+recovery.1"}
 _FULL_COMMIT = re.compile(r"(?<![0-9a-f])[0-9a-f]{40}(?![0-9a-f])", re.IGNORECASE)
 _ACTIONS_PREFIX = f"{CANONICAL_REPOSITORY}/actions/runs/"
@@ -140,10 +141,58 @@ _ACTIONS_PATH = re.compile(
     re.IGNORECASE,
 )
 _CANONICAL_ACTIONS_URL = re.compile(
-    rf"(?<![^\s<(]){re.escape(_ACTIONS_PREFIX)}(?P<run>[1-9]\d*)"
+    rf"(?<![^\s<(\"']){re.escape(_ACTIONS_PREFIX)}(?P<run>[1-9]\d*)"
     r"(?:/attempts/(?P<attempt>[1-9]\d*))?"
     r"(?=$|[\s<>\"')\]}]|[.,;:!?](?=$|\s))"
 )
+_RAW_HTML_URL_ATTRIBUTE = re.compile(
+    r"(?is)\b(?:href|src)\s*=\s*(?P<quote>['\"])(?P<url>.*?)(?P=quote)"
+)
+
+
+def _actions_path_has_canonical_url(
+    text: str,
+    path: re.Match[str],
+    canonical_matches: list[re.Match[str]],
+) -> bool:
+    canonical = next(
+        (
+            match
+            for match in canonical_matches
+            if match.start() <= path.start() and path.end() <= match.end()
+        ),
+        None,
+    )
+    if canonical is None:
+        return False
+
+    for attribute in _RAW_HTML_URL_ATTRIBUTE.finditer(text):
+        if attribute.start("url") <= path.start() and path.end() <= attribute.end("url"):
+            return _CANONICAL_ACTIONS_URL.fullmatch(attribute.group("url")) is not None
+
+    containing_tokens = [
+        match
+        for match in _URLISH_TOKEN.finditer(text)
+        if match.start() <= path.start() and path.end() <= match.end()
+    ]
+    if containing_tokens and min(match.start() for match in containing_tokens) < canonical.start():
+        return False
+
+    if canonical.start() == 0:
+        return True
+    boundary = text[canonical.start() - 1]
+    if boundary.isspace():
+        return True
+    if boundary == "<":
+        return canonical.start() >= 2 and text[canonical.start() - 2].isspace()
+    if boundary == "(":
+        before_boundary = canonical.start() - 2
+        return (
+            before_boundary < 0 or text[before_boundary].isspace() or text[before_boundary] == "]"
+        )
+    return False
+
+
 _WHEEL_DIGEST = re.compile(
     r"\bwheel\s+sha256\b[^0-9a-f]{0,96}(?P<digest>[0-9a-f]{64})(?![0-9a-f])",
     re.IGNORECASE | re.DOTALL,
@@ -551,7 +600,7 @@ def _identity_violations(
         ),
         "exact release commit": re.compile(re.escape(identity.commit), re.IGNORECASE),
         "exact release workflow URL": re.compile(
-            rf"(?<![^\s<(]){re.escape(_ACTIONS_PREFIX)}{identity.workflow_run}"
+            rf"(?<![^\s<(\"']){re.escape(_ACTIONS_PREFIX)}{identity.workflow_run}"
             r"(?:/attempts/[1-9]\d*)?"
             r"(?=$|[\s<>\"')\]}]|[.,;:!?](?=$|\s))"
         ),
@@ -701,12 +750,9 @@ def _canonical_actions_run_violations(
     path_matches = list(_ACTIONS_PATH.finditer(direct))
     canonical_matches = list(_CANONICAL_ACTIONS_URL.finditer(direct))
     malformed = any(
-        not any(
-            url.start() <= path.start() and path.end() <= url.end() for url in canonical_matches
-        )
+        not _actions_path_has_canonical_url(direct, path, canonical_matches)
         for path in path_matches
     )
-
     direct_paths = Counter((match.group("run"), match.group("attempt")) for match in path_matches)
     variant_paths = [
         Counter(

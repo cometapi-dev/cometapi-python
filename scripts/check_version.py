@@ -261,6 +261,12 @@ class _RawH2Collector(HTMLParser):
 
 def _visible_heading_is_unreleased(label: str) -> bool:
     label = html.unescape(unicodedata.normalize("NFKC", label))
+    if any(
+        unicodedata.bidirectional(value)
+        in {"LRE", "RLE", "LRO", "RLO", "PDF", "LRI", "RLI", "FSI", "PDI"}
+        for value in label
+    ):
+        return True
     label = "".join(
         ""
         if unicodedata.category(value) == "Cf"
