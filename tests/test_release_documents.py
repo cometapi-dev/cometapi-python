@@ -527,6 +527,42 @@ def test_release_evidence_block_rejects_unrelated_exact_version(
             "https://github.com/cometapi-dev/cometapi-python/actions/runs/99999999999",
         ),
         (
+            "release workflow run",
+            "- Release workflow https://github.com/cometapi-dev/cometapi-python/actions/runs/"
+            "30515861246",
+            "- Release workflow https://github.com/cometapi-dev/cometapi-python/actions/runs/"
+            "30515861246\n"
+            "- Release run: [details](https://github.com/cometapi-dev/cometapi-python/"
+            "actions/runs/99999999999)",
+        ),
+        (
+            "release workflow run",
+            "- Release workflow https://github.com/cometapi-dev/cometapi-python/actions/runs/"
+            "30515861246",
+            "- Release workflow https://github.com/cometapi-dev/cometapi-python/actions/runs/"
+            "30515861246\n"
+            "- **Release run:** [Actions](https://github.com/cometapi-dev/cometapi-python/"
+            "actions/runs/99999999999)",
+        ),
+        (
+            "release workflow run",
+            "- Release workflow https://github.com/cometapi-dev/cometapi-python/actions/runs/"
+            "30515861246",
+            "- Release workflow https://github.com/cometapi-dev/cometapi-python/actions/runs/"
+            "30515861246\n"
+            "- Release Actions run https://github.com/cometapi-dev/cometapi-python/actions/"
+            "runs/99999999999",
+        ),
+        (
+            "release workflow run",
+            "- Release workflow https://github.com/cometapi-dev/cometapi-python/actions/runs/"
+            "30515861246",
+            "- Release workflow https://github.com/cometapi-dev/cometapi-python/actions/runs/"
+            "30515861246\n"
+            "- [details](https://github.com/cometapi-dev/cometapi-python/actions/runs/"
+            "99999999999) is the release run",
+        ),
+        (
             "wheel SHA256",
             "- Wheel SHA256: 3f12c26ae1ae7a1de5ac19d8ef27a784b2bf592143c716493f1b0f35ec19daca",
             "- Wheel SHA256: "
@@ -596,6 +632,112 @@ def test_release_evidence_rejects_contradictory_labeled_identity_values(
 
     assert label in str(caught.value)
     assert "contradict" in str(caught.value)
+
+
+def test_release_evidence_rejects_ancillary_workflow_run(
+    releasable_documents: Path,
+) -> None:
+    evidence = _release_evidence_block().replace(
+        "- Release workflow https://github.com/cometapi-dev/cometapi-python/actions/runs/"
+        "30515861246",
+        "- Release workflow https://github.com/cometapi-dev/cometapi-python/actions/runs/"
+        "30515861246\n"
+        "- Required CI https://github.com/cometapi-dev/cometapi-python/actions/runs/"
+        "30511373822",
+        1,
+    )
+    for name in ("ROADMAP.md", "RELEASING.md"):
+        with (releasable_documents / name).open("a", encoding="utf-8") as stream:
+            stream.write(evidence)
+    _replace(
+        releasable_documents,
+        "CHANGELOG.md",
+        "# Changelog\n",
+        "# Changelog\n\n## [0.1.2] - 2026-07-30\n\nHistory.\n",
+    )
+
+    with pytest.raises(CheckError) as caught:
+        require_public_preview_docs()
+
+    message = str(caught.value)
+    assert "workflow run" in message
+    assert "contradicts its release-identity marker" in message
+    assert "outside the immutable evidence block" in message
+
+
+@pytest.mark.parametrize(
+    "reference",
+    [
+        "<!-- cometapi-release-workflow-reference run=99999999999 -->",
+        "<!-- cometapi-release-workflow-reference kind=unknown run=99999999999 -->",
+        "<!-- cometapi-release-workflow-reference run=30515861246 -->",
+    ],
+)
+def test_release_evidence_rejects_obsolete_workflow_reference_marker(
+    releasable_documents: Path,
+    reference: str,
+) -> None:
+    evidence = _release_evidence_block().replace(
+        EVIDENCE_IDENTITY,
+        EVIDENCE_IDENTITY + "\n" + reference,
+        1,
+    )
+    for name in ("ROADMAP.md", "RELEASING.md"):
+        with (releasable_documents / name).open("a", encoding="utf-8") as stream:
+            stream.write(evidence)
+
+    with pytest.raises(CheckError) as caught:
+        require_public_preview_docs()
+
+    assert "obsolete workflow-reference marker" in str(caught.value)
+    assert "outside the immutable evidence block" in str(caught.value)
+
+
+@pytest.mark.parametrize(
+    "url",
+    [
+        "https://evil.example/?next=https://github.com/cometapi-dev/cometapi-python/"
+        "actions/runs/30511373822",
+        "https://evil.example/#https://github.com/cometapi-dev/cometapi-python/"
+        "actions/runs/30511373822",
+        "http://github.com/cometapi-dev/cometapi-python/actions/runs/30511373822",
+        "https://evil.example/?next=https%3A%2F%2Fgithub.com%2Fcometapi-dev%2F"
+        "cometapi-python%2Factions%2Fruns%2F30511373822",
+        "//github.com/cometapi-dev/cometapi-python/actions/runs/30511373822",
+        "/cometapi-dev/cometapi-python/actions/runs/30511373822",
+        "&#47;&#47;github.com/cometapi-dev/cometapi-python/actions/runs/30511373822",
+        "mailto:https://github.com/cometapi-dev/cometapi-python/actions/runs/30511373822",
+        "prefixhttps://github.com/cometapi-dev/cometapi-python/actions/runs/30511373822",
+        "https://github.com/other/repository/actions/runs/30511373822",
+        "https://github.com/CometAPI-dev/cometapi-python/actions/runs/30511373822",
+        "https://github.com/cometapi-dev/cometapi-python/actions&#x2F;runs&#x2F;30511373822",
+        "https://github.com/cometapi-dev/cometapi-python/actions\\/runs\\/30511373822",
+        "https://github.com/cometapi-dev/cometapi-python/actions\\runs\\30511373822",
+        "https://github.com/cometapi-dev/cometapi-python&#92;actions&#92;runs&#92;30511373822",
+        "https://github.com/cometapi-dev/cometapi-python/actions/runs/30511373822.evil",
+        "https://github.com/cometapi-dev/cometapi-python/actions/runs/30511373822/attempts/0",
+    ],
+)
+def test_release_evidence_rejects_noncanonical_workflow_reference_url(
+    releasable_documents: Path,
+    url: str,
+) -> None:
+    evidence = _release_evidence_block().replace(
+        "- Release workflow https://github.com/cometapi-dev/cometapi-python/actions/runs/"
+        "30515861246",
+        "- Release workflow https://github.com/cometapi-dev/cometapi-python/actions/runs/"
+        f"30515861246\n- Required CI {url}",
+        1,
+    )
+    for name in ("ROADMAP.md", "RELEASING.md"):
+        with (releasable_documents / name).open("a", encoding="utf-8") as stream:
+            stream.write(evidence)
+
+    with pytest.raises(CheckError) as caught:
+        require_public_preview_docs()
+
+    assert "non-canonical Actions URL" in str(caught.value)
+    assert "/actions/runs/<positive-id>" in str(caught.value)
 
 
 def test_fenced_release_evidence_is_not_accepted_as_history(
@@ -793,7 +935,10 @@ def test_releasable_cli_allows_next_patch_without_guidance_edits(
     changelog.write_text(
         changelog.read_text(encoding="utf-8").replace(
             "# Changelog\n",
-            "# Changelog\n\n## [0.1.3] - 2026-07-30\n\nPatch maintenance.\n",
+            "# Changelog\n\n"
+            "## [0.1.3](https://github.com/cometapi-dev/cometapi-python/compare/"
+            "v0.1.0-alpha.1%2Brecovery.1...v0.1.3) (2026-07-30)\n\n"
+            "Patch maintenance.\n",
             1,
         ),
         encoding="utf-8",
@@ -828,7 +973,9 @@ def test_releasable_cli_allows_next_patch_without_guidance_edits(
     changelog.write_text(
         changelog.read_text(encoding="utf-8").replace(
             "# Changelog\n",
-            "# Changelog\n\n## [0.1.4] - 2026-08-01\n\nPatch maintenance.\n",
+            "# Changelog\n\n"
+            "## [0.1.4](https://github.com/cometapi-dev/cometapi-python/compare/"
+            "v0.1.3...v0.1.4) (2026-08-01)\n\nPatch maintenance.\n",
             1,
         ),
         encoding="utf-8",
@@ -847,6 +994,35 @@ def test_releasable_cli_allows_next_patch_without_guidance_edits(
     assert {
         name: (releasable_documents / name).read_bytes() for name in durable_names
     } == durable_before
+
+
+def test_releasable_cli_rejects_unmanaged_unreleased_heading(
+    releasable_documents: Path,
+) -> None:
+    version_script = _copy_version_checker(releasable_documents)
+    changelog = releasable_documents / "CHANGELOG.md"
+    changelog.write_text(
+        changelog.read_text(encoding="utf-8").replace(
+            "# Changelog\n",
+            "# Changelog\n\n## [Unreleased]\n",
+            1,
+        ),
+        encoding="utf-8",
+    )
+
+    result = subprocess.run(
+        [sys.executable, str(version_script), "--require-public-preview-docs"],
+        cwd=releasable_documents,
+        text=True,
+        check=False,
+        capture_output=True,
+    )
+
+    assert result.returncode != 0
+    assert "CHANGELOG.md:" in result.stderr
+    assert "unmanaged Unreleased heading is forbidden" in result.stderr
+    assert "remove it" in result.stderr
+    assert "Release Please" in result.stderr
 
 
 def test_releasable_docs_accept_release_please_native_heading(
@@ -1213,8 +1389,8 @@ def test_sdist_rejects_cross_document_release_evidence_mismatch(tmp_path: Path) 
     releasing = root / "RELEASING.md"
     releasing.write_text(
         releasing.read_text(encoding="utf-8").replace(
-            "`45429f373bbd11314ec43ba81904fdbb78db2522`. The release commit passed",
-            "`aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa`. The release commit passed",
+            "[release run 30550536000]",
+            "release commit `aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa`; [release run 30550536000]",
             1,
         ),
         encoding="utf-8",

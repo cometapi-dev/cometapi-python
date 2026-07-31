@@ -198,6 +198,18 @@ branch and missing pull-request permission. Treat that run as isolated
 transport-failure evidence; do not rerun it or reinterpret it as an
 authorization failure.
 
+`CHANGELOG.md` is release-only: do not maintain an `Unreleased` placeholder.
+Conventional Commits carry pending changes, and Release Please owns the newest
+canonical dated section immediately after the preamble. The version gate rejects
+any unmanaged `Unreleased` level-two heading so the generated layout remains
+valid on every patch release.
+
+Each validated release-evidence block contains the immutable release identity
+and only its canonical publication workflow. Preparatory implementation CI,
+Release Please, failed-publication, and recovery history remains outside the
+block. The document gate rejects every different run identity and every wrapped
+or malformed Actions URL regardless of prose or Markdown labeling.
+
 Release mode (`check_version.py --require-releasable-docs`) also fails closed
 until project authorship, the canonical GitHub repository URL, the copyright
 holder, security and support contacts, a publication-neutral README, and a
@@ -471,16 +483,17 @@ authorized.
 
 ### Completed first stable release evidence
 
+- Selector-descendant fix [PR #23](https://github.com/cometapi-dev/cometapi-python/pull/23)
+  passed [pull-request CI run 30358662050](https://github.com/cometapi-dev/cometapi-python/actions/runs/30358662050),
+  squash-merged as `9cd60419130533d6920083e2f4bf295a3b5a4fd7`, and passed
+  [default-branch CI run 30358990834](https://github.com/cometapi-dev/cometapi-python/actions/runs/30358990834).
+
 <!-- cometapi-release-evidence:start version=0.1.0 date=2026-07-28 -->
 <!-- cometapi-release-identity tag=v0.1.0 commit=6f42981edcc6c252f8db997606671c3da84d1dd8 workflow-run=30359383715 wheel-sha256=8eae758688bb6c98274e48d8d81f882eeae760f69cfd2f5e125004881d60e90f sdist-sha256=e9308b44f6091200b5121e24d1a0e1b9ea3e6bcccc109d6de87554b1ab2a8bca -->
 
 - The immutable non-draft [GitHub release](https://github.com/cometapi-dev/cometapi-python/releases/tag/v0.1.0)
   and lightweight tag `v0.1.0` resolve to release commit
   `6f42981edcc6c252f8db997606671c3da84d1dd8` on protected `main`.
-- Selector-descendant fix [PR #23](https://github.com/cometapi-dev/cometapi-python/pull/23)
-  passed [pull-request CI run 30358662050](https://github.com/cometapi-dev/cometapi-python/actions/runs/30358662050),
-  squash-merged as `9cd60419130533d6920083e2f4bf295a3b5a4fd7`, and passed
-  [default-branch CI run 30358990834](https://github.com/cometapi-dev/cometapi-python/actions/runs/30358990834).
 - Fresh first-attempt
   [recovery run 30359383715](https://github.com/cometapi-dev/cometapi-python/actions/runs/30359383715)
   passed immutable identity verification, the shared selector, an exact rebuild,
@@ -506,9 +519,6 @@ authorized.
 
 ### Completed configuration maintenance release evidence
 
-<!-- cometapi-release-evidence:start version=0.1.1 date=2026-07-29 -->
-<!-- cometapi-release-identity tag=v0.1.1 commit=576e7503a0a8c1103faca5143e4b8d576f8e8b44 workflow-run=30429821548 wheel-sha256=27e7904542f82fbbcd60e0de23a4a62c042420b6d004d00286d1f37d2ec4c5e5 sdist-sha256=64c7cb87745032703b3374cc562ea00b979416c54908862dbcebd116b2dc44c8 -->
-
 - Configuration fix [PR #25](https://github.com/cometapi-dev/cometapi-python/pull/25)
   passed [pull-request CI run 30419881169](https://github.com/cometapi-dev/cometapi-python/actions/runs/30419881169)
   and squash-merged as `d02b1dba277ac72229b772d29ea1870b569edd88`.
@@ -528,10 +538,15 @@ authorized.
   received human owner approval at that exact head, and squash-merged as
   `576e7503a0a8c1103faca5143e4b8d576f8e8b44`. The release commit passed
   [default-branch CI run 30429821579](https://github.com/cometapi-dev/cometapi-python/actions/runs/30429821579).
+
+<!-- cometapi-release-evidence:start version=0.1.1 date=2026-07-29 -->
+<!-- cometapi-release-identity tag=v0.1.1 commit=576e7503a0a8c1103faca5143e4b8d576f8e8b44 workflow-run=30429821548 wheel-sha256=27e7904542f82fbbcd60e0de23a4a62c042420b6d004d00286d1f37d2ec4c5e5 sdist-sha256=64c7cb87745032703b3374cc562ea00b979416c54908862dbcebd116b2dc44c8 -->
+
 - First-attempt [release run 30429821548](https://github.com/cometapi-dev/cometapi-python/actions/runs/30429821548)
   created and verified immutable non-draft release
   [v0.1.1](https://github.com/cometapi-dev/cometapi-python/releases/tag/v0.1.1)
-  at the exact release commit, rebuilt and clean-installed both artifacts,
+  at release commit `576e7503a0a8c1103faca5143e4b8d576f8e8b44`, rebuilt and
+  clean-installed both artifacts,
   passed the four-request exact-release live suite, received protected `pypi`
   approval, published directly from top-level `publish.yml` by OIDC with
   attestations, and passed public registry verification.
@@ -554,9 +569,6 @@ authorized.
 <!-- cometapi-release-evidence:end version=0.1.1 date=2026-07-29 -->
 
 ### Completed release-metadata maintenance evidence
-
-<!-- cometapi-release-evidence:start version=0.1.2 date=2026-07-30 -->
-<!-- cometapi-release-identity tag=v0.1.2 commit=710c56491d9ef5f47cccff3ce837ab7e799455b0 workflow-run=30515861246 wheel-sha256=3f12c26ae1ae7a1de5ac19d8ef27a784b2bf592143c716493f1b0f35ec19daca sdist-sha256=21c8edc0586610de1a9a8cd39b54ed23d2b1e20552100f69f53938cb7678da3d -->
 
 - Metadata and runtime [PR #29](https://github.com/cometapi-dev/cometapi-python/pull/29)
   made packaged long descriptions release-neutral, added artifact assertions,
@@ -581,11 +593,16 @@ authorized.
   received human owner approval at that exact head, and squash-merged as release
   commit `710c56491d9ef5f47cccff3ce837ab7e799455b0`. The release commit passed
   [default-branch CI run 30515861285](https://github.com/cometapi-dev/cometapi-python/actions/runs/30515861285).
+
+<!-- cometapi-release-evidence:start version=0.1.2 date=2026-07-30 -->
+<!-- cometapi-release-identity tag=v0.1.2 commit=710c56491d9ef5f47cccff3ce837ab7e799455b0 workflow-run=30515861246 wheel-sha256=3f12c26ae1ae7a1de5ac19d8ef27a784b2bf592143c716493f1b0f35ec19daca sdist-sha256=21c8edc0586610de1a9a8cd39b54ed23d2b1e20552100f69f53938cb7678da3d -->
+
 - First-attempt
   [release run 30515861246](https://github.com/cometapi-dev/cometapi-python/actions/runs/30515861246)
   created and independently verified immutable non-draft release
   [v0.1.2](https://github.com/cometapi-dev/cometapi-python/releases/tag/v0.1.2)
-  at the exact release commit, rebuilt and clean-installed both artifacts,
+  at release commit `710c56491d9ef5f47cccff3ce837ab7e799455b0`, rebuilt and
+  clean-installed both artifacts,
   passed the bounded four-request exact-release live suite, received protected
   `pypi` approval, published directly from top-level `publish.yml` by OIDC with
   attestations, and passed public registry verification.
@@ -610,9 +627,6 @@ authorized.
 
 ### Completed release-claim maintenance evidence
 
-<!-- cometapi-release-evidence:start version=0.1.3 date=2026-07-30 -->
-<!-- cometapi-release-identity tag=v0.1.3 commit=45429f373bbd11314ec43ba81904fdbb78db2522 workflow-run=30550536000 wheel-sha256=9ac2f8062a8554943649bffd7ec859fc90491f76bbe2b0165327722201417d6f sdist-sha256=07ded54606d50f44b689dad38cf93a74e1175370efaa33be84a3c01240d48e66 -->
-
 - Mutable-release-claim [PR #34](https://github.com/cometapi-dev/cometapi-python/pull/34)
   removed the published patch number from persistent guidance and extended the
   existing document/version checker through pull-request CI, release source and
@@ -636,11 +650,16 @@ authorized.
   received exact-head human owner approval, and squash-merged as release commit
   `45429f373bbd11314ec43ba81904fdbb78db2522`. The release commit passed
   [default-branch CI run 30550533622](https://github.com/cometapi-dev/cometapi-python/actions/runs/30550533622).
+
+<!-- cometapi-release-evidence:start version=0.1.3 date=2026-07-30 -->
+<!-- cometapi-release-identity tag=v0.1.3 commit=45429f373bbd11314ec43ba81904fdbb78db2522 workflow-run=30550536000 wheel-sha256=9ac2f8062a8554943649bffd7ec859fc90491f76bbe2b0165327722201417d6f sdist-sha256=07ded54606d50f44b689dad38cf93a74e1175370efaa33be84a3c01240d48e66 -->
+
 - First-attempt
   [release run 30550536000](https://github.com/cometapi-dev/cometapi-python/actions/runs/30550536000)
   created and independently verified immutable non-draft release
   [v0.1.3](https://github.com/cometapi-dev/cometapi-python/releases/tag/v0.1.3)
-  and its lightweight tag at the exact release commit, rebuilt and
+  and its lightweight tag at release commit
+  `45429f373bbd11314ec43ba81904fdbb78db2522`, rebuilt and
   clean-installed both artifacts, passed the bounded four-request exact-release
   live suite, received protected `pypi` approval, published directly from
   top-level `publish.yml` by OIDC with attestations, and passed public registry

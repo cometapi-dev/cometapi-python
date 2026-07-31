@@ -414,18 +414,19 @@ Registry Alpha evidence block.
 
 Accepted release evidence:
 
-<!-- cometapi-release-evidence:start version=0.1.0a1 date=2026-07-27 -->
-<!-- cometapi-release-identity tag=v0.1.0-alpha.1+recovery.1 commit=31b68904141489ca04932edbf305ccf88af09372 workflow-run=30261746138 wheel-sha256=a6820347317943ca22f7632acbe354dd992f31a122a6172dfe45b57960e3a093 sdist-sha256=98d86829ef14771e8b7ec180d452c6638289f49c14a39b7207be5c47cb64cde7 -->
-
 - Metadata fix [PR #16](https://github.com/cometapi-dev/cometapi-python/pull/16)
   merged as `6344c2d0e2e975360b42c887275c1950b82918ee`; recovery contract
   [PR #17](https://github.com/cometapi-dev/cometapi-python/pull/17) merged as
   release commit `31b68904141489ca04932edbf305ccf88af09372`. Final
   [default-branch CI run 30261497883](https://github.com/cometapi-dev/cometapi-python/actions/runs/30261497883)
   passed.
+
+<!-- cometapi-release-evidence:start version=0.1.0a1 date=2026-07-27 -->
+<!-- cometapi-release-identity tag=v0.1.0-alpha.1+recovery.1 commit=31b68904141489ca04932edbf305ccf88af09372 workflow-run=30261746138 wheel-sha256=a6820347317943ca22f7632acbe354dd992f31a122a6172dfe45b57960e3a093 sdist-sha256=98d86829ef14771e8b7ec180d452c6638289f49c14a39b7207be5c47cb64cde7 -->
+
 - Annotated tag `v0.1.0-alpha.1+recovery.1` has tag object
-  `fdc4a6cce31f4534f83903f3f95e7757a4d4049f` and peels to the release
-  commit. The corresponding
+  `fdc4a6cce31f4534f83903f3f95e7757a4d4049f` and peels to release commit
+  `31b68904141489ca04932edbf305ccf88af09372`. The corresponding
   [immutable GitHub prerelease](https://github.com/cometapi-dev/cometapi-python/releases/tag/v0.1.0-alpha.1%2Brecovery.1)
   is release `360377046`.
 - [Release workflow run 30261746138](https://github.com/cometapi-dev/cometapi-python/actions/runs/30261746138)
@@ -447,12 +448,6 @@ Accepted release evidence:
 
 ## First stable OpenAI protocol foundation
 
-<!-- cometapi-release-evidence:start version=0.1.0 date=2026-07-28 -->
-<!-- cometapi-release-identity tag=v0.1.0 commit=6f42981edcc6c252f8db997606671c3da84d1dd8 workflow-run=30359383715 wheel-sha256=8eae758688bb6c98274e48d8d81f882eeae760f69cfd2f5e125004881d60e90f sdist-sha256=e9308b44f6091200b5121e24d1a0e1b9ea3e6bcccc109d6de87554b1ab2a8bca -->
-
-Canonical [GitHub release](https://github.com/cometapi-dev/cometapi-python/releases/tag/v0.1.0)
-and [PyPI release](https://pypi.org/project/cometapi/0.1.0/) identity.
-
 Stable 0.1 retains the alpha surface. Its additional exit criteria are:
 
 - Blocking Python runtime matrix for every supported runtime.
@@ -467,9 +462,9 @@ Stable 0.1 retains the alpha surface. Its additional exit criteria are:
   independent post-publication install/import/mocked-call check.
 - No complete credential appears in source, fixtures, artifacts, or logs.
 
-The first stable publication attempt created immutable release `v0.1.0` at
-`6f42981edcc6c252f8db997606671c3da84d1dd8` and passed default-branch CI plus
-exact artifact construction, but [stopped before any live request](https://github.com/cometapi-dev/cometapi-python/actions/runs/30348177128)
+The first stable publication attempt created the immutable stable release and
+passed default-branch CI plus exact artifact construction, but
+[stopped before any live request](https://github.com/cometapi-dev/cometapi-python/actions/runs/30348177128)
 because the reusable workflow caller omitted `secrets: inherit` and GitHub
 resolved the `live-smoke` environment secret as empty. PyPI publication and
 registry verification were skipped. [PR #21](https://github.com/cometapi-dev/cometapi-python/pull/21)
@@ -498,7 +493,7 @@ correct top-level workflow identity. GitHub nevertheless propagated the
 intentionally skipped Release Please ancestry to the selector descendants, so
 build, live smoke, publication, and registry verification were all skipped and
 the overall run incorrectly reported success. No live request or registry side
-effect occurred, and PyPI still returned 404 for `cometapi==0.1.0`. The
+effect occurred, and PyPI still returned 404 for the stable distribution. The
 permanent control-flow fix makes every selector descendant explicitly evaluate
 skipped ancestry while rejecting cancellation and reruns and requiring every
 direct dependency to succeed.
@@ -508,6 +503,13 @@ conditions in the semantic checker and mutation tests, passed
 [pull-request CI run 30358662050](https://github.com/cometapi-dev/cometapi-python/actions/runs/30358662050),
 squash-merged as `9cd60419130533d6920083e2f4bf295a3b5a4fd7`, and passed
 [default-branch CI run 30358990834](https://github.com/cometapi-dev/cometapi-python/actions/runs/30358990834).
+
+<!-- cometapi-release-evidence:start version=0.1.0 date=2026-07-28 -->
+<!-- cometapi-release-identity tag=v0.1.0 commit=6f42981edcc6c252f8db997606671c3da84d1dd8 workflow-run=30359383715 wheel-sha256=8eae758688bb6c98274e48d8d81f882eeae760f69cfd2f5e125004881d60e90f sdist-sha256=e9308b44f6091200b5121e24d1a0e1b9ea3e6bcccc109d6de87554b1ab2a8bca -->
+
+Canonical [GitHub release](https://github.com/cometapi-dev/cometapi-python/releases/tag/v0.1.0)
+and [PyPI release](https://pypi.org/project/cometapi/0.1.0/) identity at release
+commit `6f42981edcc6c252f8db997606671c3da84d1dd8`.
 Fresh first-attempt
 [recovery run 30359383715](https://github.com/cometapi-dev/cometapi-python/actions/runs/30359383715)
 then passed the selector, exact artifact rebuild, bounded four-request live
@@ -527,10 +529,8 @@ the only remaining release-related repository variable.
 
 ## Configuration validation maintenance
 
-<!-- cometapi-release-evidence:start version=0.1.1 date=2026-07-29 -->
-<!-- cometapi-release-identity tag=v0.1.1 commit=576e7503a0a8c1103faca5143e4b8d576f8e8b44 workflow-run=30429821548 wheel-sha256=27e7904542f82fbbcd60e0de23a4a62c042420b6d004d00286d1f37d2ec4c5e5 sdist-sha256=64c7cb87745032703b3374cc562ea00b979416c54908862dbcebd116b2dc44c8 -->
-
-Maintenance release `0.1.1` rejects explicitly blank API keys and base URLs,
+The configuration-validation maintenance release rejects explicitly blank API
+keys and base URLs,
 treats a blank environment key as missing, and uses the default CometAPI URL
 for a blank environment base URL. It trims surrounding string whitespace,
 including the Node-compatible byte-order mark boundary, without changing
@@ -558,11 +558,15 @@ and received an exact-head human owner approval. It squash-merged as release
 commit `576e7503a0a8c1103faca5143e4b8d576f8e8b44`, which passed
 [default-branch CI run 30429821579](https://github.com/cometapi-dev/cometapi-python/actions/runs/30429821579).
 
+<!-- cometapi-release-evidence:start version=0.1.1 date=2026-07-29 -->
+<!-- cometapi-release-identity tag=v0.1.1 commit=576e7503a0a8c1103faca5143e4b8d576f8e8b44 workflow-run=30429821548 wheel-sha256=27e7904542f82fbbcd60e0de23a4a62c042420b6d004d00286d1f37d2ec4c5e5 sdist-sha256=64c7cb87745032703b3374cc562ea00b979416c54908862dbcebd116b2dc44c8 -->
+
 First-attempt
 [release run 30429821548](https://github.com/cometapi-dev/cometapi-python/actions/runs/30429821548)
 created and verified the immutable non-draft
 [GitHub release](https://github.com/cometapi-dev/cometapi-python/releases/tag/v0.1.1)
-and lightweight tag `v0.1.1` at that exact release commit. The run selected the
+and lightweight tag `v0.1.1` at release commit
+`576e7503a0a8c1103faca5143e4b8d576f8e8b44`. The run selected the
 verified release identity, rebuilt and independently installed both artifacts,
 and passed the exact-release live suite with four serial requests, at most 16
 output tokens per request, a 30-second request timeout, and stop-on-first-failure.
@@ -589,11 +593,8 @@ variables are absent. No recovery tag or recovery workflow was used.
 
 ## Release metadata and transport maintenance
 
-<!-- cometapi-release-evidence:start version=0.1.2 date=2026-07-30 -->
-<!-- cometapi-release-identity tag=v0.1.2 commit=710c56491d9ef5f47cccff3ce837ab7e799455b0 workflow-run=30515861246 wheel-sha256=3f12c26ae1ae7a1de5ac19d8ef27a784b2bf592143c716493f1b0f35ec19daca sdist-sha256=21c8edc0586610de1a9a8cd39b54ed23d2b1e20552100f69f53938cb7678da3d -->
-
 [Release Please run 30509764960](https://github.com/cometapi-dev/cometapi-python/actions/runs/30509764960)
-failed while maintaining the `0.1.2` release PR. The pinned v5 action had built
+failed while maintaining the release-metadata patch PR. The pinned v5 action had built
 the candidate and reached its PR write boundary when Undici/global `fetch`
 reported `other side closed`. It created or updated no branch, pull request,
 tag, GitHub Release, live request, PyPI file, or other registry state. Read-only
@@ -630,11 +631,15 @@ received human owner approval at that exact head, and squash-merged as release
 commit `710c56491d9ef5f47cccff3ce837ab7e799455b0`. The release commit passed
 [default-branch CI run 30515861285](https://github.com/cometapi-dev/cometapi-python/actions/runs/30515861285).
 
+<!-- cometapi-release-evidence:start version=0.1.2 date=2026-07-30 -->
+<!-- cometapi-release-identity tag=v0.1.2 commit=710c56491d9ef5f47cccff3ce837ab7e799455b0 workflow-run=30515861246 wheel-sha256=3f12c26ae1ae7a1de5ac19d8ef27a784b2bf592143c716493f1b0f35ec19daca sdist-sha256=21c8edc0586610de1a9a8cd39b54ed23d2b1e20552100f69f53938cb7678da3d -->
+
 First-attempt
 [release run 30515861246](https://github.com/cometapi-dev/cometapi-python/actions/runs/30515861246)
 created and verified the immutable non-draft
 [GitHub release](https://github.com/cometapi-dev/cometapi-python/releases/tag/v0.1.2)
-and lightweight tag `v0.1.2` at that exact release commit. It rebuilt and
+and lightweight tag `v0.1.2` at release commit
+`710c56491d9ef5f47cccff3ce837ab7e799455b0`. It rebuilt and
 clean-installed the exact artifacts, passed the four-request exact-release live
 suite, received protected `pypi` approval, published directly from top-level
 `publish.yml` through OIDC with attestations, and passed public registry
@@ -663,9 +668,6 @@ used for `0.1.2`.
 
 ## Durable release-claim maintenance
 
-<!-- cometapi-release-evidence:start version=0.1.3 date=2026-07-30 -->
-<!-- cometapi-release-identity tag=v0.1.3 commit=45429f373bbd11314ec43ba81904fdbb78db2522 workflow-run=30550536000 wheel-sha256=9ac2f8062a8554943649bffd7ec859fc90491f76bbe2b0165327722201417d6f sdist-sha256=07ded54606d50f44b689dad38cf93a74e1175370efaa33be84a3c01240d48e66 -->
-
 [Implementation PR #34](https://github.com/cometapi-dev/cometapi-python/pull/34)
 removed the mutable published-patch claim from persistent guidance and extended
 the existing document/version checker across pull-request CI, release source and
@@ -692,11 +694,15 @@ received human owner approval, and squash-merged as release commit
 `45429f373bbd11314ec43ba81904fdbb78db2522`. The release commit passed
 [default-branch CI run 30550533622](https://github.com/cometapi-dev/cometapi-python/actions/runs/30550533622).
 
+<!-- cometapi-release-evidence:start version=0.1.3 date=2026-07-30 -->
+<!-- cometapi-release-identity tag=v0.1.3 commit=45429f373bbd11314ec43ba81904fdbb78db2522 workflow-run=30550536000 wheel-sha256=9ac2f8062a8554943649bffd7ec859fc90491f76bbe2b0165327722201417d6f sdist-sha256=07ded54606d50f44b689dad38cf93a74e1175370efaa33be84a3c01240d48e66 -->
+
 First-attempt
 [release run 30550536000](https://github.com/cometapi-dev/cometapi-python/actions/runs/30550536000)
 created and independently verified the immutable non-draft
 [GitHub release](https://github.com/cometapi-dev/cometapi-python/releases/tag/v0.1.3)
-and lightweight tag `v0.1.3` at that exact release commit. It rebuilt and
+and lightweight tag `v0.1.3` at release commit
+`45429f373bbd11314ec43ba81904fdbb78db2522`. It rebuilt and
 clean-installed the exact artifacts, passed the bounded four-request
 exact-release live suite, received protected `pypi` approval, published
 directly from top-level `publish.yml` by OIDC with attestations, and passed

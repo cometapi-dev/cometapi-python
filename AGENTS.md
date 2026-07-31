@@ -154,6 +154,17 @@ Post-stable invariants:
     documents must contain no exact CometAPI patch or recovery identity. The
     document/version checker must fail before merge or release when this
     boundary is violated.
+12. Keep `CHANGELOG.md` release-only: do not maintain an unmanaged `Unreleased`
+    section. Record changes in Conventional Commits and let Release Please own
+    the newest canonical dated release section after the changelog preamble.
+    The version gate must reject any `Unreleased` level-two heading before merge
+    or release.
+13. A validated release-evidence block binds one canonical publication workflow
+    run to its machine-readable identity marker and may contain no other Actions
+    run URL. Keep preparatory implementation, CI, Release Please, failed-attempt,
+    and recovery history outside that block. The document gate must reject
+    non-canonical, wrapped, malformed, or contradictory workflow URLs regardless
+    of prose or Markdown labeling.
 
 ## Repository independence
 

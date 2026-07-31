@@ -4,8 +4,6 @@ All notable changes to this project are documented in this file. The project
 follows Semantic Versioning and uses Conventional Commits for release-PR
 automation.
 
-## [Unreleased]
-
 ## [0.1.3] - 2026-07-30
 
 ### Fixed
