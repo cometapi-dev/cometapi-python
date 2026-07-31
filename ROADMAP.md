@@ -29,13 +29,13 @@ roadmap and `COMPATIBILITY.md`.
 | Repository foundation | Complete | Public files, offline gates, packaging checks, and self-containment are complete. |
 | Private Remote Validation | Complete | The sanitized private repository passes real credential-free default-branch CI; public-only controls and live tests remain disabled. |
 | Public Preview | Complete | The public repository has blocking CI, repository rules, security reporting, protected environments, immutable releases, and authorized live-smoke evidence. |
-| `0.1.0a1` Registry Alpha | Complete | Early adopters can install the functional prerelease from PyPI; every release and registry gate passed. |
-| `0.1.0` stable | Complete | Complete runtime, release-PR, example, provenance, and registry gates passed. |
-| `0.1.1` maintenance | Complete | Configuration validation and every stable release, live, provenance, and registry gate passed. |
-| `0.1.2` maintenance | Complete | Publication-neutral metadata and release-transport boundaries passed every normal release, live, provenance, and registry gate. |
-| `0.1.3` maintenance | Complete | Mutable-release-claim detection passed every normal release, live, provenance, and registry gate. |
-| `0.2.0` provider-native text | Planned | Optional official Anthropic and Gemini adapters. |
-| `0.3.0` CometAPI resources | Planned | First schema-backed typed CometAPI-specific resource. |
+| Registry Alpha | Complete | Early adopters could install the functional prerelease from PyPI; every release and registry gate passed. |
+| First stable release | Complete | Complete runtime, release-PR, example, provenance, and registry gates passed. |
+| Configuration maintenance | Complete | Configuration validation and every stable release, live, provenance, and registry gate passed. |
+| Release metadata maintenance | Complete | Publication-neutral metadata and release-transport boundaries passed every normal release, live, provenance, and registry gate. |
+| Release-claim maintenance | Complete | Durable release-claim detection passed every normal release, live, provenance, and registry gate. |
+| Provider-native text | Planned | Optional official Anthropic and Gemini adapters after separately authorized 0.2 activation. |
+| CometAPI resources | Planned | First schema-backed typed CometAPI-specific resource after separately authorized 0.2 activation. |
 | Media and task APIs | Planned | Coherent task lifecycle precedes individual media helpers. |
 
 ## `0.1.x` maintenance
@@ -55,7 +55,7 @@ CLI, translation, or Go surface without a separate maintainer request.
 
 Deliverables:
 
-- Package `cometapi`, version `0.1.0a1`, with `CometAPI` and `AsyncCometAPI` and
+- Package `cometapi`, with `CometAPI` and `AsyncCometAPI` and
   no legacy aliases.
 - Standalone documentation, MIT licensing, contribution and conduct guidance,
   security and support policies, architecture, release guide, changelog,
@@ -145,9 +145,9 @@ Recorded pre-visibility dependency dispositions:
 | --- | --- | --- |
 | Dependabot [PR #1](https://github.com/cometapi-dev/cometapi-python/pull/1): `actions/download-artifact` 4.3.0 to 8.0.1 | Closed unmerged; superseded by merged private [PR #9](https://github.com/cometapi-dev/cometapi-python/pull/9) | PR #9 applies the reviewed SHA pin throughout the release workflow and adds a credential-free CI artifact download plus SHA256 round trip. Its final [CI run 29916685839](https://github.com/cometapi-dev/cometapi-python/actions/runs/29916685839) passed, PR #9 squash-merged as `72b212dd72e66bbde9c6714329f72071cc1ca129`, and PR #1 was closed without merging. |
 | Dependabot [PR #2](https://github.com/cometapi-dev/cometapi-python/pull/2): `actions/checkout` 4.2.2 to 7.0.1 | Closed unmerged; superseded by merged private [PR #9](https://github.com/cometapi-dev/cometapi-python/pull/9) | PR #2's [CI run 29796719306](https://github.com/cometapi-dev/cometapi-python/actions/runs/29796719306) failed because its regression test hard-coded the previous checkout SHA. PR #9 instead validates parsed action references independently of version, passed final CI run 29916685839, and squash-merged as `72b212dd72e66bbde9c6714329f72071cc1ca129`; PR #2 was closed without merging, and its failed run remains negative evidence only. |
-| Dependabot [PR #3](https://github.com/cometapi-dev/cometapi-python/pull/3): `pypa/gh-action-pypi-publish` 1.14.0 to 1.14.1 | Deferred; keep out of `main` | Pull-request CI does not execute the release-triggered OIDC publish action or prove PyPI publication, provenance, or registry installation. Revisit with an authorized release-path review and the separately required protected release evidence; credential-free CI success alone is insufficient. |
+| Dependabot [PR #3](https://github.com/cometapi-dev/cometapi-python/pull/3): `pypa/gh-action-pypi-publish` 1.14.0 to 1.14.1 | Superseded by current maintenance | The stale dependency PR remains unsuitable for merge, but its one-line Node 24 fallback update was independently reviewed and applied on the current maintenance branch with an exact-SHA semantic gate. Pull-request CI still does not prove OIDC publication, provenance, or registry installation; the authorized normal release supplies that evidence. |
 | Dependabot [PR #4](https://github.com/cometapi-dev/cometapi-python/pull/4): `actions/upload-artifact` 4.6.2 to 7.0.1 | Closed unmerged; superseded by merged private [PR #9](https://github.com/cometapi-dev/cometapi-python/pull/9) | PR #9 applies the reviewed SHA pin in CI and release builds, requires missing artifacts to fail, retains digest evidence, passed final CI run 29916685839, and squash-merged as `72b212dd72e66bbde9c6714329f72071cc1ca129`; PR #4 was closed without merging. |
-| Dependabot [PR #5](https://github.com/cometapi-dev/cometapi-python/pull/5): `googleapis/release-please-action` 4.4.1 to 5.0.0 | Closed unmerged; superseded by merged [PR #29](https://github.com/cometapi-dev/cometapi-python/pull/29) | PR #29 pins the reviewed upstream `v5.0.0` commit, verifies its Node 24 runtime through the workflow semantic contract, and carries the release-metadata hardening required for `0.1.2`. Its final [CI run 30509063138](https://github.com/cometapi-dev/cometapi-python/actions/runs/30509063138) passed, and it squash-merged as `67bd1893983c724d1cc81b824106b7c3d9418e97`; PR #5 was then closed without merging. PR #5's failed CI remains negative evidence from the former semantic check that required the old action pin and is not runtime evidence. |
+| Dependabot [PR #5](https://github.com/cometapi-dev/cometapi-python/pull/5): `googleapis/release-please-action` 4.4.1 to 5.0.0 | Closed unmerged; superseded by merged [PR #29](https://github.com/cometapi-dev/cometapi-python/pull/29) | PR #29 pins the reviewed upstream Release Please `v5.0.0` commit, verifies its Node 24 runtime through the workflow semantic contract, and carries the required release-metadata hardening. Its final [CI run 30509063138](https://github.com/cometapi-dev/cometapi-python/actions/runs/30509063138) passed, and it squash-merged as `67bd1893983c724d1cc81b824106b7c3d9418e97`; PR #5 was then closed without merging. PR #5's failed CI remains negative evidence from the former semantic check that required the old action pin and is not runtime evidence. |
 | Dependabot [PR #6](https://github.com/cometapi-dev/cometapi-python/pull/6): `actions/setup-python` 5.6.0 to 7.0.0 | Closed unmerged; superseded by merged private [PR #9](https://github.com/cometapi-dev/cometapi-python/pull/9) | PR #9 applies the reviewed SHA pin across CI, monitoring, and release workflows, passed final CI run 29916685839 on every blocking lane, and squash-merged as `72b212dd72e66bbde9c6714329f72071cc1ca129`; PR #6 was closed without merging. |
 
 Recorded pre-visibility replacement evidence on 2026-07-22:
@@ -160,12 +160,12 @@ Local and package evidence at commit
   `uv run ruff format --check src tests scripts`, and `uv run pyright` passed.
 - `uv run pytest -m "not live"` passed with 173 tests passed and one separately
   marked live test deselected.
-- `uv run python scripts/check_version.py --expected 0.1.0a1 --require-changelog`
+- `uv run python scripts/check_version.py --require-changelog`
   and
   `uv run python scripts/check_version.py --require-public-preview-docs` passed.
 - `uv run python scripts/check_secrets.py` and
   `uv run python scripts/check_workflows.py` passed.
-- `rm -rf dist` completed, and `uv build` produced the `0.1.0a1` wheel and source
+- `rm -rf dist` completed, and `uv build` produced the candidate wheel and source
   distribution in the clean output directory.
 - `uv run twine check dist/*`,
   `uv run python scripts/check_artifacts.py dist/*`, and
@@ -186,7 +186,7 @@ Follow-up verifier-hardening evidence at commit
   `uv run ruff format --check src tests scripts`, and `uv run pyright` passed.
 - `uv run pytest -m "not live"` passed with 197 tests passed and one separately
   marked live test deselected.
-- `uv run python scripts/check_version.py --expected 0.1.0a1 --require-changelog`,
+- `uv run python scripts/check_version.py --require-changelog`,
   `uv run python scripts/check_version.py --require-public-preview-docs`,
   `uv run python scripts/check_secrets.py`, and
   `uv run python scripts/check_workflows.py` passed.
@@ -215,7 +215,7 @@ Final workflow-inventory hardening evidence at commit
   `uv run ruff format --check src tests scripts`, and `uv run pyright` passed.
 - `uv run pytest -m "not live"` passed with 200 tests passed and one separately
   marked live test deselected.
-- `uv run python scripts/check_version.py --expected 0.1.0a1 --require-changelog`,
+- `uv run python scripts/check_version.py --require-changelog`,
   `uv run python scripts/check_version.py --require-public-preview-docs`,
   `uv run python scripts/check_secrets.py`, and
   `uv run python scripts/check_workflows.py` passed.
@@ -234,12 +234,12 @@ Final pre-visibility refresh evidence on 2026-07-23:
   `uv run ruff format --check src tests scripts`, and `uv run pyright` passed.
 - `uv run pytest -m "not live"` passed with 200 tests passed and one separately
   marked live test deselected.
-- `uv run python scripts/check_version.py --expected 0.1.0a1 --require-changelog`,
+- `uv run python scripts/check_version.py --require-changelog`,
   `uv run python scripts/check_version.py --require-public-preview-docs`,
   `uv run python scripts/check_secrets.py`, and
   `uv run python scripts/check_workflows.py` passed.
-- `uv build --out-dir dist/previsibility-20260723` built exactly the
-  `0.1.0a1` wheel and source distribution in a newly created empty directory.
+- `uv build --out-dir dist/previsibility-20260723` built exactly the candidate
+  wheel and source distribution in a newly created empty directory.
   `uv run twine check dist/previsibility-20260723/*`,
   `uv run python scripts/check_artifacts.py dist/previsibility-20260723/*`, and
   `uv run python scripts/check_clean_install.py dist/previsibility-20260723/*`
@@ -357,7 +357,7 @@ Public Preview remains ready only while:
   16-output-token, 30-second-per-request, concurrency-one, stop-on-first-failure
   budget.
 
-## `0.1.0a1`: Registry Alpha
+## Registry Alpha
 
 Registry Alpha completed on 2026-07-27.
 
@@ -409,12 +409,13 @@ PyPI publication is OIDC-only; Python has no token-bootstrap exception.
 
 The first immutable release reached PyPI OIDC publication but Warehouse
 rejected its non-HTTPS Support project URL before accepting any distribution.
-GitHub permanently reserved the deleted `v0.1.0-alpha.1` release identity. The
-approved recovery release therefore uses
-`v0.1.0-alpha.1+recovery.1`, whose SemVer build suffix leaves the PyPI package
-version at the required first public artifact `0.1.0a1`.
+The exact tombstoned and recovery identities are recorded in the immutable
+Registry Alpha evidence block.
 
 Accepted release evidence:
+
+<!-- cometapi-release-evidence:start version=0.1.0a1 date=2026-07-27 -->
+<!-- cometapi-release-identity tag=v0.1.0-alpha.1+recovery.1 commit=31b68904141489ca04932edbf305ccf88af09372 workflow-run=30261746138 wheel-sha256=a6820347317943ca22f7632acbe354dd992f31a122a6172dfe45b57960e3a093 sdist-sha256=98d86829ef14771e8b7ec180d452c6638289f49c14a39b7207be5c47cb64cde7 -->
 
 - Metadata fix [PR #16](https://github.com/cometapi-dev/cometapi-python/pull/16)
   merged as `6344c2d0e2e975360b42c887275c1950b82918ee`; recovery contract
@@ -442,7 +443,15 @@ Accepted release evidence:
   `last-release-sha` bridge generated the stable release PR and was removed
   during human finalization.
 
-## `0.1.0`: OpenAI protocol foundation
+<!-- cometapi-release-evidence:end version=0.1.0a1 date=2026-07-27 -->
+
+## First stable OpenAI protocol foundation
+
+<!-- cometapi-release-evidence:start version=0.1.0 date=2026-07-28 -->
+<!-- cometapi-release-identity tag=v0.1.0 commit=6f42981edcc6c252f8db997606671c3da84d1dd8 workflow-run=30359383715 wheel-sha256=8eae758688bb6c98274e48d8d81f882eeae760f69cfd2f5e125004881d60e90f sdist-sha256=e9308b44f6091200b5121e24d1a0e1b9ea3e6bcccc109d6de87554b1ab2a8bca -->
+
+Canonical [GitHub release](https://github.com/cometapi-dev/cometapi-python/releases/tag/v0.1.0)
+and [PyPI release](https://pypi.org/project/cometapi/0.1.0/) identity.
 
 Stable 0.1 retains the alpha surface. Its additional exit criteria are:
 
@@ -514,7 +523,12 @@ Trusted Publisher provenance. Recovery variables were removed immediately
 after identity verification. At that closeout, `LIVE_SMOKE_ENABLED=false` was
 the only remaining release-related repository variable.
 
-## `0.1.1`: Configuration validation maintenance
+<!-- cometapi-release-evidence:end version=0.1.0 date=2026-07-28 -->
+
+## Configuration validation maintenance
+
+<!-- cometapi-release-evidence:start version=0.1.1 date=2026-07-29 -->
+<!-- cometapi-release-identity tag=v0.1.1 commit=576e7503a0a8c1103faca5143e4b8d576f8e8b44 workflow-run=30429821548 wheel-sha256=27e7904542f82fbbcd60e0de23a4a62c042420b6d004d00286d1f37d2ec4c5e5 sdist-sha256=64c7cb87745032703b3374cc562ea00b979416c54908862dbcebd116b2dc44c8 -->
 
 Maintenance release `0.1.1` rejects explicitly blank API keys and base URLs,
 treats a blank environment key as missing, and uses the default CometAPI URL
@@ -571,7 +585,12 @@ imports, and passed every supported mocked call and README example.
 `RELEASE_PLEASE_ENABLED=false` and `LIVE_SMOKE_ENABLED=false`. Recovery
 variables are absent. No recovery tag or recovery workflow was used.
 
-## `0.1.2`: Release metadata and transport maintenance
+<!-- cometapi-release-evidence:end version=0.1.1 date=2026-07-29 -->
+
+## Release metadata and transport maintenance
+
+<!-- cometapi-release-evidence:start version=0.1.2 date=2026-07-30 -->
+<!-- cometapi-release-identity tag=v0.1.2 commit=710c56491d9ef5f47cccff3ce837ab7e799455b0 workflow-run=30515861246 wheel-sha256=3f12c26ae1ae7a1de5ac19d8ef27a784b2bf592143c716493f1b0f35ec19daca sdist-sha256=21c8edc0586610de1a9a8cd39b54ed23d2b1e20552100f69f53938cb7678da3d -->
 
 [Release Please run 30509764960](https://github.com/cometapi-dev/cometapi-python/actions/runs/30509764960)
 failed while maintaining the `0.1.2` release PR. The pinned v5 action had built
@@ -640,7 +659,12 @@ guidance rather than a stale pre-publication version claim.
 variables are absent. No recovery tag, workflow dispatch, or workflow rerun was
 used for `0.1.2`.
 
-## `0.1.3`: Durable release-claim maintenance
+<!-- cometapi-release-evidence:end version=0.1.2 date=2026-07-30 -->
+
+## Durable release-claim maintenance
+
+<!-- cometapi-release-evidence:start version=0.1.3 date=2026-07-30 -->
+<!-- cometapi-release-identity tag=v0.1.3 commit=45429f373bbd11314ec43ba81904fdbb78db2522 workflow-run=30550536000 wheel-sha256=9ac2f8062a8554943649bffd7ec859fc90491f76bbe2b0165327722201417d6f sdist-sha256=07ded54606d50f44b689dad38cf93a74e1175370efaa33be84a3c01240d48e66 -->
 
 [Implementation PR #34](https://github.com/cometapi-dev/cometapi-python/pull/34)
 removed the mutable published-patch claim from persistent guidance and extended
@@ -701,7 +725,9 @@ bounded retry then completed the same registry smoke successfully.
 `RELEASE_RECOVERY_TAG` and `RELEASE_RECOVERY_SHA` are absent; no recovery tag,
 workflow dispatch, or release-workflow rerun was used for `0.1.3`.
 
-## `0.2.0`: Provider-native text adapters
+<!-- cometapi-release-evidence:end version=0.1.3 date=2026-07-30 -->
+
+## Provider-native text adapters (future milestone)
 
 Planned scope:
 
@@ -713,7 +739,7 @@ Planned scope:
 
 No 0.2 adapter is added without mocked and authorized live contract coverage.
 
-## `0.3.0`: CometAPI-specific resources
+## CometAPI-specific resources (future milestone)
 
 Candidate account or platform resources require an authoritative schema,
 authentication contract, error contract, fixtures, precise public types, and a
@@ -727,8 +753,9 @@ The repository maintains three independently auditable workflows:
 - `ci.yml`: offline lint, type, unit, contract, build, artifact, and clean
   install checks for pull requests and default-branch pushes.
 - `live-smoke.yml`: scheduled and manual default-branch monitoring capped at
-  four requests, 16 output tokens per generation, a 30-second request timeout,
-  concurrency one, a ten-minute workflow timeout, and stop on first failure.
+  four requests, a reviewed 64/128/256 output-token calibration choice with a
+  64-token default, a 30-second request timeout, concurrency one, a ten-minute
+  workflow timeout, and stop on first failure.
 - `publish.yml`: the single top-level release and PyPI Trusted Publisher
   identity. Its gated push path first attempts non-retryable release-only
   creation, then, only when no release exists, permits one bounded retry for
@@ -750,8 +777,8 @@ Release Please requires `RELEASE_PLEASE_ENABLED=true` and remains disabled
 outside an explicitly authorized release sequence. Its reviewed one-time
 `last-release-sha` bridge established the recovery alpha boundary, generated
 the stable release PR, and was removed during human finalization. Release jobs
-must resolve an unset or empty `COMETAPI_LIVE_MODEL` to `gpt-5.4` rather than
-attempt a request with an empty model. Immutable-release recovery additionally
+must use the canonical active model enforced by the workflow checker, without
+accepting a repository-variable override. Immutable-release recovery additionally
 requires `RELEASE_RECOVERY_TAG` and `RELEASE_RECOVERY_SHA` to equal the exact
 dispatch inputs; keep both variables absent except for one explicitly authorized
 identity and delete them immediately after recovery identity verification or a

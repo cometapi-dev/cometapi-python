@@ -17,10 +17,10 @@ from scripts._checks import (
     CANONICAL_PROJECT_URLS,
     CANONICAL_SECURITY,
     CANONICAL_SUPPORT,
-    MUTABLE_PUBLISHED_VERSION_FIX,
+    EXACT_RELEASE_VERSION_FIX,
     PUBLIC_README_INSTALL_COMMAND,
     CheckError,
-    mutable_published_version_claims,
+    exact_release_version_violations,
     read_project_version,
 )
 from scripts.check_artifacts import check_metadata, check_sdist, check_wheel
@@ -139,6 +139,33 @@ def _artifact_metadata(description: str) -> bytes:
     return ("\n".join(headers) + "\n\n" + description + "\n").encode()
 
 
+EVIDENCE_IDENTITY = (
+    "<!-- cometapi-release-identity tag=v0.1.2 "
+    "commit=710c56491d9ef5f47cccff3ce837ab7e799455b0 "
+    "workflow-run=30515861246 "
+    "wheel-sha256=3f12c26ae1ae7a1de5ac19d8ef27a784b2bf592143c716493f1b0f35ec19daca "
+    "sdist-sha256=21c8edc0586610de1a9a8cd39b54ed23d2b1e20552100f69f53938cb7678da3d -->"
+)
+
+
+def _release_evidence_block() -> str:
+    return f"""\
+<!-- cometapi-release-evidence:start version=0.1.2 date=2026-07-30 -->
+{EVIDENCE_IDENTITY}
+
+## Completed 0.1.2 maintenance release evidence
+
+- Release tag `v0.1.2` at release commit `710c56491d9ef5f47cccff3ce837ab7e799455b0`.
+- Release workflow https://github.com/cometapi-dev/cometapi-python/actions/runs/30515861246
+- https://pypi.org/project/cometapi/0.1.2/
+- https://github.com/cometapi-dev/cometapi-python/releases/tag/v0.1.2
+- Wheel SHA256: 3f12c26ae1ae7a1de5ac19d8ef27a784b2bf592143c716493f1b0f35ec19daca
+- Source-distribution SHA256: 21c8edc0586610de1a9a8cd39b54ed23d2b1e20552100f69f53938cb7678da3d
+
+<!-- cometapi-release-evidence:end version=0.1.2 date=2026-07-30 -->
+"""
+
+
 @pytest.fixture
 def releasable_documents(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
     _write_release_documents(tmp_path)
@@ -247,9 +274,8 @@ def test_public_preview_cli_rejects_mutable_published_patch_claims(
 
     assert result.returncode != 0
     assert f"{document}:" in result.stderr
-    assert "mutable " in result.stderr
-    assert "patch" in result.stderr
-    assert MUTABLE_PUBLISHED_VERSION_FIX in result.stderr
+    assert "exact CometAPI patch/recovery version" in result.stderr
+    assert EXACT_RELEASE_VERSION_FIX in result.stderr
 
 
 def test_releasable_cli_rejects_mutable_published_patch_claim(
@@ -269,51 +295,487 @@ def test_releasable_cli_rejects_mutable_published_patch_claim(
 
     assert result.returncode != 0
     assert "AGENTS.md:" in result.stderr
-    assert "mutable latest/current published patch version" in result.stderr
-    assert MUTABLE_PUBLISHED_VERSION_FIX in result.stderr
+    assert (
+        "exact CometAPI patch/recovery version outside immutable release evidence" in result.stderr
+    )
+    assert EXACT_RELEASE_VERSION_FIX in result.stderr
 
 
 def test_public_preview_documents_allow_immutable_release_evidence(
     releasable_documents: Path,
 ) -> None:
-    evidence = """\
-## Completed 0.1.2 maintenance release evidence
-
-- Release `v0.1.2` at commit `710c56491d9ef5f47cccff3ce837ab7e799455b0`
-  completed workflow run 30515861246 on 2026-07-30.
-- https://pypi.org/project/cometapi/0.1.2/
-- https://github.com/cometapi-dev/cometapi-python/releases/tag/v0.1.2
-- Wheel SHA256: 3f12c26ae1ae7a1de5ac19d8ef27a784b2bf592143c716493f1b0f35ec19daca
-"""
-    for name in ("CHANGELOG.md", "ROADMAP.md", "RELEASING.md"):
+    evidence = _release_evidence_block()
+    for name in ("ROADMAP.md", "RELEASING.md"):
         with (releasable_documents / name).open("a", encoding="utf-8") as stream:
             stream.write(evidence)
+    _replace(
+        releasable_documents,
+        "CHANGELOG.md",
+        "# Changelog\n",
+        "# Changelog\n\n## [0.1.2] - 2026-07-30\n\nImmutable history.\n",
+    )
 
     require_public_preview_docs()
 
 
 @pytest.mark.parametrize(
-    "statement",
+    ("mutation", "message"),
     [
-        "Current stable release of Ruff: 0.12.0.",
-        "Latest stable version of httpx is 0.28.1.",
-        "Current PyPI release of openai: 2.50.0.",
-        "Latest stable OpenAI release: 2.50.0.",
-        "As of 2026-07-30, the current PyPI release was 0.1.2.",
-        "## Release evidence — 2026-07-30\n\nAt publication, 0.1.2 was the current PyPI release.",
-        "Release v0.1.2 is the latest stable version in the historical 2026-07-30 snapshot.",
-        "Release 0.1.2 was published on 2026-07-30.",
-        "The immutable v0.1.2 tag resolves to release commit 710c5649.",
-        "PyPI version remains 0.1.0a1 in recovery identity evidence.",
-        "https://pypi.org/project/cometapi/0.1.2/",
-        "[PyPI 0.1.2](https://pypi.org/project/cometapi/0.1.2/)",
-        "The exact [PyPI release](https://pypi.org/project/cometapi/0.1.2/) is public.",
+        (
+            "Source-distribution SHA256: "
+            "21c8edc0586610de1a9a8cd39b54ed23d2b1e20552100f69f53938cb7678da3d",
+            "missing exact source-distribution SHA256",
+        ),
+        (
+            "<!-- cometapi-release-evidence:end version=0.1.3 date=2026-07-30 -->",
+            "unpaired release-evidence end marker",
+        ),
     ],
 )
-def test_mutable_claim_detector_allows_attributed_or_historical_evidence(
+def test_public_preview_documents_reject_incomplete_or_unpaired_evidence(
+    releasable_documents: Path,
+    mutation: str,
+    message: str,
+) -> None:
+    evidence = _release_evidence_block()
+    if mutation and not mutation.startswith("<!--"):
+        evidence = evidence.replace(mutation, "")
+        mutation = ""
+    with (releasable_documents / "ROADMAP.md").open("a", encoding="utf-8") as stream:
+        stream.write(evidence + mutation)
+
+    with pytest.raises(CheckError, match=message):
+        require_public_preview_docs()
+
+
+@pytest.mark.parametrize(
+    ("old", "new", "message"),
+    [
+        ("tag=v0.1.2", "tag=v0.1.9", "canonical tag v0.1.2"),
+        (
+            "commit=710c56491d9ef5f47cccff3ce837ab7e799455b0",
+            "commit=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "missing exact release commit",
+        ),
+        ("workflow-run=30515861246", "workflow-run=999999", "missing exact release workflow"),
+        (
+            "sdist-sha256=21c8edc0586610de1a9a8cd39b54ed23d2b1e20552100f69f53938cb7678da3d",
+            "sdist-sha256=3f12c26ae1ae7a1de5ac19d8ef27a784b2bf592143c716493f1b0f35ec19daca",
+            "reuses one artifact digest",
+        ),
+    ],
+    ids=["tag", "commit", "workflow-run", "duplicate-digest"],
+)
+def test_release_evidence_identity_rejects_internal_mismatch(
+    releasable_documents: Path,
+    old: str,
+    new: str,
+    message: str,
+) -> None:
+    evidence = _release_evidence_block().replace(old, new, 1)
+    for name in ("ROADMAP.md", "RELEASING.md"):
+        with (releasable_documents / name).open("a", encoding="utf-8") as stream:
+            stream.write(evidence)
+
+    with pytest.raises(CheckError, match=message):
+        require_public_preview_docs()
+
+
+def test_release_evidence_identity_must_match_across_history_documents(
+    releasable_documents: Path,
+) -> None:
+    roadmap = _release_evidence_block()
+    releasing = roadmap.replace(
+        "commit=710c56491d9ef5f47cccff3ce837ab7e799455b0",
+        "commit=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        1,
+    ).replace(
+        "release commit `710c56491d9ef5f47cccff3ce837ab7e799455b0`",
+        "release commit `aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa`",
+        1,
+    )
+    (releasable_documents / "ROADMAP.md").write_text(roadmap, encoding="utf-8")
+    (releasable_documents / "RELEASING.md").write_text(releasing, encoding="utf-8")
+
+    with pytest.raises(CheckError, match="must match exactly across both historical records"):
+        require_public_preview_docs()
+
+
+def test_release_evidence_identity_rejects_cross_version_reuse(
+    releasable_documents: Path,
+) -> None:
+    original = _release_evidence_block()
+    cloned = (
+        original.replace("version=0.1.2", "version=0.1.3")
+        .replace("tag=v0.1.2", "tag=v0.1.3")
+        .replace("v0.1.2", "v0.1.3")
+        .replace("/cometapi/0.1.2/", "/cometapi/0.1.3/")
+        .replace("Completed 0.1.2", "Completed 0.1.3")
+    )
+    for name in ("ROADMAP.md", "RELEASING.md"):
+        (releasable_documents / name).write_text(original + cloned, encoding="utf-8")
+    with (releasable_documents / "CHANGELOG.md").open("a", encoding="utf-8") as stream:
+        stream.write(
+            "\n## [0.1.3] - 2026-07-30\n\nHistory.\n\n## [0.1.2] - 2026-07-30\n\nHistory.\n"
+        )
+
+    with pytest.raises(CheckError, match="reuse the same release commit"):
+        require_public_preview_docs()
+
+
+def test_release_evidence_block_rejects_unrelated_exact_version(
+    releasable_documents: Path,
+) -> None:
+    evidence = _release_evidence_block().replace(
+        "## Completed 0.1.2 maintenance release evidence",
+        "## Completed 0.1.2 maintenance release evidence\n\nCurrent public version is 9.9.9.",
+    )
+    for name in ("ROADMAP.md", "RELEASING.md"):
+        with (releasable_documents / name).open("a", encoding="utf-8") as stream:
+            stream.write(evidence)
+
+    with pytest.raises(CheckError, match="contains unrelated exact version"):
+        require_public_preview_docs()
+
+
+@pytest.mark.parametrize(
+    ("label", "old", "new"),
+    [
+        (
+            "release commit",
+            "- Release tag `v0.1.2` at release commit `710c56491d9ef5f47cccff3ce837ab7e799455b0`.",
+            "- Release tag `v0.1.2` at release commit "
+            "`710c56491d9ef5f47cccff3ce837ab7e799455b0`.\n"
+            "- Contradictory release commit "
+            "`aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa`.",
+        ),
+        (
+            "release commit",
+            "- Release tag `v0.1.2` at release commit `710c56491d9ef5f47cccff3ce837ab7e799455b0`.",
+            "- Release tag `v0.1.2` at release commit "
+            "`710c56491d9ef5f47cccff3ce837ab7e799455b0`.\n"
+            "- Published commit `aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa`.",
+        ),
+        (
+            "release commit",
+            "- Release tag `v0.1.2` at release commit `710c56491d9ef5f47cccff3ce837ab7e799455b0`.",
+            "- Release tag `v0.1.2` at release commit "
+            "`710c56491d9ef5f47cccff3ce837ab7e799455b0`.\n"
+            "- Tag target `aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa`.",
+        ),
+        (
+            "release workflow run",
+            "- Release workflow https://github.com/cometapi-dev/cometapi-python/actions/runs/"
+            "30515861246",
+            "- Release workflow https://github.com/cometapi-dev/cometapi-python/actions/runs/"
+            "30515861246\n"
+            "- Contradictory release workflow "
+            "https://github.com/cometapi-dev/cometapi-python/actions/runs/99999999999",
+        ),
+        (
+            "release workflow run",
+            "- Release workflow https://github.com/cometapi-dev/cometapi-python/actions/runs/"
+            "30515861246",
+            "- Release workflow https://github.com/cometapi-dev/cometapi-python/actions/runs/"
+            "30515861246\n"
+            "- Release job run: "
+            "https://github.com/cometapi-dev/cometapi-python/actions/runs/99999999999",
+        ),
+        (
+            "release workflow run",
+            "- Release workflow https://github.com/cometapi-dev/cometapi-python/actions/runs/"
+            "30515861246",
+            "- Release workflow https://github.com/cometapi-dev/cometapi-python/actions/runs/"
+            "30515861246\n"
+            "- Publishing workflow "
+            "https://github.com/cometapi-dev/cometapi-python/actions/runs/99999999999",
+        ),
+        (
+            "release workflow run",
+            "- Release workflow https://github.com/cometapi-dev/cometapi-python/actions/runs/"
+            "30515861246",
+            "- Release workflow https://github.com/cometapi-dev/cometapi-python/actions/runs/"
+            "30515861246\n"
+            "- Release pipeline run "
+            "https://github.com/cometapi-dev/cometapi-python/actions/runs/99999999999",
+        ),
+        (
+            "release workflow run",
+            "- Release workflow https://github.com/cometapi-dev/cometapi-python/actions/runs/"
+            "30515861246",
+            "- Release workflow https://github.com/cometapi-dev/cometapi-python/actions/runs/"
+            "30515861246\n"
+            "- GitHub Actions run "
+            "https://github.com/cometapi-dev/cometapi-python/actions/runs/99999999999",
+        ),
+        (
+            "release workflow run",
+            "- Release workflow https://github.com/cometapi-dev/cometapi-python/actions/runs/"
+            "30515861246",
+            "- Release workflow https://github.com/cometapi-dev/cometapi-python/actions/runs/"
+            "30515861246\n"
+            "- Workflow run "
+            "https://github.com/cometapi-dev/cometapi-python/actions/runs/99999999999",
+        ),
+        (
+            "release workflow run",
+            "- Release workflow https://github.com/cometapi-dev/cometapi-python/actions/runs/"
+            "30515861246",
+            "- Release workflow https://github.com/cometapi-dev/cometapi-python/actions/runs/"
+            "30515861246\n"
+            "- Publish workflow "
+            "https://github.com/cometapi-dev/cometapi-python/actions/runs/99999999999",
+        ),
+        (
+            "wheel SHA256",
+            "- Wheel SHA256: 3f12c26ae1ae7a1de5ac19d8ef27a784b2bf592143c716493f1b0f35ec19daca",
+            "- Wheel SHA256: "
+            "3f12c26ae1ae7a1de5ac19d8ef27a784b2bf592143c716493f1b0f35ec19daca\n"
+            "- Wheel SHA256: "
+            "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        ),
+        (
+            "wheel SHA256",
+            "- Wheel SHA256: 3f12c26ae1ae7a1de5ac19d8ef27a784b2bf592143c716493f1b0f35ec19daca",
+            "- Wheel SHA256: "
+            "3f12c26ae1ae7a1de5ac19d8ef27a784b2bf592143c716493f1b0f35ec19daca\n"
+            "- Wheel checksum: "
+            "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        ),
+        (
+            "source-distribution SHA256",
+            "- Source-distribution SHA256: "
+            "21c8edc0586610de1a9a8cd39b54ed23d2b1e20552100f69f53938cb7678da3d",
+            "- Source-distribution SHA256: "
+            "21c8edc0586610de1a9a8cd39b54ed23d2b1e20552100f69f53938cb7678da3d\n"
+            "- Source-distribution SHA256: "
+            "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+        ),
+        (
+            "source-distribution SHA256",
+            "- Source-distribution SHA256: "
+            "21c8edc0586610de1a9a8cd39b54ed23d2b1e20552100f69f53938cb7678da3d",
+            "- Source-distribution SHA256: "
+            "21c8edc0586610de1a9a8cd39b54ed23d2b1e20552100f69f53938cb7678da3d\n"
+            "- Sdist digest "
+            "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc.",
+        ),
+        (
+            "source-distribution SHA256",
+            "- Source-distribution SHA256: "
+            "21c8edc0586610de1a9a8cd39b54ed23d2b1e20552100f69f53938cb7678da3d",
+            "- Source-distribution SHA256: "
+            "21c8edc0586610de1a9a8cd39b54ed23d2b1e20552100f69f53938cb7678da3d\n"
+            "- Public sdist has SHA256 "
+            "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd.",
+        ),
+        (
+            "source-distribution SHA256",
+            "- Source-distribution SHA256: "
+            "21c8edc0586610de1a9a8cd39b54ed23d2b1e20552100f69f53938cb7678da3d",
+            "- Source-distribution SHA256: "
+            "21c8edc0586610de1a9a8cd39b54ed23d2b1e20552100f69f53938cb7678da3d\n"
+            "- Sdist hash: "
+            "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+        ),
+    ],
+)
+def test_release_evidence_rejects_contradictory_labeled_identity_values(
+    releasable_documents: Path,
+    label: str,
+    old: str,
+    new: str,
+) -> None:
+    evidence = _release_evidence_block().replace(old, new, 1)
+    for name in ("ROADMAP.md", "RELEASING.md"):
+        with (releasable_documents / name).open("a", encoding="utf-8") as stream:
+            stream.write(evidence)
+
+    with pytest.raises(CheckError) as caught:
+        require_public_preview_docs()
+
+    assert label in str(caught.value)
+    assert "contradict" in str(caught.value)
+
+
+def test_fenced_release_evidence_is_not_accepted_as_history(
+    releasable_documents: Path,
+) -> None:
+    fenced = f"\n```markdown\n{_release_evidence_block()}```\n"
+    for name in ("ROADMAP.md", "RELEASING.md"):
+        with (releasable_documents / name).open("a", encoding="utf-8") as stream:
+            stream.write(fenced)
+
+    with pytest.raises(CheckError) as caught:
+        require_public_preview_docs()
+
+    message = str(caught.value)
+    assert "malformed release-evidence marker" in message
+    assert "outside immutable release evidence" in message
+
+
+def test_formatted_marker_examples_do_not_create_release_evidence(
+    releasable_documents: Path,
+) -> None:
+    with (releasable_documents / "ROADMAP.md").open("a", encoding="utf-8") as stream:
+        stream.write(
+            "\n`<!-- cometapi-release-evidence:start version=9.9.9 date=2026-07-30 -->`\n"
+            "Current public version is 9.9.9.\n"
+            "`<!-- cometapi-release-evidence:end version=9.9.9 date=2026-07-30 -->`\n"
+        )
+
+    with pytest.raises(CheckError, match="malformed release-evidence marker"):
+        require_public_preview_docs()
+
+
+def test_stray_release_identity_marker_is_rejected(releasable_documents: Path) -> None:
+    with (releasable_documents / "ROADMAP.md").open("a", encoding="utf-8") as stream:
+        stream.write(f"\n{EVIDENCE_IDENTITY}\n")
+
+    with pytest.raises(CheckError, match="must appear inside one release-evidence block"):
+        require_public_preview_docs()
+
+
+def test_malformed_evidence_marker_is_aggregated_with_other_document_failures(
+    releasable_documents: Path,
+) -> None:
+    _change_author(releasable_documents)
+    with (releasable_documents / "ROADMAP.md").open("a", encoding="utf-8") as stream:
+        stream.write(
+            "\n<!-- cometapi-release-evidence:start version=banana date=2026-07-30 -->\n"
+            "<!-- cometapi-release-evidence:end version=banana date=2026-07-30 -->\n"
+        )
+
+    with pytest.raises(CheckError) as caught:
+        require_public_preview_docs()
+
+    message = str(caught.value)
+    assert "pyproject.toml: [project].authors" in message
+    assert "ROADMAP.md:" in message
+    assert "malformed release-evidence marker" in message
+
+
+def test_roadmap_exact_version_outside_evidence_block_is_rejected(
+    releasable_documents: Path,
+) -> None:
+    with (releasable_documents / "ROADMAP.md").open("a", encoding="utf-8") as stream:
+        stream.write("\nImmutable tag v0.1.2 without a complete evidence block.\n")
+
+    with pytest.raises(CheckError, match=r"ROADMAP\.md:.*outside immutable release evidence"):
+        require_public_preview_docs()
+
+
+def test_changelog_allows_exact_historical_versions(releasable_documents: Path) -> None:
+    _replace(
+        releasable_documents,
+        "CHANGELOG.md",
+        "# Changelog\n",
+        "# Changelog\n\n## [0.1.2] - 2026-07-30\n\nHistorical change.\n",
+    )
+
+    require_public_preview_docs()
+
+
+def test_exact_release_scanner_ignores_third_party_versions() -> None:
+    statement = "Current stable OpenAI release: 2.50.0; Ruff release: 0.12.0."
+    assert exact_release_version_violations("README.md", statement, "0.1.3") == []
+
+
+@pytest.mark.parametrize(
+    "statement",
+    [
+        "Latest CometAPI release: 0.2.0.",
+        "The current PyPI release is 1.2.3.",
+        "Latest stable version: **10**.**4**.**7**.",
+        "Latest stable version: `10`.`4`.`7`.",
+        "Current release: 2.\n3.4.",
+        "Current release: 2.\u200b3.\u200b4.",
+        "OpenAI is supported. Current release: 0.1.2.",
+        "OpenAI CometAPI 0.1.2 is current.",
+        "Release Please reports the current CometAPI version as 0.1.2.",
+        "Current CometAPI release 9.8.7 OpenAI.",
+        "OpenAI\n9.8.7 is the latest CometAPI release.",
+        "See https://github.com/acme/tool. Current CometAPI release 9.8.7.",
+        "Python SDK current PyPI release is 0.1.2.",
+        "Current cometapi-python version is 0.1.2.",
+        "Current CometAPI-openai version is 0.1.2.",
+        "Current CometAPI httpx version is 0.1.2.",
+        "Current cometapi-python==0.1.2.",
+        "CometAPI requirement: >=0.1,==0.1.2.",
+        "https://github.com/cometapi-dev/cometapi-python/releases/tag/v0.1.2 current.",
+        "Current CometAPI release is <span>0.1.2</span>.",
+        "Current CometAPI release is 0.<span>1</span>.2.",
+        "Latest stable version: 0.1.2rc1.",
+        "Latest stable version: 0.1.2-beta.1.",
+        "Current CometAPI SDK==0.1.2.",
+        "Current CometAPI package==0.1.2.",
+        "Current CometAPI project>=0.1.2.",
+        "Current CometAPI library!=0.1.2.",
+        "Current CometAPI distribution<0.1.2.",
+        "Current CometAPI Python package==0.1.2.",
+        "OpenAI 0.1.2 is the current CometAPI release.",
+        "Release Please v0.1.2 produced the current CometAPI release.",
+        '<a href="https://pypi.org/project/cometapi/0.1.2/">current</a>',
+        '<meta content="Current CometAPI release 0.1.2">',
+        "OpenAI 0.1.2 is a supported CometAPI release.",
+        "Release Please v0.1.2 generated the CometAPI release.",
+        "PyPI publisher v0.1.2 shipped the CometAPI release.",
+        '<a href="https://pypi.org/project/cometapi/0%2E1%2E2/">current</a>',
+        "OpenAI 0.1.2 is required by CometAPI.",
+        "OpenAI 0.1.2 is supported by CometAPI.",
+        "OpenAI 0.1.2 is bundled by CometAPI.",
+        "Release Please v0.1.2 is pinned by CometAPI.",
+        "actions/checkout 0.1.2 is pinned by CometAPI.",
+        "OpenAI 0.1.2 (CometAPI).",
+        "OpenAI version 0.1.2 for CometAPI.",
+        "OpenAI release 0.1.2; CometAPI current.",
+        "OpenAI 0.1.2 - CometAPI latest.",
+        "OpenAI 0.1.2 | CometAPI latest",
+        "OpenAI 0.1.2; current Python SDK release.",
+        "[current](https://pypi.org/project/cometapi/0.1.2/)",
+        "[current](https://github.com/cometapi-dev/cometapi-python/releases/tag/v0.1.2)",
+        "![PyPI](https://img.shields.io/pypi/v/cometapi?version=0.1.2)",
+        "[current](https://pypi.org/project/cometapi/0%2E1%2E2/)",
+        r"[current\]](https://pypi.org/project/cometapi/0.1.2/)",
+        "[current](https://pypi.org/project/cometapi/0.1.2/?label=(stable))",
+        "Current CometAPI release is [0](https://example.invalid)."
+        "[1](https://example.invalid).[2](https://example.invalid).",
+        "Current CometAPI release is 0.\u034f1.\u034f2.",
+    ],
+)
+def test_exact_release_scanner_rejects_future_and_obfuscated_first_party_versions(
     statement: str,
 ) -> None:
-    assert mutable_published_version_claims(statement) == []
+    assert exact_release_version_violations("README.md", statement, "0.1.3")
+
+
+@pytest.mark.parametrize(
+    "statement",
+    [
+        "OpenAI version 0.1.2 is an upstream historical fact.",
+        "openai>=0.1.2,<1.0.0 is a third-party compatibility range.",
+        "The fixture uses example-lib==0.1.2.",
+        "Release Please v0.1.2 behavior is documented upstream.",
+        "actions/checkout 0.1.2 to 0.1.3 is upstream history.",
+        "https://github.com/acme/tool/releases/tag/v0.1.2",
+        "https://pypi.org/project/example-lib/0.1.2/",
+        "The current release is 2.50.0 for OpenAI.",
+        "2.50.0 is the current OpenAI release.",
+        "actions/checkout 7.0.1 is upstream history.",
+        "CometAPI requires openai>=2.45.0,<3.0.0.",
+        "The CometAPI SDK uses httpx==0.28.1.",
+        "CometAPI supports Python 3.10.0 through 3.14.0.",
+        "CometAPI pins Release Please v5.0.0.",
+        "[upstream](https://pypi.org/project/example-lib/0.1.2/)",
+        "[upstream](https://github.com/acme/tool/releases/tag/v0.1.2)",
+        "![upstream](https://img.shields.io/pypi/v/example-lib?version=0.1.2)",
+        "[redirect](https://example.invalid/?next=https://pypi.org/project/cometapi/0.1.2/)",
+    ],
+)
+def test_exact_release_scanner_allows_structurally_attributed_third_party_versions(
+    statement: str,
+) -> None:
+    assert exact_release_version_violations("README.md", statement, "0.1.3") == []
 
 
 def test_releasable_cli_allows_next_patch_without_guidance_edits(
@@ -327,8 +789,15 @@ def test_releasable_cli_allows_next_patch_without_guidance_edits(
         "0.1.0-alpha.1",
         "0.1.3",
     )
-    with (releasable_documents / "CHANGELOG.md").open("a", encoding="utf-8") as stream:
-        stream.write("\n## [0.1.3] - 2026-07-30\n\nPatch maintenance.\n")
+    changelog = releasable_documents / "CHANGELOG.md"
+    changelog.write_text(
+        changelog.read_text(encoding="utf-8").replace(
+            "# Changelog\n",
+            "# Changelog\n\n## [0.1.3] - 2026-07-30\n\nPatch maintenance.\n",
+            1,
+        ),
+        encoding="utf-8",
+    )
 
     command = [
         sys.executable,
@@ -356,8 +825,14 @@ def test_releasable_cli_allows_next_patch_without_guidance_edits(
     durable_before = {name: (releasable_documents / name).read_bytes() for name in durable_names}
     _replace(releasable_documents, "pyproject.toml", "0.1.3", "0.1.4")
     _replace(releasable_documents, ".release-please-manifest.json", "0.1.3", "0.1.4")
-    with (releasable_documents / "CHANGELOG.md").open("a", encoding="utf-8") as stream:
-        stream.write("\n## [0.1.4] - 2026-08-01\n\nPatch maintenance.\n")
+    changelog.write_text(
+        changelog.read_text(encoding="utf-8").replace(
+            "# Changelog\n",
+            "# Changelog\n\n## [0.1.4] - 2026-08-01\n\nPatch maintenance.\n",
+            1,
+        ),
+        encoding="utf-8",
+    )
 
     result = subprocess.run(
         command,
@@ -372,6 +847,96 @@ def test_releasable_cli_allows_next_patch_without_guidance_edits(
     assert {
         name: (releasable_documents / name).read_bytes() for name in durable_names
     } == durable_before
+
+
+def test_releasable_docs_accept_release_please_native_heading(
+    releasable_documents: Path,
+) -> None:
+    _replace(releasable_documents, "pyproject.toml", "0.1.0a1", "0.1.3")
+    _replace(
+        releasable_documents,
+        ".release-please-manifest.json",
+        "0.1.0-alpha.1",
+        "0.1.3",
+    )
+    (releasable_documents / "CHANGELOG.md").write_text(
+        """\
+# Changelog
+
+## [0.1.3](https://github.com/cometapi-dev/cometapi-python/compare/v0.1.2...v0.1.3) (2026-07-30)
+
+### Fixed
+
+- Deterministic release documents.
+
+## [0.1.2] - 2026-07-29
+
+- Previous release.
+""",
+        encoding="utf-8",
+    )
+
+    require_releasable_docs("0.1.3")
+
+
+@pytest.mark.parametrize(
+    "heading",
+    [
+        "## [0.1.3](https://github.com/wrong/repository/compare/v0.1.2...v0.1.3) (2026-07-30)",
+        "## [0.1.3](https://github.com/cometapi-dev/cometapi-python/compare/"
+        "v0.1.1...v0.1.3) (2026-07-30)",
+        "## [0.1.3](https://github.com/cometapi-dev/cometapi-python/compare/"
+        "v0.1.2...v0.1.4) (2026-07-30)",
+        "## [0.1.3](https://github.com/cometapi-dev/cometapi-python/compare/"
+        "v0.1.2...v0.1.3) (2026-02-30)",
+    ],
+)
+def test_releasable_docs_reject_mutated_release_please_heading(
+    releasable_documents: Path,
+    heading: str,
+) -> None:
+    _replace(releasable_documents, "pyproject.toml", "0.1.0a1", "0.1.3")
+    _replace(
+        releasable_documents,
+        ".release-please-manifest.json",
+        "0.1.0-alpha.1",
+        "0.1.3",
+    )
+    (releasable_documents / "CHANGELOG.md").write_text(
+        f"# Changelog\n\n{heading}\n\n- Patch.\n\n## [0.1.2] - 2026-07-29\n",
+        encoding="utf-8",
+    )
+
+    with pytest.raises(CheckError, match=r"canonical dated heading|valid ISO date"):
+        require_releasable_docs("0.1.3")
+
+
+@pytest.mark.parametrize(
+    "extra",
+    [
+        "## [0.1.3] - 2026-07-29\n\nDuplicate.\n\n## [0.1.3] - 2026-07-30\n\nDuplicate current.\n",
+        "## [0.1.2] - 2026-07-29\n\nOld.\n\n## [0.1.3] - 2026-07-30\n\nCurrent.\n",
+    ],
+    ids=["duplicate-current", "out-of-order-current"],
+)
+def test_releasable_docs_reject_duplicate_or_out_of_order_current_heading(
+    releasable_documents: Path,
+    extra: str,
+) -> None:
+    _replace(releasable_documents, "pyproject.toml", "0.1.0a1", "0.1.3")
+    _replace(
+        releasable_documents,
+        ".release-please-manifest.json",
+        "0.1.0-alpha.1",
+        "0.1.3",
+    )
+    (releasable_documents / "CHANGELOG.md").write_text(
+        "# Changelog\n\n" + extra + "\n## [0.1.2] - 2026-07-28\n\nPrevious.\n",
+        encoding="utf-8",
+    )
+
+    with pytest.raises(CheckError, match="canonical dated heading"):
+        require_releasable_docs("0.1.3")
 
 
 def test_version_cli_rejects_project_manifest_disagreement(
@@ -433,7 +998,10 @@ def test_releasable_documents_reject_publication_specific_readme_state(
             replacement,
         )
 
-    with pytest.raises(CheckError, match=r"publication-neutral release guidance|unpinned stable"):
+    with pytest.raises(
+        CheckError,
+        match=r"publication-neutral release guidance|unpinned stable|exact CometAPI patch",
+    ):
         require_releasable_docs("0.1.0a1")
 
 
@@ -512,7 +1080,7 @@ def test_artifact_metadata_rejects_mutable_published_patch_claim() -> None:
     )
     with pytest.raises(
         CheckError,
-        match="mutable latest/current published patch version",
+        match="exact CometAPI patch/recovery version outside immutable release evidence",
     ):
         check_metadata(
             _artifact_metadata(description),
@@ -595,8 +1163,97 @@ def test_sdist_rejects_mutable_claim_in_persistent_document(tmp_path: Path) -> N
 
     message = str(caught.value)
     assert "AGENTS.md:" in message
-    assert "mutable latest/current published patch version" in message
-    assert MUTABLE_PUBLISHED_VERSION_FIX in message
+    assert "exact CometAPI patch/recovery version outside immutable release evidence" in message
+    assert EXACT_RELEASE_VERSION_FIX in message
+
+
+def _mutated_sdist_document(
+    tmp_path: Path,
+    document: str,
+    old: str,
+    new: str,
+) -> tuple[Path, str]:
+    current_version = read_project_version()
+    built = tmp_path / "built"
+    subprocess.run(
+        ["uv", "build", "--sdist", "--out-dir", str(built)],
+        cwd=PROJECT_ROOT,
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+    source = built / f"cometapi-{current_version}.tar.gz"
+    extracted = tmp_path / "extracted"
+    extracted.mkdir()
+    with tarfile.open(source, mode="r:gz") as archive:
+        archive.extractall(extracted, filter="data")
+    root = extracted / f"cometapi-{current_version}"
+    path = root / document
+    original = path.read_text(encoding="utf-8")
+    assert old in original
+    path.write_text(original.replace(old, new, 1), encoding="utf-8")
+    mutated = tmp_path / f"cometapi-{current_version}.tar.gz"
+    with tarfile.open(mutated, mode="w:gz") as archive:
+        archive.add(root, arcname=root.name)
+    return mutated, current_version
+
+
+def test_sdist_rejects_cross_document_release_evidence_mismatch(tmp_path: Path) -> None:
+    mutated, current_version = _mutated_sdist_document(
+        tmp_path,
+        "RELEASING.md",
+        "commit=45429f373bbd11314ec43ba81904fdbb78db2522",
+        "commit=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    )
+    extracted = tmp_path / "repacked"
+    extracted.mkdir()
+    with tarfile.open(mutated, mode="r:gz") as archive:
+        archive.extractall(extracted, filter="data")
+    root = extracted / f"cometapi-{current_version}"
+    releasing = root / "RELEASING.md"
+    releasing.write_text(
+        releasing.read_text(encoding="utf-8").replace(
+            "`45429f373bbd11314ec43ba81904fdbb78db2522`. The release commit passed",
+            "`aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa`. The release commit passed",
+            1,
+        ),
+        encoding="utf-8",
+    )
+    with tarfile.open(mutated, mode="w:gz") as archive:
+        archive.add(root, arcname=root.name)
+
+    with pytest.raises(CheckError) as caught:
+        check_sdist(
+            mutated,
+            current_version,
+            (PROJECT_ROOT / "README.md").read_text(encoding="utf-8"),
+        )
+
+    message = str(caught.value)
+    assert "source-distribution document and release-evidence violations" in message
+    assert "ROADMAP.md/RELEASING.md" in message
+    assert "must match exactly across both historical records" in message
+
+
+def test_sdist_rejects_release_evidence_date_mismatch_with_changelog(tmp_path: Path) -> None:
+    mutated, current_version = _mutated_sdist_document(
+        tmp_path,
+        "CHANGELOG.md",
+        "## [0.1.3] - 2026-07-30",
+        "## [0.1.3] - 2026-07-31",
+    )
+
+    with pytest.raises(CheckError) as caught:
+        check_sdist(
+            mutated,
+            current_version,
+            (PROJECT_ROOT / "README.md").read_text(encoding="utf-8"),
+        )
+
+    message = str(caught.value)
+    assert "source-distribution document and release-evidence violations" in message
+    assert "release-evidence identity date for 0.1.3 is 2026-07-30" in message
+    assert "CHANGELOG.md records 2026-07-31" in message
 
 
 def test_copied_repository_verification_runs_public_document_gate() -> None:
@@ -610,7 +1267,7 @@ def test_copied_repository_verification_runs_public_document_gate() -> None:
             "python",
             "scripts/check_version.py",
             "--require-changelog",
-            "--require-public-preview-docs",
+            "--require-releasable-docs",
         ]
     ]
 

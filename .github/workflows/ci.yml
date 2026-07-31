@@ -44,6 +44,10 @@ jobs:
         run: uv run pyright
       - name: Run offline unit and contract tests
         run: uv run pytest -m "not live"
+      - name: Select latest OpenAI within the supported major
+        run: uv pip install --python .venv/bin/python --upgrade "openai>=2.45.0,<3.0.0"
+      - name: Run latest-within-major tests without resyncing the lock
+        run: uv run --no-sync pytest -m "not live"
       - name: Check version agreement and durable public content
         run: uv run python scripts/check_version.py --require-changelog --require-public-preview-docs
       - name: Scan for credentials and scope mistakes
@@ -93,27 +97,6 @@ jobs:
       - name: Select the minimum supported OpenAI dependency
         run: uv pip install --python .venv/bin/python "openai==2.45.0"
       - name: Run offline tests without resyncing the lock
-        run: uv run --no-sync pytest -m "not live"
-
-  latest-openai:
-    name: Latest OpenAI within major canary
-    if: github.event_name == 'schedule' || github.actor == 'dependabot[bot]'
-    runs-on: ubuntu-latest
-    timeout-minutes: 20
-    steps:
-      - name: Check out the candidate
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      - name: Set up Python
-        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
-        with:
-          python-version: "3.14"
-      - name: Install the pinned uv frontend
-        run: python -m pip install --disable-pip-version-check "uv==$UV_VERSION"
-      - name: Create the development environment
-        run: uv sync --locked
-      - name: Select latest OpenAI within the supported major
-        run: uv pip install --python .venv/bin/python --upgrade "openai>=2.45.0,<3.0.0"
-      - name: Run canary tests without resyncing the lock
         run: uv run --no-sync pytest -m "not live"
 
   package:

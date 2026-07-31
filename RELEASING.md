@@ -9,7 +9,7 @@ Use these states precisely:
 | Local code-complete | Source, tests, documentation, metadata, scripts, and workflow definitions exist and applicable offline checks pass. |
 | Private Remote Validation ready | Local gates pass, the sanitized history and maintainer-confirmed identity are complete, and real credential-free private default-branch CI passes. |
 | Public Preview ready | After visibility changes, public-only repository rules, security reporting, environments, default-branch CI, the content gate, and authorized protected live smoke all pass. |
-| Registry Alpha candidate | The exact `0.1.0a1` wheel and source distribution pass metadata, file-list, clean-install, import, and mocked-call checks. |
+| Registry Alpha candidate | The exact candidate wheel and source distribution pass metadata, file-list, clean-install, import, and mocked-call checks. |
 | Registry Alpha released | The public PyPI artifact has provenance, installs cleanly, imports, and passes the post-publication mocked-call smoke. |
 | Stable released | Every stable runtime, release-PR, live, example, provenance, and registry gate has separate evidence. |
 
@@ -54,8 +54,8 @@ corresponding gated job from executing. `RELEASE_RECOVERY_TAG` and
 `RELEASE_RECOVERY_SHA` are absent by default and may exist only during an
 explicitly authorized recovery of that exact existing immutable release
 identity.
-The release live-model configuration resolves an unset or empty
-`COMETAPI_LIVE_MODEL` to `gpt-5.4`.
+The release live-model configuration is fixed to the canonical active model
+enforced by the workflow checker; repository variables cannot override it.
 
 The completed private stage validated sanitized history, the complete local
 gate, and real credential-free default-branch CI only. It did not configure or
@@ -167,11 +167,18 @@ secret separation, and checkout-before-bundle-download ordering. Its git-backed
 tests exercise accepted and rejected release histories locally; they still do
 not emulate GitHub Actions.
 
-The Release Please step is pinned to
-`googleapis/release-please-action@45996ed1f6d02564a971a2fa1b5860e934307cf7`
-(`v5.0.0`), whose immutable action metadata selects `node24`. The semantic
+The Release Please v5.0.0 step is pinned to
+`googleapis/release-please-action@45996ed1f6d02564a971a2fa1b5860e934307cf7`,
+whose immutable action metadata selects `node24`. The semantic
 checker rejects any other pin so the workflow cannot silently regress to the
 deprecated Node 20 runtime.
+
+The direct PyPI publisher v1.14.1 is pinned to the reviewed commit. Its only
+action-definition change from the previously reviewed publisher is the
+conditional `setup-python` fallback moving from Node 20 to Node 24; the
+top-level `publish.yml`, `publish` job, `pypi` environment, and Trusted
+Publisher identity remain unchanged. The semantic checker requires this exact
+publisher SHA.
 
 The job invokes the pinned action release-only first with
 `skip-github-pull-request: true`. That step cannot continue on error and is
@@ -193,10 +200,12 @@ authorization failure.
 
 Release mode (`check_version.py --require-releasable-docs`) also fails closed
 until project authorship, the canonical GitHub repository URL, the copyright
-holder, security and support contacts, a publication-neutral README, and a dated
-changelog release section are present. Public Preview validation reports all
-discovered violations in one run and still returns non-zero when any violation
-exists.
+holder, security and support contacts, a publication-neutral README, and a
+canonical dated changelog release section are present. It accepts Release
+Please's native linked heading and the legacy historical heading, so release PRs
+do not require a formatting-only finalization commit. Public Preview validation
+reports all discovered violations in one run and still returns non-zero when any
+violation exists.
 
 `pyproject.toml` embeds `README.md` as the immutable distribution long
 description. The README therefore uses the unpinned
@@ -211,12 +220,17 @@ descriptions cannot drift.
 - `ci.yml` runs credential-free lint, type, unit, contract, package, artifact,
   and clean-install checks for pull requests and default-branch pushes.
 - `live-smoke.yml` checks out and runs only the canonical default branch on
-  trusted scheduled or manual events with a maintainer-approved key and model. It
-  is ongoing monitoring only and cannot satisfy a release gate. It is capped at
-  four requests, 16 output tokens
-  per generation, a 30-second request timeout, concurrency one, a ten-minute
-  workflow timeout, and stop on the first failure. Every trigger requires
-  `LIVE_SMOKE_ENABLED=true`.
+  trusted scheduled or manual events with a maintainer-approved key and the
+  checker-fixed canonical model. It is ongoing monitoring only and cannot
+  satisfy a release gate. It is capped at four requests, a reviewed 64/128/256
+  output-token calibration choice with a 64-token default, a 30-second request
+  timeout, concurrency one, a ten-minute workflow timeout, and stop on the first
+  failure. Every trigger requires `LIVE_SMOKE_ENABLED=true`.
+- Calibrate monitoring strictly in the order 64, 128, then 256, stopping on the
+  first pass. Run at most three workflows and twelve requests. Escalate only
+  when the validator reports `finish_reason=length` or an incomplete reason of
+  `max_output_tokens`; authentication, routing, model, transport, timeout, API
+  event, or any other failure stops calibration and blocks release.
 - Before enabling `RELEASE_PLEASE_ENABLED` or merging the change intended to
   open or update a release PR, verify the effective repository setting:
 
@@ -262,8 +276,9 @@ descriptions cannot drift.
   before the protected `pypi` job becomes eligible. The workflow publishes the
   previously verified artifacts with OIDC, then checks the public package
   against the exact pre-publication digests and Trusted Publisher provenance
-  before a clean install explicitly from `https://pypi.org/simple/`. An unset
-  or empty live-model repository variable resolves to `gpt-5.4`.
+  before a clean install explicitly from `https://pypi.org/simple/`. The exact
+  release live model is the canonical active model enforced by the workflow
+  checker and cannot be overridden by repository variables.
   Because the unused Release Please or recovery path is intentionally skipped,
   every job after the selector must use `always() && !cancelled()`, reject
   reruns, and require each direct dependency's result to equal `success`. This
@@ -305,16 +320,13 @@ Maintainers then completed these steps in order:
    concurrency-one, stop-on-failure budget.
 3. Finalized the dated changelog and prerelease documentation and reran every
    candidate verification gate, including
-   `uv run python scripts/check_version.py --expected 0.1.0a1 --require-changelog --require-releasable-docs`.
-4. Reviewed the exact candidate and created the immutable SemVer recovery tag
-   `v0.1.0-alpha.1+recovery.1` and corresponding GitHub prerelease. GitHub
-   permanently reserved `v0.1.0-alpha.1` after its immutable release reached
-   OIDC publication but failed before PyPI accepted any distribution. The
-   recovery build suffix preserves the equivalent PEP 440 package version
-   `0.1.0a1`; it is a one-time exception and must not be incremented or reused
-   for later releases. Release Please was kept disabled until a separate
-   reviewed and tested `last-release-sha` bridge established this recovery
-   commit as its previous-release boundary.
+   `uv run python scripts/check_version.py --require-changelog --require-releasable-docs`.
+4. Reviewed the exact candidate and created the one-time immutable recovery tag
+   and corresponding GitHub prerelease. The exact tombstone, tag, and package
+   mapping are retained in the Registry Alpha evidence block and must not be
+   incremented or reused for later releases. Release Please was kept disabled
+   until a separate reviewed and tested `last-release-sha` bridge established
+   this recovery commit as its previous-release boundary.
 5. The release workflow proved `immutable=true`, resolved the tag to the
    checked-out commit, verified that commit was reachable from the protected
    default branch, and ran the bounded protected live suite against that exact
@@ -331,10 +343,13 @@ Python publication is OIDC-only. There is no token-bootstrap exception for
 PyPI.
 
 The version checker must normalize the SemVer tag and PEP 440 package spelling
-to the same `0.1.0a1` value across the tag, release manifest, package metadata,
+to the same candidate value across the tag, release manifest, package metadata,
 changelog, GitHub release, wheel, and source distribution.
 
 ### Completed Registry Alpha evidence
+
+<!-- cometapi-release-evidence:start version=0.1.0a1 date=2026-07-27 -->
+<!-- cometapi-release-identity tag=v0.1.0-alpha.1+recovery.1 commit=31b68904141489ca04932edbf305ccf88af09372 workflow-run=30261746138 wheel-sha256=a6820347317943ca22f7632acbe354dd992f31a122a6172dfe45b57960e3a093 sdist-sha256=98d86829ef14771e8b7ec180d452c6638289f49c14a39b7207be5c47cb64cde7 -->
 
 - Metadata [PR #16](https://github.com/cometapi-dev/cometapi-python/pull/16)
   merged as `6344c2d0e2e975360b42c887275c1950b82918ee`; recovery contract
@@ -358,6 +373,8 @@ changelog, GitHub release, wheel, and source distribution.
   bridge generated the stable release PR and was removed during human
   finalization.
 
+<!-- cometapi-release-evidence:end version=0.1.0a1 date=2026-07-27 -->
+
 ## Stable release sequence
 
 ```text
@@ -379,7 +396,7 @@ feature or fix pull request
     -> roadmap milestone marked released
 ```
 
-Stable `0.1.0` additionally required the complete blocking Python matrix,
+The first stable release additionally required the complete blocking Python matrix,
 executed README examples against the built package, trusted live evidence, and
 reviewed release-PR and changelog agreement. Its one-time finalization removed
 the `last-release-sha` and prerelease-versioning controls. Later maintenance
@@ -446,13 +463,16 @@ then passed immutable recovery verification and the shared release selector,
 but GitHub propagated the intentionally skipped Release Please ancestry to the
 plain downstream job conditions. Build, live smoke, publication, and registry
 verification were all skipped while the overall workflow incorrectly reported
-success. No live request or PyPI upload occurred, and `cometapi==0.1.0` remained
-absent. The permanent correction explicitly evaluates every selector descendant
+success. No live request or PyPI upload occurred, and the stable distribution
+remained absent. The permanent correction explicitly evaluates every selector descendant
 and requires all of its direct dependencies to succeed. A further recovery
 remained blocked until that fix reached `main` and a new recovery was explicitly
 authorized.
 
-### Completed `0.1.0` stable release evidence
+### Completed first stable release evidence
+
+<!-- cometapi-release-evidence:start version=0.1.0 date=2026-07-28 -->
+<!-- cometapi-release-identity tag=v0.1.0 commit=6f42981edcc6c252f8db997606671c3da84d1dd8 workflow-run=30359383715 wheel-sha256=8eae758688bb6c98274e48d8d81f882eeae760f69cfd2f5e125004881d60e90f sdist-sha256=e9308b44f6091200b5121e24d1a0e1b9ea3e6bcccc109d6de87554b1ab2a8bca -->
 
 - The immutable non-draft [GitHub release](https://github.com/cometapi-dev/cometapi-python/releases/tag/v0.1.0)
   and lightweight tag `v0.1.0` resolve to release commit
@@ -482,7 +502,12 @@ authorized.
   `LIVE_SMOKE_ENABLED=false` was the only remaining release-related repository
   variable.
 
-### Completed `0.1.1` maintenance release evidence
+<!-- cometapi-release-evidence:end version=0.1.0 date=2026-07-28 -->
+
+### Completed configuration maintenance release evidence
+
+<!-- cometapi-release-evidence:start version=0.1.1 date=2026-07-29 -->
+<!-- cometapi-release-identity tag=v0.1.1 commit=576e7503a0a8c1103faca5143e4b8d576f8e8b44 workflow-run=30429821548 wheel-sha256=27e7904542f82fbbcd60e0de23a4a62c042420b6d004d00286d1f37d2ec4c5e5 sdist-sha256=64c7cb87745032703b3374cc562ea00b979416c54908862dbcebd116b2dc44c8 -->
 
 - Configuration fix [PR #25](https://github.com/cometapi-dev/cometapi-python/pull/25)
   passed [pull-request CI run 30419881169](https://github.com/cometapi-dev/cometapi-python/actions/runs/30419881169)
@@ -526,7 +551,12 @@ authorized.
   `RELEASE_RECOVERY_TAG` and `RELEASE_RECOVERY_SHA` are absent; no recovery tag
   or recovery workflow was used for `0.1.1`.
 
-### Completed `0.1.2` maintenance release evidence
+<!-- cometapi-release-evidence:end version=0.1.1 date=2026-07-29 -->
+
+### Completed release-metadata maintenance evidence
+
+<!-- cometapi-release-evidence:start version=0.1.2 date=2026-07-30 -->
+<!-- cometapi-release-identity tag=v0.1.2 commit=710c56491d9ef5f47cccff3ce837ab7e799455b0 workflow-run=30515861246 wheel-sha256=3f12c26ae1ae7a1de5ac19d8ef27a784b2bf592143c716493f1b0f35ec19daca sdist-sha256=21c8edc0586610de1a9a8cd39b54ed23d2b1e20552100f69f53938cb7678da3d -->
 
 - Metadata and runtime [PR #29](https://github.com/cometapi-dev/cometapi-python/pull/29)
   made packaged long descriptions release-neutral, added artifact assertions,
@@ -576,7 +606,12 @@ authorized.
   `RELEASE_RECOVERY_TAG` and `RELEASE_RECOVERY_SHA` are absent; no recovery tag,
   workflow dispatch, or workflow rerun was used for `0.1.2`.
 
-### Completed `0.1.3` maintenance release evidence
+<!-- cometapi-release-evidence:end version=0.1.2 date=2026-07-30 -->
+
+### Completed release-claim maintenance evidence
+
+<!-- cometapi-release-evidence:start version=0.1.3 date=2026-07-30 -->
+<!-- cometapi-release-identity tag=v0.1.3 commit=45429f373bbd11314ec43ba81904fdbb78db2522 workflow-run=30550536000 wheel-sha256=9ac2f8062a8554943649bffd7ec859fc90491f76bbe2b0165327722201417d6f sdist-sha256=07ded54606d50f44b689dad38cf93a74e1175370efaa33be84a3c01240d48e66 -->
 
 - Mutable-release-claim [PR #34](https://github.com/cometapi-dev/cometapi-python/pull/34)
   removed the published patch number from persistent guidance and extended the
@@ -629,3 +664,5 @@ authorized.
 - `RELEASE_PLEASE_ENABLED=false` and `LIVE_SMOKE_ENABLED=false`.
   `RELEASE_RECOVERY_TAG` and `RELEASE_RECOVERY_SHA` are absent; no recovery tag,
   workflow dispatch, or release-workflow rerun was used for `0.1.3`.
+
+<!-- cometapi-release-evidence:end version=0.1.3 date=2026-07-30 -->

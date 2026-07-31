@@ -6,6 +6,8 @@ from typing import cast
 
 import httpx
 
+from scripts._checks import CANONICAL_ACTIVE_MODEL
+
 API_KEY = "cometapi-contract-test-key"
 BASE_URL = "https://gateway.example.test/v1"
 
@@ -13,7 +15,7 @@ CHAT_COMPLETION: dict[str, object] = {
     "id": "chatcmpl-contract",
     "object": "chat.completion",
     "created": 1,
-    "model": "gpt-5.4",
+    "model": CANONICAL_ACTIVE_MODEL,
     "choices": [
         {
             "index": 0,
@@ -27,7 +29,7 @@ CHAT_CHUNK: dict[str, object] = {
     "id": "chatcmpl-contract",
     "object": "chat.completion.chunk",
     "created": 1,
-    "model": "gpt-5.4",
+    "model": CANONICAL_ACTIVE_MODEL,
     "choices": [
         {
             "index": 0,
@@ -42,7 +44,7 @@ RESPONSE: dict[str, object] = {
     "object": "response",
     "created_at": 1,
     "status": "completed",
-    "model": "gpt-5.4",
+    "model": CANONICAL_ACTIVE_MODEL,
     "output": [],
     "parallel_tool_calls": True,
     "tool_choice": "auto",
@@ -53,7 +55,7 @@ MODEL_LIST: dict[str, object] = {
     "object": "list",
     "data": [
         {
-            "id": "gpt-5.4",
+            "id": CANONICAL_ACTIVE_MODEL,
             "object": "model",
             "created": 1,
             "owned_by": "cometapi",

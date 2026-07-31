@@ -48,7 +48,7 @@ openai>=2.45.0,<3.0.0
 | --- | --- | --- |
 | Minimum `2.45.0` | Prove the declared lower bound | Oldest supported Python runtime |
 | Locked development version | Reproducible contributor and blocking CI environment | Every blocking Python runtime |
-| Latest available below `3.0.0` | Detect upstream drift | Scheduled and dependency-update canary |
+| Latest available below `3.0.0` | Detect upstream drift | Every pull request and default-branch push |
 
 The lock file is development evidence only. It does not narrow the dependency
 range installed for library users.

@@ -13,9 +13,9 @@ from typing import cast
 import yaml
 
 try:
-    from ._checks import PROJECT_ROOT, CheckError
+    from ._checks import CANONICAL_ACTIVE_MODEL, PROJECT_ROOT, CheckError
 except ImportError:  # Direct execution from the repository root.
-    from _checks import PROJECT_ROOT, CheckError
+    from _checks import CANONICAL_ACTIVE_MODEL, PROJECT_ROOT, CheckError
 
 RELEASE_PLEASE_BASELINE_SHA = "31b68904141489ca04932edbf305ccf88af09372"
 RELEASE_PLEASE_LOCK_JSONPATH = "$.package[?(@.name.value == 'cometapi')].version"
@@ -23,6 +23,10 @@ RELEASE_PLEASE_ACTION_SHA = "45996ed1f6d02564a971a2fa1b5860e934307cf7"
 RELEASE_PLEASE_ACTION_VERSION = "5.0.0"
 RELEASE_PLEASE_ACTION_RUNTIME = "node24"
 RELEASE_PLEASE_ACTION = f"googleapis/release-please-action@{RELEASE_PLEASE_ACTION_SHA}"
+PYPI_PUBLISH_ACTION_SHA = "ba38be9e461d3875417946c167d0b5f3d385a247"
+PYPI_PUBLISH_ACTION_VERSION = "1.14.1"
+PYPI_PUBLISH_ACTION_RUNTIME = "node24"
+PYPI_PUBLISH_ACTION = f"pypa/gh-action-pypi-publish@{PYPI_PUBLISH_ACTION_SHA}"
 RELEASE_PLEASE_BRIDGE_VERSION = "0.1.0-alpha.1"
 RELEASE_PLEASE_STABLE_VERSION_PATTERN = re.compile(r"0\.1\.(?:0|[1-9][0-9]*)")
 RELEASE_PR_CONDITION = "steps.release.outputs.release_created != 'true'"
@@ -423,7 +427,7 @@ def check_ci_workflow(text: str) -> None:
         raise CheckError("CI must run only for default-branch pushes")
     schedule = _sequence(triggers["schedule"], "CI schedule trigger")
     if schedule != [{"cron": "23 4 * * 1"}]:
-        raise CheckError("CI latest-OpenAI canary must run on the reviewed weekly schedule")
+        raise CheckError("CI must retain its reviewed weekly schedule")
     concurrency = _mapping(workflow.get("concurrency"), "CI workflow concurrency")
     if concurrency != {
         "group": "ci-${{ github.workflow }}-${{ github.ref }}",
@@ -443,7 +447,6 @@ def check_ci_workflow(text: str) -> None:
         "quality",
         "locked-runtime",
         "minimum-openai",
-        "latest-openai",
         "package",
         "standalone",
     }
@@ -452,14 +455,12 @@ def check_ci_workflow(text: str) -> None:
     quality = _workflow_job(workflow, "quality", "CI workflow")
     locked_runtime = _workflow_job(workflow, "locked-runtime", "CI workflow")
     minimum_openai = _workflow_job(workflow, "minimum-openai", "CI workflow")
-    latest_openai = _workflow_job(workflow, "latest-openai", "CI workflow")
     package = _workflow_job(workflow, "package", "CI workflow")
     standalone = _workflow_job(workflow, "standalone", "CI workflow")
     expected_job_keys = {
         "quality": {"name", "runs-on", "timeout-minutes", "steps"},
         "locked-runtime": {"name", "runs-on", "timeout-minutes", "strategy", "steps"},
         "minimum-openai": {"name", "runs-on", "timeout-minutes", "steps"},
-        "latest-openai": {"name", "if", "runs-on", "timeout-minutes", "steps"},
         "package": {"name", "needs", "runs-on", "timeout-minutes", "steps"},
         "standalone": {"name", "needs", "runs-on", "timeout-minutes", "steps"},
     }
@@ -471,18 +472,6 @@ def check_ci_workflow(text: str) -> None:
         ("standalone", standalone),
     ):
         _require_blocking_job(job, f"CI {name!r} job")
-    if latest_openai.get("if") != (
-        "github.event_name == 'schedule' || github.actor == 'dependabot[bot]'"
-    ):
-        raise CheckError(
-            "CI latest-OpenAI canary must run only for the weekly schedule or Dependabot"
-        )
-    if any(key in latest_openai for key in ("continue-on-error", "defaults", "env", "shell")):
-        raise CheckError("CI latest-OpenAI canary must retain blocking command execution")
-    for index, step in enumerate(_workflow_steps(latest_openai, "CI latest-openai job")):
-        _require_unconditional(step, f"CI latest-openai step {index}")
-        if "env" in step:
-            raise CheckError("CI latest-OpenAI steps must not override the CI environment")
     for name, value in jobs.items():
         job = _mapping(value, f"CI {name!r} job")
         _require_exact_keys(job, expected_job_keys[name], f"CI {name!r} job")
@@ -502,6 +491,8 @@ def check_ci_workflow(text: str) -> None:
             "uv run ruff format --check src tests scripts",
             "uv run pyright",
             'uv run pytest -m "not live"',
+            'uv pip install --python .venv/bin/python --upgrade "openai>=2.45.0,<3.0.0"',
+            'uv run --no-sync pytest -m "not live"',
             "uv run python scripts/check_version.py --require-changelog "
             "--require-public-preview-docs",
             "uv run python scripts/check_secrets.py",
@@ -512,11 +503,6 @@ def check_ci_workflow(text: str) -> None:
         "minimum-openai": (
             "uv sync --locked",
             'uv pip install --python .venv/bin/python "openai==2.45.0"',
-            'uv run --no-sync pytest -m "not live"',
-        ),
-        "latest-openai": (
-            "uv sync --locked",
-            'uv pip install --python .venv/bin/python --upgrade "openai>=2.45.0,<3.0.0"',
             'uv run --no-sync pytest -m "not live"',
         ),
         "package": (
@@ -536,7 +522,6 @@ def check_ci_workflow(text: str) -> None:
         "quality": quality,
         "locked-runtime": locked_runtime,
         "minimum-openai": minimum_openai,
-        "latest-openai": latest_openai,
         "package": package,
         "standalone": standalone,
     }
@@ -551,6 +536,8 @@ def check_ci_workflow(text: str) -> None:
             "Check formatting",
             "Type check",
             "Run offline unit and contract tests",
+            "Select latest OpenAI within the supported major",
+            "Run latest-within-major tests without resyncing the lock",
             "Check version agreement and durable public content",
             "Scan for credentials and scope mistakes",
             "Validate workflow syntax with checksum-pinned actionlint",
@@ -570,14 +557,6 @@ def check_ci_workflow(text: str) -> None:
             "Create the development environment",
             "Select the minimum supported OpenAI dependency",
             "Run offline tests without resyncing the lock",
-        ],
-        "latest-openai": [
-            "Check out the candidate",
-            "Set up Python",
-            "Install the pinned uv frontend",
-            "Create the development environment",
-            "Select latest OpenAI within the supported major",
-            "Run canary tests without resyncing the lock",
         ],
         "package": [
             "Check out the candidate",
@@ -604,7 +583,6 @@ def check_ci_workflow(text: str) -> None:
         "quality": "20",
         "locked-runtime": "20",
         "minimum-openai": "20",
-        "latest-openai": "20",
         "package": "25",
         "standalone": "35",
     }
@@ -612,7 +590,6 @@ def check_ci_workflow(text: str) -> None:
         "quality": "3.14",
         "locked-runtime": "${{ matrix.python-version }}",
         "minimum-openai": "3.10",
-        "latest-openai": "3.14",
         "package": "3.14",
         "standalone": "3.14",
     }
@@ -1093,8 +1070,35 @@ def check_publish_workflow(text: str, live_smoke_text: str) -> None:
     live_triggers = _mapping(live_workflow.get("on"), "live-smoke triggers")
     if set(live_triggers) != {"schedule", "workflow_dispatch"}:
         raise CheckError("monitoring live smoke must run only on schedule or manual dispatch")
-    if live_triggers["workflow_dispatch"] != "":
-        raise CheckError("monitoring live smoke manual dispatch must not accept inputs")
+    live_dispatch = _mapping(
+        live_triggers["workflow_dispatch"], "monitoring live smoke manual dispatch"
+    )
+    _require_exact_keys(
+        live_dispatch,
+        {"inputs"},
+        "monitoring live smoke manual dispatch",
+    )
+    live_inputs = _mapping(live_dispatch.get("inputs"), "monitoring live smoke inputs")
+    _require_exact_keys(
+        live_inputs,
+        {"max_output_tokens"},
+        "monitoring live smoke inputs",
+    )
+    max_output_tokens = _mapping(
+        live_inputs.get("max_output_tokens"),
+        "monitoring live smoke max_output_tokens input",
+    )
+    if max_output_tokens != {
+        "description": "Maximum output tokens for each bounded live request",
+        "required": "true",
+        "default": "64",
+        "type": "choice",
+        "options": ["64", "128", "256"],
+    }:
+        raise CheckError(
+            "monitoring live smoke max_output_tokens must be the reviewed 64/128/256 "
+            "choice with a 64-token default"
+        )
     if _sequence(live_triggers["schedule"], "live-smoke schedule") != [{"cron": "17 3 * * *"}]:
         raise CheckError("monitoring live smoke must retain its reviewed daily schedule")
     _require_permissions(live_workflow, {"contents": "read"}, "live-smoke workflow")
@@ -1109,8 +1113,8 @@ def check_publish_workflow(text: str, live_smoke_text: str) -> None:
     if live_environment != {
         "UV_VERSION": "0.11.8",
         "COMETAPI_LIVE_MAX_REQUESTS": "4",
-        "COMETAPI_LIVE_MAX_OUTPUT_TOKENS": "16",
-        "COMETAPI_LIVE_MODEL": "gpt-5.4",
+        "COMETAPI_LIVE_MAX_OUTPUT_TOKENS": "${{ inputs.max_output_tokens || '64' }}",
+        "COMETAPI_LIVE_MODEL": CANONICAL_ACTIVE_MODEL,
         "COMETAPI_LIVE_REQUEST_TIMEOUT_SECONDS": "30",
         "COMETAPI_LIVE_CONCURRENCY": "1",
         "COMETAPI_LIVE_RUN": "1",
@@ -1487,9 +1491,9 @@ def check_publish_workflow(text: str, live_smoke_text: str) -> None:
     )
     if release_live_environment != {
         "COMETAPI_LIVE_CONCURRENCY": "1",
-        "COMETAPI_LIVE_MAX_OUTPUT_TOKENS": "16",
+        "COMETAPI_LIVE_MAX_OUTPUT_TOKENS": "64",
         "COMETAPI_LIVE_MAX_REQUESTS": "4",
-        "COMETAPI_LIVE_MODEL": "${{ vars.COMETAPI_LIVE_MODEL || 'gpt-5.4' }}",
+        "COMETAPI_LIVE_MODEL": CANONICAL_ACTIVE_MODEL,
         "COMETAPI_LIVE_REQUEST_TIMEOUT_SECONDS": "30",
         "COMETAPI_LIVE_RUN": "1",
         "COMETAPI_LIVE_STOP_ON_FAILURE": "1",
@@ -1636,6 +1640,8 @@ def check_publish_workflow(text: str, live_smoke_text: str) -> None:
         "pypa/gh-action-pypi-publish",
         "PyPI publish job",
     )
+    if pypi_publish.get("uses") != PYPI_PUBLISH_ACTION:
+        raise CheckError(f"PyPI publish job must use exact reviewed action {PYPI_PUBLISH_ACTION}")
     _require_options(
         pypi_publish,
         {

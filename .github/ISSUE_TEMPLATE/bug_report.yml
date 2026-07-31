@@ -38,7 +38,7 @@ body:
     attributes:
       label: Versions
       description: Provide Python, cometapi, and openai versions.
-      placeholder: "Python 3.13; cometapi 0.1.0a1; openai 2.45.0"
+      placeholder: "Python 3.13; cometapi <installed version>; openai 2.45.0"
     validations:
       required: true
   - type: input

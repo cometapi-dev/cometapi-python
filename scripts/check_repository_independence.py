@@ -93,7 +93,7 @@ def offline_check_commands() -> list[list[str]]:
             "python",
             "scripts/check_version.py",
             "--require-changelog",
-            "--require-public-preview-docs",
+            "--require-releasable-docs",
         ],
         ["uv", "run", "python", "scripts/check_workflows.py"],
         ["uv", "run", "python", "scripts/run_actionlint.py"],

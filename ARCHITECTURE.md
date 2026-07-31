@@ -101,7 +101,7 @@ Compatibility evidence has three lanes:
 
 - minimum OpenAI on the oldest supported Python runtime;
 - locked OpenAI across the blocking Python runtime matrix; and
-- latest OpenAI below 3.0 as a scheduled and dependency-update canary.
+- latest OpenAI below 3.0 as a blocking pull-request and default-branch lane.
 
 ## Verification boundaries
 
@@ -135,10 +135,18 @@ and after a release. Source-document and artifact checks reject approval,
 unpublished, exact-version installation, and versioned release-link text; each
 artifact long description must also exactly match the source README.
 
-Release Please is pinned to the immutable `v5.0.0` commit whose action metadata
+Release Please v5.0.0 is pinned to the immutable commit whose action metadata
 uses `node24`. The workflow semantic contract fixes that SHA and runtime
 disposition so GitHub does not need to force a deprecated Node 20 action onto a
 newer runtime.
+
+The version gate accepts Release Please's native linked, dated changelog heading
+as well as the existing legacy dated form. It validates repository, previous
+tag, candidate tag, and calendar date rather than rewriting generated history.
+
+The PyPI publisher remains directly in `publish.yml` and is pinned to its
+reviewed Node 24 maintenance release. Pinning its exact SHA prevents a syntactic
+full-SHA substitution from silently changing the OIDC publication supply chain.
 
 Release Please execution is split at the mutability boundary. The first pinned
 action invocation is release-only (`skip-github-pull-request: true`) and is
@@ -150,39 +158,10 @@ failure ends the job. Updating a branch or pull request is mutable and
 idempotent, while retrying immutable tag or GitHub Release creation could leave
 ambiguous external state and is forbidden.
 
-[Release Please run 30509764960](https://github.com/cometapi-dev/cometapi-python/actions/runs/30509764960)
-isolated the motivating failure to the action's Undici/global `fetch`: the PR
-workflow reached its write boundary and then failed with `other side closed`
-before any branch, pull-request, tag, GitHub Release, live, or registry write.
-The existing release branch and repository pull-request permission were not the
-cause. This is negative transport evidence, not evidence of a stale branch or
-authorization drift.
-
-This complete trust chain executed successfully in
-[release workflow run 30261746138](https://github.com/cometapi-dev/cometapi-python/actions/runs/30261746138)
-for release commit `31b68904141489ca04932edbf305ccf88af09372`, recovery tag
-`v0.1.0-alpha.1+recovery.1`, and PyPI version `0.1.0a1`. The public wheel and
-source distribution matched the retained pre-publication digests, Trusted
-Publisher provenance was verified, and the clean registry install/import/mocked
-smoke passed.
-
-The same trust chain executed successfully for stable `0.1.0` in
-[release workflow run 30359383715](https://github.com/cometapi-dev/cometapi-python/actions/runs/30359383715).
-The immutable `v0.1.0` tag resolves to release commit
-`6f42981edcc6c252f8db997606671c3da84d1dd8`; the protected live suite, direct
-top-level OIDC publication, public digest and provenance comparison, and clean
-registry install all passed. The selector-descendant conditions were therefore
-verified in GitHub's hosted scheduler, not only by local static checks.
-
-The same trust chain completed for maintenance release `0.1.1` in
-[release workflow run 30429821548](https://github.com/cometapi-dev/cometapi-python/actions/runs/30429821548).
-The immutable `v0.1.1` tag resolves to release commit
-`576e7503a0a8c1103faca5143e4b8d576f8e8b44`; exact-release live smoke, direct
-top-level OIDC publication, public digest and provenance comparison, and clean
-registry installation all passed. The public wheel SHA256 is
-`27e7904542f82fbbcd60e0de23a4a62c042420b6d004d00286d1f37d2ec4c5e5`, and the
-source-distribution SHA256 is
-`64c7cb87745032703b3374cc562ea00b979416c54908862dbcebd116b2dc44c8`.
+Immutable run, tag, commit, registry, and digest records live only in the
+validated release-evidence blocks in `ROADMAP.md` and `RELEASING.md`.
+Architecture documents mechanisms and boundaries, not a second historical
+ledger.
 
 The scheduled/manual default-branch smoke is an operational canary only; it
 does not prove the release commit. `COMETAPI_KEY` is exposed only to the
@@ -218,11 +197,9 @@ reject every rerun, and require every direct dependency's result to equal
 `success`. This crosses only the unused branch's skipped ancestry; cancellation,
 failure, a skipped direct dependency, or a missing result remains fail-closed.
 
-The initial alpha has one release-identity exception. GitHub's immutable
-release tombstone permanently reserves `v0.1.0-alpha.1`, so the reviewed
-recovery release uses SemVer build metadata in
-`v0.1.0-alpha.1+recovery.1`. The build suffix does not change the package
-artifact identity: the PyPI version remains `0.1.0a1`.
+The initial Registry Alpha has one immutable release-identity exception. Its
+exact recovery tag and package mapping are historical evidence in
+`RELEASING.md`; later releases use the ordinary canonical tag spelling.
 
 Release Please remains disabled outside an explicitly authorized release
 sequence. The stable-readiness configuration used a tested `last-release-sha`
