@@ -422,6 +422,56 @@ def test_publish_contract_requires_releasable_document_gate(needle: str) -> None
         )
 
 
+@pytest.mark.parametrize(
+    "replacement",
+    [
+        "",
+        "      - name: Verify the immutable release as a copied standalone repository\n"
+        '        run: echo "python scripts/check_repository_independence.py"\n',
+    ],
+    ids=["missing", "echo-decoy"],
+)
+def test_publish_contract_requires_immutable_standalone_verification(
+    replacement: str,
+) -> None:
+    text = PUBLISH_WORKFLOW.read_text(encoding="utf-8")
+    step = (
+        "      - name: Verify the immutable release as a copied standalone repository\n"
+        "        run: python scripts/check_repository_independence.py\n"
+    )
+    assert text.count(step) == 1
+
+    with pytest.raises(RuntimeError):
+        check_publish_workflow(
+            text.replace(step, replacement, 1),
+            LIVE_SMOKE_WORKFLOW.read_text(encoding="utf-8"),
+        )
+
+
+def test_publish_contract_orders_immutable_standalone_verification() -> None:
+    text = PUBLISH_WORKFLOW.read_text(encoding="utf-8")
+    clean_install = (
+        "      - name: Install and smoke-test each exact artifact\n"
+        "        run: uv run python scripts/check_clean_install.py dist/*\n"
+    )
+    standalone = (
+        "      - name: Verify the immutable release as a copied standalone repository\n"
+        "        run: python scripts/check_repository_independence.py\n"
+    )
+    digest = (
+        "      - name: Record immutable artifact digests\n"
+        "        run: sha256sum dist/* > artifact-sha256.txt\n"
+    )
+    assert text.index(clean_install) < text.index(standalone) < text.index(digest)
+    reordered = text.replace(clean_install + standalone, standalone + clean_install, 1)
+
+    with pytest.raises(RuntimeError):
+        check_publish_workflow(
+            reordered,
+            LIVE_SMOKE_WORKFLOW.read_text(encoding="utf-8"),
+        )
+
+
 def test_release_please_uses_split_node24_v5_execution() -> None:
     text = RELEASE_PLEASE_WORKFLOW.read_text(encoding="utf-8")
     action = (

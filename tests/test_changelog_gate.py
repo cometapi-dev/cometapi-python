@@ -109,6 +109,12 @@ def test_changelog_parser_rejects_obfuscated_mutable_versions(claim: str) -> Non
         "<h2>Unreleased</h3>",
         "<h2>Current Unreleased</h2>",
         "Intro <h2>Unreleased</h2>",
+        "<h2>Un<script>x</script>released</h2>",
+        "<h2>Un<style>x</style>released</h2>",
+        "<h2>Un<textarea>x</textarea>released</h2>",
+        "<h2>Un<script>x</style>released</h2>",
+        "<h2>Un<template>x</template>released</h2>",
+        "<h2>Un<script/>released</h2>",
     ],
 )
 @pytest.mark.parametrize("position", ["before", "between", "after"])
@@ -168,6 +174,21 @@ def test_changelog_parser_allows_non_unreleased_renderings(example: str) -> None
     text = _history("## [0.1.3] - 2026-07-30") + "\n" + example + "\n"
 
     assert changelog_release_dates(text) == {"0.1.3": "2026-07-30"}
+
+
+@pytest.mark.parametrize(
+    "heading",
+    [
+        "<h2>Archived release</h2>",
+        '<H2 class="history">Archived release</H2>',
+        "Intro <h2>Archived release</h2>",
+    ],
+)
+def test_changelog_parser_rejects_all_raw_html_level_two_headings(heading: str) -> None:
+    text = _history("## [0.1.3] - 2026-07-30") + "\n" + heading + "\n"
+
+    with pytest.raises(CheckError, match="raw HTML level-two headings"):
+        changelog_release_dates(text)
 
 
 @pytest.mark.parametrize(

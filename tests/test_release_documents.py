@@ -771,7 +771,7 @@ def test_release_evidence_rejects_noncanonical_workflow_reference_url(
         assert "/actions/runs/<positive-id>" in message
 
 
-@pytest.mark.parametrize("depth", [9, 64])
+@pytest.mark.parametrize("depth", [9, 64, 128])
 def test_release_evidence_rejects_deeply_encoded_workflow_reference_url(
     releasable_documents: Path,
     depth: int,
@@ -798,37 +798,128 @@ def test_release_evidence_rejects_deeply_encoded_workflow_reference_url(
     assert "non-canonical Actions URL" in message
 
 
-def test_release_evidence_accepts_canonical_raw_html_anchor(
+@pytest.mark.parametrize(
+    "encoded",
+    [
+        "https://github.com/cometapi-dev/cometapi-python/actions/runs/3051586124%36",
+        "https://github.com/cometapi-dev/cometapi-python/actions/runs/3051586124&#54;",
+        "https://github.com/cometapi-dev/cometapi-python/actions/runs/3051586124%EF%BC%96",
+        "https://github.com/cometapi-dev/cometapi-python/act%69ons/runs/30515861246",
+    ],
+)
+def test_release_evidence_rejects_encoded_canonical_identity(
     releasable_documents: Path,
+    encoded: str,
 ) -> None:
     evidence = _release_evidence_block().replace(
-        "- Release workflow https://github.com/cometapi-dev/cometapi-python/actions/runs/"
-        "30515861246",
+        "https://github.com/cometapi-dev/cometapi-python/actions/runs/30515861246",
+        encoded,
+        1,
+    )
+    for name in ("ROADMAP.md", "RELEASING.md"):
+        with (releasable_documents / name).open("a", encoding="utf-8") as stream:
+            stream.write(evidence)
+    _replace(
+        releasable_documents,
+        "CHANGELOG.md",
+        "# Changelog\n",
+        "# Changelog\n\n## [0.1.2] - 2026-07-30\n\nHistory.\n",
+    )
+
+    with pytest.raises(CheckError, match="non-canonical Actions URL"):
+        require_public_preview_docs()
+
+
+@pytest.mark.parametrize(
+    "invalid",
+    [
+        "![hidden](https://github.com/cometapi-dev/cometapi-python/actions/runs/30515861246)",
+        "`https://github.com/cometapi-dev/cometapi-python/actions/runs/30515861246`",
+        "\n```text\nhttps://github.com/cometapi-dev/cometapi-python/actions/runs/30515861246\n```",
+        "    https://github.com/cometapi-dev/cometapi-python/actions/runs/30515861246",
+        '<form action="https://github.com/cometapi-dev/cometapi-python/actions/runs/'
+        '30515861246">hidden</form>',
+        '<a title="https://github.com/cometapi-dev/cometapi-python/actions/runs/'
+        '30515861246">hidden</a>',
+        '[hidden](mailto:evil "https://github.com/cometapi-dev/cometapi-python/actions/'
+        'runs/30515861246")',
+        "[https://github.com/cometapi-dev/cometapi-python/actions/runs/"
+        "30515861246](https://evil.example)",
+        "<!-- https://github.com/cometapi-dev/cometapi-python/actions/runs/30515861246 -->",
+        '<a href="https://github.com/cometapi-dev/cometapi-python/actions/runs/'
+        '30515861246" href="mailto:evil">hidden</a>',
+        '<a href="mailto:evil" href="https://github.com/cometapi-dev/cometapi-python/'
+        'actions/runs/30515861246">hidden</a>',
+        "https://github.com/cometapi-dev/cometapi-python/actions/runs/30515861246.evil",
+        "https://github.com/cometapi-dev/cometapi-python/actions/runs/30515861246?evil",
+        "https://github.com/cometapi-dev/cometapi-python/actions/runs/30515861246#evil",
+        "https://github.com/cometapi-dev/cometapi-python/actions/runs/30515861246/extra",
+        "https://evil.example/?next=((https://github.com/cometapi-dev/cometapi-python/"
+        "actions/runs/30515861246))",
+        "https://evil.example/?next=[[https://github.com/cometapi-dev/cometapi-python/"
+        "actions/runs/30515861246]]",
+        "https://github.com/cometapi-dev/cometapi-python/act\u200bions/runs/99999999999",
+        "https://github.com/cometapi-dev/cometapi-python/act\u200cions/runs/99999999999",
+        "https://github.com/cometapi-dev/cometapi-python/act\u2060ions/runs/99999999999",
+        "https://github.com/cometapi-dev/cometapi-python/act\u202eions/runs/99999999999",
+        "https://github.com/cometapi-dev/cometapi-python/act%0Aions/runs/99999999999",
+        "https://github.com/cometapi-dev/cometapi-python/act&#10;ions/runs/99999999999",
+        "https://github.com/cometapi-dev/cometapi-python/act%00ions/runs/99999999999",
+        "https://github.com/cometapi-dev/cometapi-python/act%250Aions/runs/99999999999",
+        "https://github.com/cometapi-dev/cometapi-python/act&amp;#10;ions/runs/99999999999",
+        "https://github.com/cometapi-dev/cometapi-python/act%26%2310%3Bions/runs/99999999999",
+        "https://github.com/cometapi-dev/cometapi-python/act%25E2%2580%25AEions/runs/99999999999",
+        "https://github.com/cometapi-dev/cometapi-python/act&#0;ions/runs/99999999999",
+        "https://github.com/cometapi-dev/cometapi-python/act%FFions/runs/99999999999",
+        "https://github.com/cometapi-dev/cometapi-python/act%E2%80%A8ions/runs/99999999999",
+        "https://github.com/cometapi-dev/cometapi-python/act&#8233;ions/runs/99999999999",
+        "https://github.com/cometapi-dev/cometapi-python/act%CD%8Fions/runs/99999999999",
+        "https://github.com/cometapi-dev/cometapi-python/act%EF%B8%8Fions/runs/99999999999",
+        '<a href="https://github.com/cometapi-dev/cometapi-python/actions/runs/'
+        '30515861246">https://github.com/cometapi-dev/cometapi-python/actions/runs/'
+        "30515861246</a>",
+    ],
+)
+def test_release_evidence_rejects_invalid_occurrence_beside_valid_link(
+    releasable_documents: Path,
+    invalid: str,
+) -> None:
+    evidence = _release_evidence_block().replace(
+        "- https://pypi.org/project/cometapi/0.1.2/",
+        f"- {invalid}\n- https://pypi.org/project/cometapi/0.1.2/",
+        1,
+    )
+    for name in ("ROADMAP.md", "RELEASING.md"):
+        with (releasable_documents / name).open("a", encoding="utf-8") as stream:
+            stream.write(evidence)
+
+    with pytest.raises(CheckError) as caught:
+        require_public_preview_docs()
+
+    assert "non-canonical Actions URL" in str(caught.value)
+
+
+@pytest.mark.parametrize(
+    "replacement",
+    [
         '- Release workflow <a href="https://github.com/cometapi-dev/cometapi-python/'
         'actions/runs/30515861246">canonical publication run</a>',
-        1,
-    )
-    for name in ("ROADMAP.md", "RELEASING.md"):
-        with (releasable_documents / name).open("a", encoding="utf-8") as stream:
-            stream.write(evidence)
-    _replace(
-        releasable_documents,
-        "CHANGELOG.md",
-        "# Changelog\n",
-        "# Changelog\n\n## [0.1.2] - 2026-07-30\n\nHistory.\n",
-    )
-
-    require_public_preview_docs()
-
-
-def test_release_evidence_accepts_canonical_markdown_link(
+        '- Release workflow <a class="evidence" href="https://github.com/cometapi-dev/'
+        'cometapi-python/actions/runs/30515861246">canonical publication run</a>',
+        '- Release workflow <A HREF="https://github.com/cometapi-dev/cometapi-python/'
+        'actions/runs/30515861246" class="evidence">canonical publication run</A>',
+        "- Release workflow <a data-kind='release'\n  href='https://github.com/"
+        "cometapi-dev/cometapi-python/actions/runs/30515861246'>publication run</a>",
+    ],
+)
+def test_release_evidence_accepts_canonical_raw_html_anchor(
     releasable_documents: Path,
+    replacement: str,
 ) -> None:
     evidence = _release_evidence_block().replace(
         "- Release workflow https://github.com/cometapi-dev/cometapi-python/actions/runs/"
         "30515861246",
-        "- Release workflow [canonical publication run](https://github.com/"
-        "cometapi-dev/cometapi-python/actions/runs/30515861246)",
+        replacement,
         1,
     )
     for name in ("ROADMAP.md", "RELEASING.md"):
@@ -842,6 +933,68 @@ def test_release_evidence_accepts_canonical_markdown_link(
     )
 
     require_public_preview_docs()
+
+
+@pytest.mark.parametrize(
+    "replacement",
+    [
+        "- Release workflow [canonical publication run](https://github.com/"
+        "cometapi-dev/cometapi-python/actions/runs/30515861246)",
+        "- Release workflow <https://github.com/cometapi-dev/cometapi-python/actions/"
+        "runs/30515861246>",
+        "- Release workflow [canonical publication run][publication]\n\n"
+        "[publication]: https://github.com/cometapi-dev/cometapi-python/actions/runs/"
+        '30515861246 "exact run"',
+        "- Release workflow [publication][]\n\n[publication]: https://github.com/"
+        "cometapi-dev/cometapi-python/actions/runs/30515861246",
+        "- Release workflow (https://github.com/cometapi-dev/cometapi-python/actions/"
+        "runs/30515861246); verified",
+        "- Release workflow https://github.com/cometapi-dev/cometapi-python/actions/"
+        "runs/30515861246/attempts/1.",
+    ],
+)
+def test_release_evidence_accepts_canonical_markdown_link(
+    releasable_documents: Path,
+    replacement: str,
+) -> None:
+    evidence = _release_evidence_block().replace(
+        "- Release workflow https://github.com/cometapi-dev/cometapi-python/actions/runs/"
+        "30515861246",
+        replacement,
+        1,
+    )
+    for name in ("ROADMAP.md", "RELEASING.md"):
+        with (releasable_documents / name).open("a", encoding="utf-8") as stream:
+            stream.write(evidence)
+    _replace(
+        releasable_documents,
+        "CHANGELOG.md",
+        "# Changelog\n",
+        "# Changelog\n\n## [0.1.2] - 2026-07-30\n\nHistory.\n",
+    )
+
+    require_public_preview_docs()
+
+
+def test_release_evidence_rejects_reused_reference_destination(
+    releasable_documents: Path,
+) -> None:
+    replacement = (
+        "- Release workflow [publication][run] and [provenance][run].\n\n"
+        "[run]: https://github.com/cometapi-dev/cometapi-python/actions/runs/30515861246"
+    )
+    evidence = _release_evidence_block().replace(
+        "- Release workflow https://github.com/cometapi-dev/cometapi-python/actions/runs/"
+        "30515861246",
+        replacement,
+        1,
+    )
+    for name in ("ROADMAP.md", "RELEASING.md"):
+        with (releasable_documents / name).open("a", encoding="utf-8") as stream:
+            stream.write(evidence)
+
+    with pytest.raises(CheckError, match="non-canonical Actions URL"):
+        require_public_preview_docs()
 
 
 def test_fenced_release_evidence_is_not_accepted_as_history(
@@ -1405,6 +1558,32 @@ def test_wheel_rejects_mutable_claim_in_long_description(tmp_path: Path) -> None
     assert "long description does not exactly match source README.md" in message
 
 
+def test_wheel_rejects_duplicate_normalized_member_path(tmp_path: Path) -> None:
+    current_version = read_project_version()
+    built = tmp_path / "built-wheel"
+    subprocess.run(
+        ["uv", "build", "--wheel", "--out-dir", str(built)],
+        cwd=PROJECT_ROOT,
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+    source = built / f"cometapi-{current_version}-py3-none-any.whl"
+    mutated = tmp_path / source.name
+    with zipfile.ZipFile(source) as archive, zipfile.ZipFile(mutated, mode="w") as output:
+        for info in archive.infolist():
+            output.writestr(info, archive.read(info.filename))
+        with pytest.warns(UserWarning, match="Duplicate name"):
+            output.writestr("cometapi/client.py", archive.read("cometapi/client.py"))
+
+    with pytest.raises(CheckError, match="duplicate normalized wheel member path"):
+        check_wheel(
+            mutated,
+            current_version,
+            (PROJECT_ROOT / "README.md").read_text(encoding="utf-8"),
+        )
+
+
 def test_sdist_rejects_mutable_claim_in_persistent_document(tmp_path: Path) -> None:
     current_version = read_project_version()
     built = tmp_path / "built"
@@ -1426,7 +1605,7 @@ def test_sdist_rejects_mutable_claim_in_persistent_document(tmp_path: Path) -> N
             and not (member.issym() or member.islnk() or member.isdev())
             for member in members
         )
-        archive.extractall(extracted)
+        archive.extractall(extracted, filter="data")
     root = extracted / f"cometapi-{current_version}"
     with (root / "AGENTS.md").open("a", encoding="utf-8") as stream:
         stream.write("\nThe current PyPI release is `0.1.2`.\n")
@@ -1445,6 +1624,35 @@ def test_sdist_rejects_mutable_claim_in_persistent_document(tmp_path: Path) -> N
     assert "AGENTS.md:" in message
     assert "exact CometAPI patch/recovery version outside immutable release evidence" in message
     assert EXACT_RELEASE_VERSION_FIX in message
+
+
+def test_sdist_rejects_duplicate_normalized_member_path(tmp_path: Path) -> None:
+    current_version = read_project_version()
+    built = tmp_path / "built"
+    subprocess.run(
+        ["uv", "build", "--sdist", "--out-dir", str(built)],
+        cwd=PROJECT_ROOT,
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+    source = built / f"cometapi-{current_version}.tar.gz"
+    extracted = tmp_path / "extracted"
+    extracted.mkdir()
+    with tarfile.open(source, mode="r:gz") as archive:
+        archive.extractall(extracted, filter="data")
+    root = extracted / f"cometapi-{current_version}"
+    mutated = tmp_path / f"cometapi-{current_version}.tar.gz"
+    with tarfile.open(mutated, mode="w:gz") as archive:
+        archive.add(root, arcname=root.name)
+        archive.add(root / "README.md", arcname=f"{root.name}/README.md")
+
+    with pytest.raises(CheckError, match="duplicate normalized sdist member path"):
+        check_sdist(
+            mutated,
+            current_version,
+            (PROJECT_ROOT / "README.md").read_text(encoding="utf-8"),
+        )
 
 
 def _mutated_sdist_document(
@@ -1476,6 +1684,48 @@ def _mutated_sdist_document(
     with tarfile.open(mutated, mode="w:gz") as archive:
         archive.add(root, arcname=root.name)
     return mutated, current_version
+
+
+@pytest.mark.parametrize(
+    ("document", "old", "new"),
+    [
+        ("SUPPORT.md", CANONICAL_SUPPORT, "support@example.invalid"),
+        (
+            "README.md",
+            "https://github.com/cometapi-dev/cometapi-python/issues",
+            "https://github.com/cometapi-dev/cometapi-python/../elsewhere",
+        ),
+        (
+            "scripts/_checks.py",
+            'CANONICAL_ACTIVE_MODEL = "gpt-5.6-sol"',
+            'CANONICAL_ACTIVE_MODEL = "gpt-5.6-terra"',
+        ),
+        (
+            "src/cometapi/client.py",
+            "class CometAPI(OpenAI):",
+            "class CometAPI(OpenAI):  # mutated artifact payload",
+        ),
+    ],
+    ids=["contact", "standalone-link", "checker", "runtime-source"],
+)
+def test_sdist_requires_source_tree_byte_parity(
+    tmp_path: Path,
+    document: str,
+    old: str,
+    new: str,
+) -> None:
+    mutated, current_version = _mutated_sdist_document(tmp_path, document, old, new)
+
+    with pytest.raises(CheckError) as caught:
+        check_sdist(
+            mutated,
+            current_version,
+            (PROJECT_ROOT / "README.md").read_text(encoding="utf-8"),
+        )
+
+    message = str(caught.value)
+    assert f"{document}: source-distribution member differs from source tree" in message
+    assert "source-distribution source parity, document, and release-evidence violations" in message
 
 
 def test_sdist_rejects_cross_document_release_evidence_mismatch(tmp_path: Path) -> None:
@@ -1510,7 +1760,7 @@ def test_sdist_rejects_cross_document_release_evidence_mismatch(tmp_path: Path) 
         )
 
     message = str(caught.value)
-    assert "source-distribution document and release-evidence violations" in message
+    assert "source-distribution source parity, document, and release-evidence violations" in message
     assert "ROADMAP.md/RELEASING.md" in message
     assert "must match exactly across both historical records" in message
 
@@ -1531,7 +1781,7 @@ def test_sdist_rejects_release_evidence_date_mismatch_with_changelog(tmp_path: P
         )
 
     message = str(caught.value)
-    assert "source-distribution document and release-evidence violations" in message
+    assert "source-distribution source parity, document, and release-evidence violations" in message
     assert "release-evidence identity date for 0.1.3 is 2026-07-30" in message
     assert "CHANGELOG.md records 2026-07-31" in message
 

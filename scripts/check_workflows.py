@@ -1360,6 +1360,7 @@ def check_publish_workflow(text: str, live_smoke_text: str) -> None:
             "Check package metadata rendering",
             "Inspect artifact identity and shape",
             "Install and smoke-test each exact artifact",
+            "Verify the immutable release as a copied standalone repository",
             "Record immutable artifact digests",
             "Retain only the verified release bundle",
         ],
@@ -1437,10 +1438,24 @@ def check_publish_workflow(text: str, live_smoke_text: str) -> None:
         "Install and smoke-test each exact artifact": (
             "uv run python scripts/check_clean_install.py dist/*"
         ),
+        "Verify the immutable release as a copied standalone repository": (
+            "python scripts/check_repository_independence.py"
+        ),
         "Record immutable artifact digests": "sha256sum dist/* > artifact-sha256.txt",
     }
-    for name, command in build_commands.items():
-        _named_run_step(build, name, command, "release build job")
+    build_command_indices = {
+        name: _named_run_step(build, name, command, "release build job")[0]
+        for name, command in build_commands.items()
+    }
+    if not (
+        build_command_indices["Install and smoke-test each exact artifact"]
+        < build_command_indices["Verify the immutable release as a copied standalone repository"]
+        < build_command_indices["Record immutable artifact digests"]
+    ):
+        raise CheckError(
+            "release build must verify the copied standalone repository after exact-artifact "
+            "clean install and before recording immutable digests"
+        )
     _, version_step = _named_run_step(
         build,
         "Verify project, manifest, changelog, release docs, and tag agreement",

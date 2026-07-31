@@ -9,7 +9,6 @@ import re
 import unicodedata
 from dataclasses import dataclass
 from datetime import date
-from html.parser import HTMLParser
 from itertools import pairwise
 from pathlib import Path
 from typing import cast
@@ -199,66 +198,6 @@ def _visible_inline_text(tokens: list[Token]) -> str:
     return "".join(visible)
 
 
-class _RawH2Collector(HTMLParser):
-    def __init__(self) -> None:
-        super().__init__(convert_charrefs=True)
-        self.headings: list[tuple[int, str]] = []
-        self._line: int | None = None
-        self._parts: list[str] = []
-
-    def handle_starttag(
-        self,
-        tag: str,
-        attrs: list[tuple[str, str | None]],
-    ) -> None:
-        del attrs
-        if tag.casefold() == "h2" and self._line is not None:
-            self._close_heading()
-        if tag.casefold() == "h2":
-            self._line = self.getpos()[0]
-            self._parts = []
-        elif tag.casefold() == "br" and self._line is not None:
-            self._parts.append(" ")
-
-    def handle_startendtag(
-        self,
-        tag: str,
-        attrs: list[tuple[str, str | None]],
-    ) -> None:
-        self.handle_starttag(tag, attrs)
-
-    def handle_endtag(self, tag: str) -> None:
-        if tag.casefold() == "h2" and self._line is not None:
-            self._close_heading()
-
-    def handle_data(self, data: str) -> None:
-        if self._line is not None:
-            self._parts.append(data)
-
-    @property
-    def collecting(self) -> bool:
-        return self._line is not None
-
-    def handle_entityref(self, name: str) -> None:
-        if self._line is not None:
-            self._parts.append(html.unescape(f"&{name};"))
-
-    def handle_charref(self, name: str) -> None:
-        if self._line is not None:
-            self._parts.append(html.unescape(f"&#{name};"))
-
-    def close(self) -> None:
-        super().close()
-        if self._line is not None:
-            self._close_heading()
-
-    def _close_heading(self) -> None:
-        assert self._line is not None
-        self.headings.append((self._line, "".join(self._parts)))
-        self._line = None
-        self._parts = []
-
-
 def _visible_heading_is_unreleased(label: str) -> bool:
     label = html.unescape(unicodedata.normalize("NFKC", label))
     if any(
@@ -290,26 +229,26 @@ def _unreleased_heading_lines(text: str) -> list[int]:
                 and _visible_heading_is_unreleased(_visible_inline_text(inline.children or []))
             ):
                 lines.add(token.map[0] + 1)
-        elif token.type == "inline" and token.map is not None:
-            collector = _RawH2Collector()
-            for child in token.children or []:
-                if child.type == "html_inline":
-                    collector.feed(child.content)
-                elif collector.collecting and child.type in {"text", "code_inline"}:
-                    collector.handle_data(child.content)
-                elif collector.collecting and child.type in {"softbreak", "hardbreak"}:
-                    collector.handle_data(" ")
-            collector.close()
-            for relative_line, label in collector.headings:
-                if _visible_heading_is_unreleased(label):
-                    lines.add(token.map[0] + relative_line)
-        elif token.type == "html_block" and token.map is not None:
-            collector = _RawH2Collector()
-            collector.feed(token.content)
-            collector.close()
-            for relative_line, label in collector.headings:
-                if _visible_heading_is_unreleased(label):
-                    lines.add(token.map[0] + relative_line)
+    return sorted(lines)
+
+
+def _raw_h2_heading_lines(text: str) -> list[int]:
+    """Reject raw HTML H2s instead of emulating browser error recovery."""
+    tokens = MarkdownIt("commonmark", {"html": True}).parse(text)
+    lines: set[int] = set()
+    for token in tokens:
+        if token.map is None:
+            continue
+        candidates = (
+            [token]
+            if token.type == "html_block"
+            else [child for child in token.children or [] if child.type == "html_inline"]
+        )
+        for candidate in candidates:
+            visible_html = re.sub(r"<!--.*?-->", "", candidate.content, flags=re.DOTALL)
+            for match in re.finditer(r"(?i)<[ \t\r\n]*h2(?=[ \t\r\n>/])", visible_html):
+                relative_line = visible_html.count("\n", 0, match.start())
+                lines.add(token.map[0] + relative_line + 1)
     return sorted(lines)
 
 
@@ -336,6 +275,7 @@ def _changelog_mutable_region_violations(
 
 def _parse_changelog_releases(text: str) -> list[_ChangelogRelease]:
     unreleased_lines = set(_unreleased_heading_lines(text))
+    raw_h2_lines = set(_raw_h2_heading_lines(text))
     text = _mask_nonprose_changelog_regions(text)
     releases: list[_ChangelogRelease] = []
     violations: list[str] = []
@@ -378,6 +318,13 @@ def _parse_changelog_releases(text: str) -> list[_ChangelogRelease]:
                 f"CHANGELOG.md:{line_number}: unmanaged Unreleased heading is forbidden; "
                 "remove it, record changes in Conventional Commits, and let Release Please "
                 "insert the newest canonical dated release section after the changelog preamble"
+            )
+        if line_number in raw_h2_lines:
+            violations.append(
+                f"CHANGELOG.md:{line_number}: unmanaged Unreleased heading is forbidden; "
+                "raw HTML level-two headings are also forbidden because their rendered text "
+                "is parser-dependent; remove it, use canonical Markdown dated release "
+                "headings, and let Release Please own the newest section"
             )
         offset += len(raw_line)
 

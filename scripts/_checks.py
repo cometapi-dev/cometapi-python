@@ -19,11 +19,6 @@ from pathlib import Path
 from typing import cast
 from urllib.parse import quote, unquote
 
-if sys.version_info >= (3, 11):
-    import tomllib
-else:
-    import tomli as tomllib
-
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 DIST_NAME = "cometapi"
 CANONICAL_ACTIVE_MODEL = "gpt-5.6-sol"
@@ -144,10 +139,8 @@ _CANONICAL_ACTIONS_DESTINATION = re.compile(
     rf"{re.escape(_ACTIONS_PREFIX)}(?P<run>[1-9]\d*)"
     r"(?:/attempts/(?P<attempt>[1-9]\d*))?"
 )
-_RAW_ACTIONS_DESTINATION = re.compile(
-    rf"(?<![^\s(])(?P<url>{re.escape(_ACTIONS_PREFIX)}[1-9]\d*"
-    r"(?:/attempts/[1-9]\d*)?)"
-    r"(?=$|[\s.,;:!?])"
+_BARE_ACTIONS_DESTINATION = re.compile(
+    rf"(?P<url>{re.escape(_ACTIONS_PREFIX)}[1-9]\d*(?:/attempts/[1-9]\d*)?)"
 )
 _WHEEL_DIGEST = re.compile(
     r"\bwheel\s+sha256\b[^0-9a-f]{0,96}(?P<digest>[0-9a-f]{64})(?![0-9a-f])",
@@ -192,21 +185,67 @@ class CheckError(RuntimeError):
 
 
 class _ActionsAnchorParser(HTMLParser):
-    """Collect exact Actions destinations from rendered HTML anchors."""
+    """Collect canonical destinations from unambiguous raw-HTML anchors."""
 
     def __init__(self) -> None:
         super().__init__(convert_charrefs=True)
         self.destinations: Counter[tuple[str, str | None]] = Counter()
+        self.anchor_depth = 0
 
-    def handle_starttag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
-        if tag.casefold() != "a":
-            return
-        for name, value in attrs:
-            if name.casefold() != "href" or value is None:
-                continue
-            destination = _CANONICAL_ACTIONS_DESTINATION.fullmatch(value)
+    def _handle_anchor(
+        self,
+        attrs: list[tuple[str, str | None]],
+        *,
+        self_closing: bool,
+    ) -> None:
+        hrefs = [value for name, value in attrs if name.casefold() == "href"]
+        if len(hrefs) == 1 and hrefs[0] is not None:
+            destination = _CANONICAL_ACTIONS_DESTINATION.fullmatch(hrefs[0])
             if destination is not None:
                 self.destinations[(destination.group("run"), destination.group("attempt"))] += 1
+        del self_closing
+
+    def handle_starttag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
+        if tag.casefold() == "a":
+            self._handle_anchor(attrs, self_closing=False)
+            self.anchor_depth += 1
+
+    def handle_endtag(self, tag: str) -> None:
+        if tag.casefold() == "a":
+            self.anchor_depth = max(0, self.anchor_depth - 1)
+
+    def handle_startendtag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
+        if tag.casefold() == "a":
+            self._handle_anchor(attrs, self_closing=True)
+
+
+def _bare_actions_destinations(text: str) -> Counter[tuple[str, str | None]]:
+    """Collect canonical visible URLs with unambiguous prose boundaries."""
+    destinations: Counter[tuple[str, str | None]] = Counter()
+    for match in _BARE_ACTIONS_DESTINATION.finditer(text):
+        line_prefix = text[text.rfind("\n", 0, match.start()) + 1 : match.start()]
+        prefix_token = line_prefix.rsplit(maxsplit=1)[-1] if line_prefix.split() else ""
+        if re.search(r"(?i)(?:[a-z][a-z0-9+.-]*:|[?#=&])", prefix_token):
+            continue
+        before = text[match.start() - 1] if match.start() else ""
+        after = text[match.end() :]
+        if before and not (before.isspace() or before in "([{<"):
+            continue
+        if before in "([{<" and match.start() > 1:
+            before_opener = text[match.start() - 2]
+            if not (before_opener.isspace() or before_opener in "([{<"):
+                continue
+        if after:
+            if after[0].isspace() or after[0] in ")]}>\"'":
+                pass
+            elif after[0] in ".,;:!?" and (len(after) == 1 or after[1].isspace()):
+                pass
+            else:
+                continue
+        destination = _CANONICAL_ACTIONS_DESTINATION.fullmatch(match.group("url"))
+        assert destination is not None
+        destinations[(destination.group("run"), destination.group("attempt"))] += 1
+    return destinations
 
 
 @dataclass(frozen=True)
@@ -225,6 +264,13 @@ class ReleaseEvidenceIdentity:
 def read_project_metadata(root: Path = PROJECT_ROOT) -> dict[str, object]:
     """Return the parsed PEP 621 project table."""
     path = root / "pyproject.toml"
+    try:
+        if sys.version_info >= (3, 11):
+            import tomllib
+        else:
+            import tomli as tomllib
+    except ImportError as exc:
+        raise CheckError("TOML parsing requires tomli on Python 3.10") from exc
     try:
         document = cast(dict[str, object], tomllib.loads(path.read_text(encoding="utf-8")))
     except (OSError, UnicodeError, tomllib.TOMLDecodeError) as exc:
@@ -573,11 +619,6 @@ def _identity_violations(
             re.IGNORECASE,
         ),
         "exact release commit": re.compile(re.escape(identity.commit), re.IGNORECASE),
-        "exact release workflow URL": re.compile(
-            rf"(?<![^\s<(\"']){re.escape(_ACTIONS_PREFIX)}{identity.workflow_run}"
-            r"(?:/attempts/[1-9]\d*)?"
-            r"(?=$|[\s<>\"')\]}]|[.,;:!?](?=$|\s))"
-        ),
         "exact wheel SHA256": re.compile(
             rf"\bwheel\s+sha256\b[^0-9a-f]{{0,96}}{identity.wheel_sha256}(?![0-9a-f])",
             re.IGNORECASE | re.DOTALL,
@@ -594,6 +635,22 @@ def _identity_violations(
             findings.append(
                 (line, f"release-evidence block for {version} is missing {label} from its identity")
             )
+
+    actions_findings, canonical_workflow_count = _canonical_actions_run_violations(
+        body,
+        version,
+        identity.workflow_run,
+        line,
+    )
+    findings.extend(actions_findings)
+    if canonical_workflow_count == 0:
+        findings.append(
+            (
+                line,
+                f"release-evidence block for {version} is missing exact release workflow URL "
+                "from its identity",
+            )
+        )
 
     release_commit_values: set[str] = set()
     for commit in _FULL_COMMIT.finditer(prose):
@@ -701,16 +758,41 @@ def _canonical_actions_run_violations(
     version: str,
     expected_run: str,
     line: int,
-) -> list[tuple[int, str]]:
+) -> tuple[list[tuple[int, str]], int]:
     """Require every Actions URL in immutable evidence to name one canonical run."""
     findings: list[tuple[int, str]] = []
+    structural_control_counts = Counter(character for character in body if character in "\n\r\t")
+    encoded_control = re.compile(r"(?i)(?:%0[0-9a-f]|&#(?:x0*[0-9a-f]|0*(?:9|10|11|12|13));?)")
+
+    def has_obfuscated_control(value: str) -> bool:
+        controls = Counter(character for character in value if character in "\n\r\t")
+        if encoded_control.search(value) is not None or any(
+            controls[character] > structural_control_counts[character] for character in "\n\r\t"
+        ):
+            return True
+        return any(
+            character == "\ufffd"
+            or unicodedata.category(character) in {"Zl", "Zp"}
+            or (unicodedata.category(character) == "Mn" and unicodedata.combining(character) == 0)
+            or (
+                unicodedata.category(character) in {"Cc", "Cf"}
+                and character not in {"\n", "\r", "\t"}
+            )
+            or unicodedata.bidirectional(character)
+            in {"LRE", "RLE", "LRO", "RLO", "PDF", "LRI", "RLI", "FSI", "PDI"}
+            for character in value
+        )
+
     direct = unicodedata.normalize("NFKC", body)
     variants = [direct]
+    control_obfuscation = has_obfuscated_control(direct)
     converged = False
     for _ in range(len(direct) + 1):
         previous = variants[-1]
-        decoded = html.unescape(previous)
-        decoded = unquote(decoded)
+        decoded = unicodedata.normalize("NFKC", html.unescape(previous))
+        control_obfuscation = control_obfuscation or has_obfuscated_control(decoded)
+        decoded = unicodedata.normalize("NFKC", unquote(decoded))
+        control_obfuscation = control_obfuscation or has_obfuscated_control(decoded)
         decoded = re.sub(r"\\([/\\.:?&=%#])", r"\1", decoded)
         decoded = decoded.replace("\t", "")
         decoded = re.sub(
@@ -723,54 +805,67 @@ def _canonical_actions_run_violations(
             break
         variants.append(decoded)
 
-    variant_paths = [
-        Counter(
-            (match.group("run"), match.group("attempt") or None)
-            for match in _ACTIONS_PATH.finditer(variant)
-        )
-        for variant in variants
-    ]
     normalized = variants[-1]
-    rendered_destinations: Counter[tuple[str, str | None]] = Counter()
-    # Keep module import dependency-free for the copied-checkout pre-sync bootstrap.
-    from markdown_it import MarkdownIt
+    normalized_paths = list(_ACTIONS_PATH.finditer(normalized))
+    try:
+        from markdown_it import MarkdownIt
+    except ImportError as exc:
+        raise CheckError("release-evidence Markdown validation requires markdown-it-py") from exc
 
-    parser = MarkdownIt("commonmark", {"html": True})
-    for token in parser.parse(normalized):
-        for child in token.children or []:
-            if child.type == "html_inline":
+    bindings: list[int] = []
+    used_sentinels = {path.group("run") for path in normalized_paths}
+    for index, path in enumerate(normalized_paths):
+        run_start, run_end = path.span("run")
+        width = run_end - run_start
+        sentinel_value = 10 ** (width - 1) + index
+        sentinel = str(sentinel_value)
+        while len(sentinel) == width and sentinel in used_sentinels:
+            sentinel_value += 1
+            sentinel = str(sentinel_value)
+        if len(sentinel) != width:
+            raise CheckError("too many Actions URL occurrences to bind unambiguously")
+        used_sentinels.add(sentinel)
+        mutated = normalized[:run_start] + sentinel + normalized[run_end:]
+        identity = (sentinel, path.group("attempt") or None)
+        destinations: Counter[tuple[str, str | None]] = Counter()
+        parser = MarkdownIt("commonmark", {"html": True})
+        for token in parser.parse(mutated):
+            if token.type == "inline":
+                link_depth = 0
                 html_parser = _ActionsAnchorParser()
-                html_parser.feed(child.content)
-                rendered_destinations.update(html_parser.destinations)
-                continue
-            if child.type != "link_open":
-                continue
-            target = child.attrGet("href")
-            if not isinstance(target, str):
-                continue
-            destination = _CANONICAL_ACTIONS_DESTINATION.fullmatch(target)
-            if destination is not None:
-                rendered_destinations[(destination.group("run"), destination.group("attempt"))] += 1
+                for child in token.children or []:
+                    if child.type == "link_open":
+                        link_depth += 1
+                        target = child.attrGet("href")
+                        if isinstance(target, str):
+                            destination = _CANONICAL_ACTIONS_DESTINATION.fullmatch(target)
+                            if destination is not None:
+                                destinations[
+                                    (destination.group("run"), destination.group("attempt"))
+                                ] += 1
+                    elif child.type == "link_close":
+                        link_depth = max(0, link_depth - 1)
+                    elif child.type == "html_inline":
+                        html_parser.feed(child.content)
+                    elif child.type == "text" and link_depth == 0 and html_parser.anchor_depth == 0:
+                        destinations.update(_bare_actions_destinations(child.content))
+                html_parser.close()
+                destinations.update(html_parser.destinations)
+            elif token.type == "html_block":
+                html_parser = _ActionsAnchorParser()
+                html_parser.feed(token.content)
+                html_parser.close()
+                destinations.update(html_parser.destinations)
+        bindings.append(destinations[identity])
 
-        if token.type == "html_block":
-            html_parser = _ActionsAnchorParser()
-            html_parser.feed(token.content)
-            rendered_destinations.update(html_parser.destinations)
-
-    for raw in _RAW_ACTIONS_DESTINATION.finditer(normalized):
-        destination = _CANONICAL_ACTIONS_DESTINATION.fullmatch(raw.group("url"))
-        if destination is not None:
-            rendered_destinations[(destination.group("run"), destination.group("attempt"))] += 1
-
-    malformed = not converged or variant_paths[-1] != rendered_destinations
+    malformed = control_obfuscation or not converged or any(count != 1 for count in bindings)
+    normalized_identities = [
+        (match.group("run"), match.group("attempt")) for match in normalized_paths
+    ]
     malformed = malformed or any(
-        count > variant_paths[0][identity]
-        for paths in variant_paths[1:]
-        for identity, count in paths.items()
-    )
-    malformed = malformed or any(
-        match.end() < len(normalized) and normalized[match.end()] not in " \t\r\n.,;:!?)]}>\"'"
-        for match in _ACTIONS_PATH.finditer(normalized)
+        [(match.group("run"), match.group("attempt")) for match in _ACTIONS_PATH.finditer(variant)]
+        != normalized_identities
+        for variant in variants[:-1]
     )
 
     if malformed:
@@ -783,7 +878,7 @@ def _canonical_actions_run_violations(
                 "/attempts/<positive-id> suffix",
             )
         )
-    run_values = {run for paths in variant_paths for run, _attempt in paths}
+    run_values = {match.group("run") for match in normalized_paths}
     if run_values - {expected_run}:
         findings.append(
             (
@@ -793,7 +888,11 @@ def _canonical_actions_run_violations(
                 "outside the immutable evidence block",
             )
         )
-    return findings
+    canonical_workflow_count = sum(
+        count == 1 and path.group("run") == expected_run
+        for path, count in zip(normalized_paths, bindings, strict=True)
+    )
+    return findings, canonical_workflow_count
 
 
 def _evidence_block_violations(
@@ -891,14 +990,6 @@ def _evidence_block_violations(
         )
         findings.extend(identity_findings)
         if identity is not None:
-            findings.extend(
-                _canonical_actions_run_violations(
-                    body,
-                    version,
-                    identity.workflow_run,
-                    start_line,
-                )
-            )
             if version in identities:
                 findings.append((start_line, f"duplicate release-evidence block for {version}"))
             else:
