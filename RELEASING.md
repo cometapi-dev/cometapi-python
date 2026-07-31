@@ -692,3 +692,70 @@ authorized.
   workflow dispatch, or release-workflow rerun was used for `0.1.3`.
 
 <!-- cometapi-release-evidence:end version=0.1.3 date=2026-07-30 -->
+
+### Completed release-document normalization maintenance evidence
+
+- Release-gate [PR #37](https://github.com/cometapi-dev/cometapi-python/pull/37)
+  replaced stale natural-language heuristics with deterministic document and
+  workflow contracts, moved all active examples and live checks to
+  `gpt-5.6-sol`, passed
+  [CI run 30614739509](https://github.com/cometapi-dev/cometapi-python/actions/runs/30614739509),
+  and squash-merged as `c5eb2f96bd8a5c33c84d6ac00303e376cfac2221`.
+  Release-boundary [PR #39](https://github.com/cometapi-dev/cometapi-python/pull/39)
+  made Release Please's linked dated heading canonical, passed
+  [CI run 30623035616](https://github.com/cometapi-dev/cometapi-python/actions/runs/30623035616),
+  and squash-merged as `f28a84911015097872680ec09860ff71015bd7b4`.
+  Normalization [PR #40](https://github.com/cometapi-dev/cometapi-python/pull/40)
+  composed raw, normalized, decoded, and rendered evidence-URL validation,
+  required source-distribution byte parity, and fixed immutable-build
+  standalone verification before digest retention. Its exact head
+  `2ee1f65c5ae40dc2d76564d6d4dac3247b09346b` passed
+  [all required CI in run 30635373505](https://github.com/cometapi-dev/cometapi-python/actions/runs/30635373505)
+  and independent adversarial review before squash-merging as
+  `cd4e15157e2704c514483c44497837beab872f32`.
+- The resulting first-attempt Release Please maintenance run created
+  [release PR #38](https://github.com/cometapi-dev/cometapi-python/pull/38).
+  Its exact patch-release head `c4ed250f511a010c8fd2e8af132e12b652522ab4`
+  changed only the manifest, project version, lock, and canonical dated
+  changelog, passed
+  [all required CI in run 30636496696](https://github.com/cometapi-dev/cometapi-python/actions/runs/30636496696),
+  received exact-head human owner approval, and squash-merged as release commit
+  `2a8c857292595471265d99891f5cc0c0ed743fc9`. The release commit passed
+  [default-branch CI run 30637109945](https://github.com/cometapi-dev/cometapi-python/actions/runs/30637109945).
+
+<!-- cometapi-release-evidence:start version=0.1.4 date=2026-07-31 -->
+<!-- cometapi-release-identity tag=v0.1.4 commit=2a8c857292595471265d99891f5cc0c0ed743fc9 workflow-run=30637109712 wheel-sha256=fc5992fed080b19e0d656b2f4a4bf5eef7f82b3726ba415f84853b228d4c484c sdist-sha256=b2b4adbc5da852fe9fdedbe17fa3f29aa536ebb31aefe9d2a7047e783d528df2 -->
+
+- First-attempt
+  [release run 30637109712](https://github.com/cometapi-dev/cometapi-python/actions/runs/30637109712)
+  created and independently verified immutable non-draft release
+  [v0.1.4](https://github.com/cometapi-dev/cometapi-python/releases/tag/v0.1.4)
+  and its lightweight tag at release commit
+  `2a8c857292595471265d99891f5cc0c0ed743fc9`, rebuilt and
+  clean-installed both artifacts, verified the copied standalone checkout,
+  passed the bounded four-request exact-release live suite with
+  `gpt-5.6-sol`, received protected `pypi` approval, published directly from
+  top-level `publish.yml` by OIDC with attestations, and passed public registry
+  verification.
+- The exact [PyPI release](https://pypi.org/project/cometapi/0.1.4/) has wheel
+  SHA256 `fc5992fed080b19e0d656b2f4a4bf5eef7f82b3726ba415f84853b228d4c484c`
+  and source-distribution SHA256
+  `b2b4adbc5da852fe9fdedbe17fa3f29aa536ebb31aefe9d2a7047e783d528df2`.
+  Both files match the retained pre-publication digest record. PyPI Integrity
+  API provenance identifies repository `cometapi-dev/cometapi-python`, workflow
+  `publish.yml`, environment `pypi`, release commit `2a8c8572`, and release run
+  attempt 1.
+- Independent post-workflow verification downloaded both public files,
+  verified both provenance records with `pypi-attestations==0.0.29`, and
+  installed `cometapi==0.1.4` from `https://pypi.org/simple/` with the
+  then-current OpenAI 2.x dependency. It verified the public version, exact
+  exports, and isolated installed
+  module; passed the canonical supported-operation mocked-call smoke and all
+  four README examples; and passed the release source distribution's full
+  ten-case sync/async, stream/non-stream supported-operation contract suite
+  against that public installation.
+- `RELEASE_PLEASE_ENABLED=false` and `LIVE_SMOKE_ENABLED=false`.
+  `RELEASE_RECOVERY_TAG` and `RELEASE_RECOVERY_SHA` are absent; no recovery tag,
+  workflow dispatch, or release-workflow rerun was used for `0.1.4`.
+
+<!-- cometapi-release-evidence:end version=0.1.4 date=2026-07-31 -->
