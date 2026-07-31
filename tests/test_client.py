@@ -380,11 +380,11 @@ def test_sync_timeout_headers_query_and_http_client_are_forwarded(
     ) as client:
         if operation == "chat":
             client.chat.completions.create(
-                model="gpt-5.4",
+                model="gpt-5.6-sol",
                 messages=[{"role": "user", "content": "ping"}],
             )
         elif operation == "responses":
-            client.responses.create(model="gpt-5.4", input="ping")
+            client.responses.create(model="gpt-5.6-sol", input="ping")
         else:
             client.models.list()
         assert client.timeout == 3.25
@@ -426,11 +426,11 @@ async def test_async_timeout_headers_query_and_http_client_are_forwarded(
     ) as client:
         if operation == "chat":
             await client.chat.completions.create(
-                model="gpt-5.4",
+                model="gpt-5.6-sol",
                 messages=[{"role": "user", "content": "ping"}],
             )
         elif operation == "responses":
-            await client.responses.create(model="gpt-5.4", input="ping")
+            await client.responses.create(model="gpt-5.6-sol", input="ping")
         else:
             await client.models.list()
         assert client.timeout == 4.5
@@ -481,16 +481,16 @@ def test_sync_retry_option_is_preserved(
     ) as client:
         if operation == "chat":
             result = client.chat.completions.create(
-                model="gpt-5.4",
+                model="gpt-5.6-sol",
                 messages=[{"role": "user", "content": "ping"}],
             )
             assert result.id == "chatcmpl-contract"
         elif operation == "responses":
-            result = client.responses.create(model="gpt-5.4", input="ping")
+            result = client.responses.create(model="gpt-5.6-sol", input="ping")
             assert result.id == "resp-contract"
         else:
             result = client.models.list()
-            assert result.data[0].id == "gpt-5.4"
+            assert result.data[0].id == "gpt-5.6-sol"
 
     assert router.calls == 2
 
@@ -511,16 +511,16 @@ async def test_async_retry_option_is_preserved(
     ) as client:
         if operation == "chat":
             result = await client.chat.completions.create(
-                model="gpt-5.4",
+                model="gpt-5.6-sol",
                 messages=[{"role": "user", "content": "ping"}],
             )
             assert result.id == "chatcmpl-contract"
         elif operation == "responses":
-            result = await client.responses.create(model="gpt-5.4", input="ping")
+            result = await client.responses.create(model="gpt-5.6-sol", input="ping")
             assert result.id == "resp-contract"
         else:
             result = await client.models.list()
-            assert result.data[0].id == "gpt-5.4"
+            assert result.data[0].id == "gpt-5.6-sol"
 
     assert router.calls == 2
 
@@ -558,11 +558,11 @@ def test_sync_official_error_identity_and_key_non_leakage(
         with pytest.raises(AuthenticationError) as caught:
             if operation == "chat":
                 client.chat.completions.create(
-                    model="gpt-5.4",
+                    model="gpt-5.6-sol",
                     messages=[{"role": "user", "content": "ping"}],
                 )
             elif operation == "responses":
-                client.responses.create(model="gpt-5.4", input="ping")
+                client.responses.create(model="gpt-5.6-sol", input="ping")
             else:
                 client.models.list()
 
@@ -596,11 +596,11 @@ async def test_async_official_error_identity_and_key_non_leakage(
         with pytest.raises(AuthenticationError) as caught:
             if operation == "chat":
                 await client.chat.completions.create(
-                    model="gpt-5.4",
+                    model="gpt-5.6-sol",
                     messages=[{"role": "user", "content": "ping"}],
                 )
             elif operation == "responses":
-                await client.responses.create(model="gpt-5.4", input="ping")
+                await client.responses.create(model="gpt-5.6-sol", input="ping")
             else:
                 await client.models.list()
 

@@ -64,44 +64,8 @@ Registry Alpha, and the first stable release are completed historical steps and
 must not be repeated. The canonical repository is public with protected branch
 and version-tag rules, Private Vulnerability Reporting, immutable releases,
 protected environments, public default-branch CI, and protected release and
-registry evidence.
-
-The accepted `0.1.1` maintenance release evidence is:
-
-| Field | Value |
-| --- | --- |
-| Release commit and tag target | `576e7503a0a8c1103faca5143e4b8d576f8e8b44` |
-| Release tag | `v0.1.1` |
-| GitHub release | `https://github.com/cometapi-dev/cometapi-python/releases/tag/v0.1.1` |
-| Release workflow | `https://github.com/cometapi-dev/cometapi-python/actions/runs/30429821548` |
-| PyPI release | `https://pypi.org/project/cometapi/0.1.1/` |
-| Wheel SHA256 | `27e7904542f82fbbcd60e0de23a4a62c042420b6d004d00286d1f37d2ec4c5e5` |
-| Source SHA256 | `64c7cb87745032703b3374cc562ea00b979416c54908862dbcebd116b2dc44c8` |
-
-The accepted `0.1.0` stable release evidence is:
-
-| Field | Value |
-| --- | --- |
-| Release commit and tag target | `6f42981edcc6c252f8db997606671c3da84d1dd8` |
-| Release tag | `v0.1.0` |
-| GitHub release | `https://github.com/cometapi-dev/cometapi-python/releases/tag/v0.1.0` |
-| Release workflow | `https://github.com/cometapi-dev/cometapi-python/actions/runs/30359383715` |
-| PyPI release | `https://pypi.org/project/cometapi/0.1.0/` |
-| Wheel SHA256 | `8eae758688bb6c98274e48d8d81f882eeae760f69cfd2f5e125004881d60e90f` |
-| Source SHA256 | `e9308b44f6091200b5121e24d1a0e1b9ea3e6bcccc109d6de87554b1ab2a8bca` |
-
-The accepted Registry Alpha evidence is:
-
-| Field | Value |
-| --- | --- |
-| Release commit | `31b68904141489ca04932edbf305ccf88af09372` |
-| Recovery tag | `v0.1.0-alpha.1+recovery.1` |
-| Tag object | `fdc4a6cce31f4534f83903f3f95e7757a4d4049f` |
-| GitHub release | `https://github.com/cometapi-dev/cometapi-python/releases/tag/v0.1.0-alpha.1%2Brecovery.1` |
-| Release workflow | `https://github.com/cometapi-dev/cometapi-python/actions/runs/30261746138` |
-| PyPI release | `https://pypi.org/project/cometapi/0.1.0a1/` |
-| Wheel SHA256 | `a6820347317943ca22f7632acbe354dd992f31a122a6172dfe45b57960e3a093` |
-| Source SHA256 | `98d86829ef14771e8b7ec180d452c6638289f49c14a39b7207be5c47cb64cde7` |
+registry evidence. Exact historical identities and digests belong only in the
+validated evidence blocks in `ROADMAP.md` and `RELEASING.md`.
 
 The accepted identity is:
 
@@ -155,7 +119,7 @@ Post-stable invariants:
    direct dependency's `result` to equal `success`. A skipped, cancelled,
    failed, or missing dependency must never make build, live smoke,
    publication, or registry verification eligible.
-9. Keep Release Please pinned to the reviewed `v5.0.0` commit
+9. Keep Release Please v5.0.0 pinned to the reviewed commit
    `45996ed1f6d02564a971a2fa1b5860e934307cf7`, whose immutable action metadata
    uses `node24`. The workflow semantic checker must reject any different pin.
    Invoke that action release-only first with `skip-github-pull-request: true`;
@@ -170,6 +134,10 @@ Post-stable invariants:
    state read-only, and stop. Do not use another main push or recovery path
    until the exact external state is known and recovery is separately
    authorized.
+   Keep the PyPI publisher v1.14.1 pinned to the reviewed commit whose
+   composite action uses the Node 24 `setup-python` fallback. The workflow
+   checker must reject any other publisher SHA without changing the top-level
+   workflow, job, environment, or Trusted Publisher identity.
 10. `README.md` is the distribution long description and must remain accurate
     before and after publication. Use `python -m pip install cometapi`,
     unversioned project links, and publication-neutral maintenance language.
@@ -181,8 +149,11 @@ Post-stable invariants:
     persistent guidance or current-state documentation. Query public PyPI when
     current registry state is required. Keep candidate version truth in
     `pyproject.toml` and `.release-please-manifest.json`, and keep exact released
-    versions only in immutable historical evidence. The document/version
-    checker must fail before merge or release when this boundary is violated.
+    versions only in `CHANGELOG.md` or validated immutable evidence blocks in
+    `ROADMAP.md` and `RELEASING.md`. All other persistent/current-state public
+    documents must contain no exact CometAPI patch or recovery identity. The
+    document/version checker must fail before merge or release when this
+    boundary is violated.
 
 ## Repository independence
 
@@ -265,9 +236,9 @@ that exact version. Runtime dependencies belong in the manifest only when
 CometAPI source directly imports and owns their use.
 
 Compatibility checks cover the minimum supported OpenAI version, the locked
-development version, and a scheduled or dependency-PR latest-within-major
-canary. Python 3.10 through 3.14 is the initial blocking runtime range while
-Python 3.10 remains upstream-supported.
+development version, and a blocking latest-within-major lane on every pull
+request and default-branch push. Python 3.10 through 3.14 is the initial
+blocking runtime range while Python 3.10 remains upstream-supported.
 
 ## Development and verification
 
@@ -312,7 +283,7 @@ committed.
 
 ## Release and documentation rules
 
-- The first public artifact must be functional `0.1.0a1`, never a placeholder.
+- The first public artifact was functional Registry Alpha, never a placeholder.
 - Publication uses a reviewed immutable tag, a protected `pypi` environment,
   and PyPI OIDC Trusted Publishing.
 - The release commit must equal the tag target and belong to the protected
@@ -339,11 +310,10 @@ committed.
 - Every distribution `Project-URL` must use HTTPS. The canonical Support URL
   is `https://github.com/cometapi-dev/cometapi-python/blob/main/SUPPORT.md`;
   `support@cometapi.com` remains the support and conduct contact.
-- GitHub permanently reserved `v0.1.0-alpha.1` after its immutable release
-  reached OIDC publication but failed before any PyPI distribution was
-  accepted. The sole approved recovery tag is
-  `v0.1.0-alpha.1+recovery.1`, which maps to package version `0.1.0a1`.
-  Later releases must use their ordinary canonical tag spelling.
+- The initial Registry Alpha recovery exception is immutable historical
+  evidence recorded in `ROADMAP.md` and `RELEASING.md`. Later releases must use
+  their ordinary canonical tag spelling; do not reuse or increment that
+  exception.
 - Keep Release Please disabled outside an explicitly authorized release
   sequence. The stable-readiness configuration used a reviewed and tested
   `last-release-sha` bridge because the recovery tag's build metadata could not
@@ -362,7 +332,9 @@ committed.
 - Keep README, roadmap, compatibility matrix, examples, and changelog aligned
   with shipped behavior. README installation and availability guidance must be
   publication-neutral because it is embedded in immutable distribution
-  metadata. Use currently supported model IDs.
+  metadata. Keep the active example/live model in the checker's canonical
+  model constant; executable README examples and both live workflows must fail
+  validation when they drift from it.
 - All repository documentation is written in English.
 
 The Public Preview readiness record requires

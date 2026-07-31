@@ -13,38 +13,44 @@ try:
     from ._checks import (
         CANONICAL_AUTHOR,
         CANONICAL_PROJECT_URLS,
-        MUTABLE_PUBLISHED_VERSION_FIX,
+        EXACT_RELEASE_VERSION_FIX,
         PROJECT_ROOT,
         PUBLIC_README_INSTALL_COMMAND,
         SDIST_PUBLIC_DOCUMENTS,
         CheckError,
+        ReleaseEvidenceIdentity,
+        exact_release_version_violations,
         metadata_description,
-        mutable_published_version_claims,
         normalize_version,
         parse_metadata,
         public_readme_has_install_command,
         public_readme_release_violations,
         read_project_version,
+        release_evidence_identities,
         sha256_file,
     )
+    from .check_version import changelog_release_dates
 except ImportError:  # Direct execution from the repository root.
     from _checks import (
         CANONICAL_AUTHOR,
         CANONICAL_PROJECT_URLS,
-        MUTABLE_PUBLISHED_VERSION_FIX,
+        EXACT_RELEASE_VERSION_FIX,
         PROJECT_ROOT,
         PUBLIC_README_INSTALL_COMMAND,
         SDIST_PUBLIC_DOCUMENTS,
         CheckError,
+        ReleaseEvidenceIdentity,
+        exact_release_version_violations,
         metadata_description,
-        mutable_published_version_claims,
         normalize_version,
         parse_metadata,
         public_readme_has_install_command,
         public_readme_release_violations,
         read_project_version,
+        release_evidence_identities,
         sha256_file,
     )
+    from check_version import changelog_release_dates
 
 REQUIRED_PACKAGE_FILES = {
     "cometapi/__init__.py",
@@ -86,7 +92,9 @@ REQUIRED_SDIST_FILES = {
     "tests/live/test_live_smoke.py",
     "tests/test_client.py",
     "tests/test_clean_install.py",
+    "tests/test_changelog_gate.py",
     "tests/test_contract.py",
+    "tests/test_live_smoke_validation.py",
     "tests/test_release_documents.py",
     "tests/test_release_workflow.py",
     "tests/test_secrets.py",
@@ -200,6 +208,48 @@ def check_wheel(path: Path, expected_version: str, expected_description: str) ->
                 raise CheckError(f"{path.name}:{source_name}: legacy public client name remains")
 
 
+def _release_evidence_binding_violations(documents: dict[str, str]) -> list[str]:
+    violations: list[str] = []
+    evidence: dict[str, dict[str, ReleaseEvidenceIdentity]] = {}
+    for name in ("ROADMAP.md", "RELEASING.md"):
+        try:
+            evidence[name] = release_evidence_identities(name, documents[name])
+        except CheckError as exc:
+            violations.append(str(exc))
+
+    try:
+        changelog_dates = changelog_release_dates(documents["CHANGELOG.md"])
+    except CheckError as exc:
+        violations.append(str(exc))
+        changelog_dates = {}
+
+    for name, identities in evidence.items():
+        for version, identity in identities.items():
+            changelog_date = changelog_dates.get(version)
+            if changelog_date is None:
+                violations.append(
+                    f"{name}: release-evidence identity for {version} has no matching "
+                    "canonical dated CHANGELOG.md release heading"
+                )
+            elif identity.date != changelog_date:
+                violations.append(
+                    f"{name}: release-evidence identity date for {version} is {identity.date}, "
+                    f"but CHANGELOG.md records {changelog_date}"
+                )
+
+    if set(evidence) == {"ROADMAP.md", "RELEASING.md"}:
+        roadmap = evidence["ROADMAP.md"]
+        releasing = evidence["RELEASING.md"]
+        for version in sorted(set(roadmap) | set(releasing)):
+            if roadmap.get(version) != releasing.get(version):
+                violations.append(
+                    f"ROADMAP.md/RELEASING.md: release-evidence identity for {version} "
+                    "must match exactly across both historical records"
+                )
+
+    return violations
+
+
 def check_sdist(path: Path, expected_version: str, expected_description: str) -> None:
     expected_root = f"cometapi-{expected_version}"
     if path.name != f"{expected_root}.tar.gz":
@@ -224,6 +274,8 @@ def check_sdist(path: Path, expected_version: str, expected_description: str) ->
         unexpected = sorted(relative_files - expected_files)
         if unexpected:
             raise CheckError(f"{path.name}: unexpected sdist files: {unexpected}")
+        document_violations: list[str] = []
+        documents: dict[str, str] = {}
         for name in SDIST_PUBLIC_DOCUMENTS:
             stream = archive.extractfile(relative_members[name])
             if stream is None:
@@ -232,12 +284,20 @@ def check_sdist(path: Path, expected_version: str, expected_description: str) ->
                 text = stream.read().decode("utf-8")
             except UnicodeDecodeError as exc:
                 raise CheckError(f"{path.name}:{name}: document is not UTF-8: {exc}") from exc
-            claims = mutable_published_version_claims(text)
-            if claims:
-                line, label = claims[0]
-                raise CheckError(
-                    f"{path.name}:{name}:{line}: contains {label}; {MUTABLE_PUBLISHED_VERSION_FIX}"
+            documents[name] = text
+            violations = exact_release_version_violations(name, text, expected_version)
+            document_violations.extend(
+                f"{path.name}:{name}:{line}: contains {label}; {EXACT_RELEASE_VERSION_FIX}"
+                for line, label in violations
+            )
+        evidence_violations = _release_evidence_binding_violations(documents)
+        if document_violations or evidence_violations:
+            raise CheckError(
+                f"{path.name}: source-distribution document and release-evidence violations:\n"
+                + "\n".join(
+                    f"- {violation}" for violation in document_violations + evidence_violations
                 )
+            )
         metadata_members = [
             member for member in members if PurePosixPath(member.name).name == "PKG-INFO"
         ]

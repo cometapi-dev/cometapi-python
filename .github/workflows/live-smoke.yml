@@ -4,6 +4,16 @@ on:
   schedule:
     - cron: "17 3 * * *"
   workflow_dispatch:
+    inputs:
+      max_output_tokens:
+        description: Maximum output tokens for each bounded live request
+        required: true
+        default: "64"
+        type: choice
+        options:
+          - "64"
+          - "128"
+          - "256"
 
 permissions:
   contents: read
@@ -15,8 +25,8 @@ concurrency:
 env:
   UV_VERSION: 0.11.8
   COMETAPI_LIVE_MAX_REQUESTS: "4"
-  COMETAPI_LIVE_MAX_OUTPUT_TOKENS: "16"
-  COMETAPI_LIVE_MODEL: gpt-5.4
+  COMETAPI_LIVE_MAX_OUTPUT_TOKENS: ${{ inputs.max_output_tokens || '64' }}
+  COMETAPI_LIVE_MODEL: gpt-5.6-sol
   COMETAPI_LIVE_REQUEST_TIMEOUT_SECONDS: "30"
   COMETAPI_LIVE_CONCURRENCY: "1"
   COMETAPI_LIVE_RUN: "1"

@@ -314,14 +314,14 @@ jobs:
     timeout-minutes: 10
     permissions:
       contents: read
-    # Required repository configuration: protect this environment without required reviewers,
-    # and configure COMETAPI_KEY plus the approved COMETAPI_LIVE_MODEL variable.
+    # Required repository configuration: protect this environment without required reviewers
+    # and configure only the scoped COMETAPI_KEY credential.
     environment: live-smoke
     env:
       COMETAPI_LIVE_CONCURRENCY: "1"
-      COMETAPI_LIVE_MAX_OUTPUT_TOKENS: "16"
+      COMETAPI_LIVE_MAX_OUTPUT_TOKENS: "64"
       COMETAPI_LIVE_MAX_REQUESTS: "4"
-      COMETAPI_LIVE_MODEL: ${{ vars.COMETAPI_LIVE_MODEL || 'gpt-5.4' }}
+      COMETAPI_LIVE_MODEL: gpt-5.6-sol
       COMETAPI_LIVE_REQUEST_TIMEOUT_SECONDS: "30"
       COMETAPI_LIVE_RUN: "1"
       COMETAPI_LIVE_STOP_ON_FAILURE: "1"
@@ -381,7 +381,7 @@ jobs:
         working-directory: release-bundle
         run: sha256sum --check artifact-sha256.txt
       - name: Publish through the configured PyPI Trusted Publisher
-        uses: pypa/gh-action-pypi-publish@cef221092ed1bacb1cc03d23a2d87d1d172e277b # v1.14.0
+        uses: pypa/gh-action-pypi-publish@ba38be9e461d3875417946c167d0b5f3d385a247 # v1.14.1, node24
         with:
           packages-dir: release-bundle/dist/
           print-hash: true

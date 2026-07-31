@@ -9,7 +9,11 @@ from pathlib import Path
 
 import pytest
 
+from scripts._checks import CANONICAL_ACTIVE_MODEL
 from scripts.check_workflows import (
+    PYPI_PUBLISH_ACTION,
+    PYPI_PUBLISH_ACTION_RUNTIME,
+    PYPI_PUBLISH_ACTION_VERSION,
     check_action_pins,
     check_ci_workflow,
     check_publish_workflow,
@@ -296,9 +300,9 @@ def _quote_build_write_permission(text: str) -> str:
     )
 
 
-def _remove_live_model_fallback(text: str) -> str:
+def _override_exact_release_live_model(text: str) -> str:
     return text.replace(
-        "COMETAPI_LIVE_MODEL: ${{ vars.COMETAPI_LIVE_MODEL || 'gpt-5.4' }}",
+        f"COMETAPI_LIVE_MODEL: {CANONICAL_ACTIVE_MODEL}",
         "COMETAPI_LIVE_MODEL: ${{ vars.COMETAPI_LIVE_MODEL }}",
         1,
     )
@@ -382,7 +386,7 @@ PUBLICATION_BYPASSES: list[Callable[[str], str]] = [
     _swallow_public_install_failure,
     _quote_publish_if_key,
     _quote_build_write_permission,
-    _remove_live_model_fallback,
+    _override_exact_release_live_model,
     _remove_live_credential_preflight,
     _allow_publication_rerun,
     _allow_cancelled_release_job,
@@ -437,6 +441,25 @@ def test_release_please_rejects_legacy_node20_pin() -> None:
         check_release_please_workflow(text)
 
 
+def test_pypi_publisher_uses_reviewed_node24_action() -> None:
+    text = PUBLISH_WORKFLOW.read_text(encoding="utf-8")
+    action = (
+        f"{PYPI_PUBLISH_ACTION} # v{PYPI_PUBLISH_ACTION_VERSION}, {PYPI_PUBLISH_ACTION_RUNTIME}"
+    )
+    assert text.count(action) == 1
+    check_publish_workflow(text, LIVE_SMOKE_WORKFLOW.read_text(encoding="utf-8"))
+
+
+def test_pypi_publisher_rejects_another_full_sha() -> None:
+    text = PUBLISH_WORKFLOW.read_text(encoding="utf-8").replace(
+        PYPI_PUBLISH_ACTION,
+        "pypa/gh-action-pypi-publish@cef221092ed1bacb1cc03d23a2d87d1d172e277b",
+        1,
+    )
+    with pytest.raises(RuntimeError, match=r"pypa/gh-action-pypi-publish@ba38be9"):
+        check_publish_workflow(text, LIVE_SMOKE_WORKFLOW.read_text(encoding="utf-8"))
+
+
 @pytest.mark.parametrize(
     ("needle", "replacement"),
     [
@@ -480,7 +503,91 @@ def test_release_please_rejects_unsafe_retry_boundaries(needle: str, replacement
 
 @pytest.mark.parametrize("configured", [None, ""])
 def test_live_model_defaults_when_unset_or_empty(configured: str | None) -> None:
-    assert resolve_live_model(configured) == "gpt-5.4"
+    assert resolve_live_model(configured) == CANONICAL_ACTIVE_MODEL
+
+
+def test_workflow_live_models_match_the_canonical_active_model() -> None:
+    monitoring = LIVE_SMOKE_WORKFLOW.read_text(encoding="utf-8")
+    publication = PUBLISH_WORKFLOW.read_text(encoding="utf-8")
+
+    assert f"COMETAPI_LIVE_MODEL: {CANONICAL_ACTIVE_MODEL}" in monitoring
+    assert f"COMETAPI_LIVE_MODEL: {CANONICAL_ACTIVE_MODEL}" in publication
+
+
+@pytest.mark.parametrize(
+    ("workflow", "needle", "replacement"),
+    [
+        (
+            "monitoring",
+            f"COMETAPI_LIVE_MODEL: {CANONICAL_ACTIVE_MODEL}",
+            "COMETAPI_LIVE_MODEL: gpt-5.6",
+        ),
+        (
+            "publication",
+            f"COMETAPI_LIVE_MODEL: {CANONICAL_ACTIVE_MODEL}",
+            "COMETAPI_LIVE_MODEL: ${{ vars.COMETAPI_LIVE_MODEL || 'gpt-5.6-sol' }}",
+        ),
+    ],
+    ids=["monitoring-model-drift", "exact-release-model-drift"],
+)
+def test_semantic_contract_rejects_live_model_drift(
+    workflow: str, needle: str, replacement: str
+) -> None:
+    publication = PUBLISH_WORKFLOW.read_text(encoding="utf-8")
+    monitoring = LIVE_SMOKE_WORKFLOW.read_text(encoding="utf-8")
+    if workflow == "monitoring":
+        assert needle in monitoring
+        monitoring = monitoring.replace(needle, replacement, 1)
+    else:
+        assert needle in publication
+        publication = publication.replace(needle, replacement, 1)
+
+    with pytest.raises(RuntimeError, match="bounded execution budget"):
+        check_publish_workflow(publication, monitoring)
+
+
+@pytest.mark.parametrize(
+    ("needle", "replacement", "message"),
+    [
+        ('        default: "64"', '        default: "128"', "64-token default"),
+        ('          - "256"', '          - "512"', "64/128/256"),
+        (
+            "COMETAPI_LIVE_MAX_OUTPUT_TOKENS: ${{ inputs.max_output_tokens || '64' }}",
+            "COMETAPI_LIVE_MAX_OUTPUT_TOKENS: ${{ inputs.max_output_tokens }}",
+            "bounded execution budget",
+        ),
+    ],
+    ids=["wrong-default", "unreviewed-choice", "missing-scheduled-fallback"],
+)
+def test_monitoring_live_output_cap_is_a_bounded_choice(
+    needle: str, replacement: str, message: str
+) -> None:
+    monitoring = LIVE_SMOKE_WORKFLOW.read_text(encoding="utf-8")
+    assert needle in monitoring
+    with pytest.raises(RuntimeError, match=message):
+        check_publish_workflow(
+            PUBLISH_WORKFLOW.read_text(encoding="utf-8"),
+            monitoring.replace(needle, replacement, 1),
+        )
+
+
+def test_exact_release_live_output_cap_is_fixed_at_64() -> None:
+    publication = PUBLISH_WORKFLOW.read_text(encoding="utf-8")
+    release_job_start = publication.index("  release-live-smoke:")
+    publish_job_start = publication.index("  publish:")
+    release_job = publication[release_job_start:publish_job_start]
+    needle = 'COMETAPI_LIVE_MAX_OUTPUT_TOKENS: "64"'
+    assert needle in release_job
+    release_job = release_job.replace(
+        needle,
+        'COMETAPI_LIVE_MAX_OUTPUT_TOKENS: "128"',
+        1,
+    )
+    with pytest.raises(RuntimeError, match="bounded execution budget"):
+        check_publish_workflow(
+            publication[:release_job_start] + release_job + publication[publish_job_start:],
+            LIVE_SMOKE_WORKFLOW.read_text(encoding="utf-8"),
+        )
 
 
 def test_workflow_contract_rejects_mutable_action_reference() -> None:
@@ -576,7 +683,7 @@ jobs:
         "public-install-shell-failure-bypass",
         "quoted-publish-if-bypass",
         "quoted-build-write-bypass",
-        "empty-live-model-bypass",
+        "release-model-variable-override",
         "missing-live-credential-preflight",
         "publication-rerun-bypass",
         "cancelled-release-job-bypass",
@@ -1430,10 +1537,6 @@ def test_ci_contract_rejects_trigger_text_hidden_in_name() -> None:
         ),
         ('    - cron: "23 4 * * 1"', '    - cron: "23 4 * * 2"'),
         (
-            "if: github.event_name == 'schedule' || github.actor == 'dependabot[bot]'",
-            "if: github.event_name == 'never'",
-        ),
-        (
             'uv pip install --python .venv/bin/python --upgrade "openai>=2.45.0,<3.0.0"',
             'uv pip install --python .venv/bin/python "openai==2.45.0"',
         ),
@@ -1459,9 +1562,8 @@ def test_ci_contract_rejects_trigger_text_hidden_in_name() -> None:
         "pull-request-path-filter",
         "push-path-filter",
         "weekly-schedule-change",
-        "latest-canary-condition",
         "latest-openai-no-upgrade",
-        "canary-collect-only",
+        "latest-openai-collect-only",
         "runtime-matrix-decoy",
         "self-hosted-runner",
         "workflow-pytest-addopts",
@@ -1473,6 +1575,88 @@ def test_ci_contract_rejects_structural_bypasses(needle: str, replacement: str) 
     assert needle in text
     with pytest.raises(RuntimeError):
         check_ci_workflow(text.replace(needle, replacement, 1))
+
+
+@pytest.mark.parametrize(
+    ("needle", "replacement", "message"),
+    [
+        (
+            "      - name: Select latest OpenAI within the supported major\n"
+            "        run: uv pip install --python .venv/bin/python --upgrade "
+            '"openai>=2.45.0,<3.0.0"\n',
+            "",
+            "active run step",
+        ),
+        (
+            "      - name: Select latest OpenAI within the supported major\n",
+            "      - name: Select latest OpenAI within the supported major\n"
+            "        if: github.event_name == 'schedule'\n",
+            "conditional",
+        ),
+        (
+            "        run: uv pip install --python .venv/bin/python --upgrade "
+            '"openai>=2.45.0,<3.0.0"',
+            "        run: echo 'uv pip install --python .venv/bin/python --upgrade "
+            '"openai>=2.45.0,<3.0.0"\'',
+            "active run step",
+        ),
+        (
+            "      - name: Run latest-within-major tests without resyncing the lock\n",
+            "      - name: Run latest-within-major tests without resyncing the lock\n"
+            "        continue-on-error: true\n",
+            "allow failure",
+        ),
+        (
+            '        run: uv run --no-sync pytest -m "not live"',
+            '        run: uv run pytest -m "not live"',
+            "active run step",
+        ),
+    ],
+    ids=["missing", "conditional", "echo-decoy", "continue-on-error", "resync-lock"],
+)
+def test_ci_contract_requires_blocking_latest_openai_in_quality(
+    needle: str, replacement: str, message: str
+) -> None:
+    text = CI_WORKFLOW.read_text(encoding="utf-8")
+    quality_start = text.index("  quality:")
+    locked_runtime_start = text.index("  locked-runtime:")
+    quality = text[quality_start:locked_runtime_start]
+    assert needle in quality
+    mutated_quality = quality.replace(needle, replacement, 1)
+    with pytest.raises(RuntimeError, match=message):
+        check_ci_workflow(text[:quality_start] + mutated_quality + text[locked_runtime_start:])
+
+
+def test_ci_contract_requires_package_to_depend_on_latest_checked_quality() -> None:
+    text = CI_WORKFLOW.read_text(encoding="utf-8")
+    package_start = text.index("  package:")
+    standalone_start = text.index("  standalone:")
+    package = text[package_start:standalone_start]
+    assert "needs: [quality, locked-runtime, minimum-openai]" in package
+    mutated_package = package.replace(
+        "needs: [quality, locked-runtime, minimum-openai]",
+        "needs: [locked-runtime, minimum-openai]",
+        1,
+    )
+    with pytest.raises(RuntimeError, match="must depend on quality"):
+        check_ci_workflow(text[:package_start] + mutated_package + text[standalone_start:])
+
+
+def test_ci_contract_rejects_conditionally_skipped_latest_openai_job_decoy() -> None:
+    text = (
+        CI_WORKFLOW.read_text(encoding="utf-8")
+        + """
+  latest-openai:
+    name: Latest OpenAI decoy
+    if: github.event_name == 'schedule'
+    runs-on: ubuntu-latest
+    steps:
+      - run: uv pip install --upgrade "openai>=2.45.0,<3.0.0"
+      - run: uv run --no-sync pytest -m "not live"
+"""
+    )
+    with pytest.raises(RuntimeError, match="reviewed validation chain"):
+        check_ci_workflow(text)
 
 
 @pytest.mark.parametrize(

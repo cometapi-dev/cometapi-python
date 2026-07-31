@@ -9,12 +9,13 @@ import re
 import sys
 import unicodedata
 from collections.abc import Iterable
+from dataclasses import dataclass
 from datetime import date
 from email.message import Message
 from email.parser import Parser
-from itertools import pairwise
 from pathlib import Path
-from typing import NamedTuple, cast
+from typing import cast
+from urllib.parse import quote, unquote
 
 if sys.version_info >= (3, 11):
     import tomllib
@@ -23,6 +24,7 @@ else:
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 DIST_NAME = "cometapi"
+CANONICAL_ACTIVE_MODEL = "gpt-5.6-sol"
 CANONICAL_AUTHOR = "CometAPI"
 CANONICAL_COPYRIGHT = "Copyright (c) 2026 CometAPI"
 CANONICAL_REPOSITORY = "https://github.com/cometapi-dev/cometapi-python"
@@ -58,159 +60,96 @@ PERSISTENT_DOCUMENTS = (
 SDIST_PUBLIC_DOCUMENTS = tuple(
     name for name in PERSISTENT_DOCUMENTS if not name.startswith(".github/") and name != "CLAUDE.md"
 )
-MUTABLE_PUBLISHED_VERSION_FIX = (
-    "replace the exact patch with version-neutral 0.1.x guidance, query PyPI for current "
-    "registry state, and keep exact released versions only in immutable historical evidence"
+EXACT_RELEASE_VERSION_FIX = (
+    "replace the exact patch with version-neutral 0.1.x guidance, or move complete "
+    "immutable history into a validated release-evidence block in ROADMAP.md or "
+    "RELEASING.md; query PyPI when current registry state is required"
 )
-MUTABLE_PUBLISHED_VERSION_CATEGORY = "mutable latest/current published patch version"
-_BARE_PATCH_VERSION = r"v?\d+\.\d+\.\d+(?:[-_.]?(?:a|alpha)[-_.]?\d+)?(?:\+[0-9A-Za-z.-]+)?"
-_EXACT_PATCH_VERSION = rf"(?<![\w.])(?:cometapi\s*==\s*)?{_BARE_PATCH_VERSION}(?!\w|\.\d)"
-_HTTP_URL = re.compile(r"https?://[^\s<>)\]]+", flags=re.IGNORECASE)
-_HTML = re.compile(r"<!--.*?-->|<[^>]*>", flags=re.DOTALL)
-_MARKDOWN_LINK = re.compile(r"\[([^\]]+)\]\((?:[^()]|\([^()]*\))*\)")
-_VERSIONED_RELEASE_URL = re.compile(
-    rf"https?://(?:"
-    rf"pypi\.org/project/cometapi/(?P<pypi>{_BARE_PATCH_VERSION})"
-    rf"|github\.com/cometapi-dev/cometapi-python/releases/tag/(?P<github>{_BARE_PATCH_VERSION})"
-    rf")(?=$|[/#?\s<>\"')\]])",
-    flags=re.IGNORECASE,
+EXACT_RELEASE_VERSION_CATEGORY = (
+    "exact CometAPI patch/recovery version outside immutable release evidence"
 )
-_CLAIM_TOKEN = re.compile(
-    rf"(?P<version>{_EXACT_PATCH_VERSION})"
-    r"|(?P<word>[A-Za-z0-9]+(?:[-'][A-Za-z0-9]+)*)"
-    r"|(?P<boundary>[.!?;](?=\s|$))"
-    r"|(?P<separator>[,:|\u2013\u2014])",
-    flags=re.IGNORECASE,
+RELEASE_EVIDENCE_DOCUMENTS = {"ROADMAP.md", "RELEASING.md"}
+RELEASE_EVIDENCE_MARKER = re.compile(
+    r"(?m)^<!-- cometapi-release-evidence:"
+    r"(?P<kind>start|end) version=(?P<version>\S+) date=(?P<date>\d{4}-\d{2}-\d{2}) -->$"
 )
-_CURRENT_WORDS = {"current", "currently", "latest", "newest", "now"}
-_RELEASE_IDENTITY_WORDS = {"build", "distribution", "patch", "release", "version"}
-_PUBLICATION_STATE_WORDS = {
-    "available",
-    "hosts",
-    "lists",
-    "offers",
-    "published",
-    "publishes",
-    "released",
-    "serves",
-}
-_HISTORICAL_ACTION_WORDS = {
-    "accepted",
-    "completed",
-    "created",
-    "executed",
-    "failed",
-    "passed",
-    "published",
-    "reached",
-    "reserved",
-    "verified",
-}
-_PRESENT_WORDS = {"are", "is", "now", "currently", "remains"}
-_PAST_WORDS = {"had", "was", "were"}
-_ATTRIBUTION_SKIP_WORDS = {
-    "a",
-    "an",
-    "accepted",
-    "active",
-    "are",
-    "as",
-    "at",
-    "available",
-    "build",
-    "candidate",
-    "client",
-    "cometapi",
-    "completed",
-    "current",
-    "currently",
-    "distribution",
-    "exact",
-    "for",
-    "from",
-    "has",
-    "hosts",
-    "immutable",
-    "install",
-    "installed",
-    "is",
-    "its",
-    "latest",
-    "library",
-    "lists",
-    "maintenance",
-    "most",
-    "newest",
-    "now",
-    "of",
-    "offers",
-    "on",
-    "our",
-    "package",
-    "patch",
-    "project",
-    "public",
-    "publicly",
-    "published",
-    "publishes",
-    "recent",
-    "registry",
-    "release",
-    "released",
-    "repository",
-    "sdk",
-    "serves",
-    "stable",
-    "status",
-    "supported",
-    "that",
-    "the",
-    "these",
-    "this",
-    "those",
-    "verified",
-    "version",
-    "was",
-    "were",
-}
-_IMMUTABLE_CONTEXT_WORDS = {
-    "commit",
-    "completed",
-    "digest",
-    "evidence",
-    "executed",
-    "immutable",
-    "recovery",
-    "run",
-    "tag",
-    "workflow",
-}
-_CANONICAL_ATTRIBUTIONS = {
-    "client",
-    "cometapi",
-    "cometapi-python",
-    "library",
-    "package",
-    "project",
-    "repository",
-    "sdk",
-    "this",
-}
-_KNOWN_THIRD_PARTY_ATTRIBUTIONS = {
-    "httpx",
-    "openai",
-    "pyright",
-    "pytest",
-    "ruff",
-    "twine",
-    "uv",
-}
-_MUTABLE_LABEL_WORDS = {
-    "current",
-    "latest",
-    "newest",
-    "pypi",
-}
+RELEASE_EVIDENCE_IDENTITY = re.compile(
+    r"^<!-- cometapi-release-identity "
+    r"tag=(?P<tag>\S+) "
+    r"commit=(?P<commit>[0-9a-f]{40}) "
+    r"workflow-run=(?P<run>[1-9]\d*) "
+    r"wheel-sha256=(?P<wheel>[0-9a-f]{64}) "
+    r"sdist-sha256=(?P<sdist>[0-9a-f]{64}) -->$"
+)
+_ANY_RELEASE_EVIDENCE_IDENTITY = re.compile(r"(?m)^.*cometapi-release-identity.*$")
+_ANY_RELEASE_EVIDENCE_MARKER = re.compile(r"(?m)^.*cometapi-release-evidence:.*$")
+_EXACT_VERSION = (
+    r"(?:v\s*)?\d+\s*\.\s*\d+\s*\.\s*\d+"
+    r"(?:\s*[-_.]?\s*(?:a|alpha|b|beta|rc)\s*[-_.]?\s*\d+)?"
+    r"(?:\s*(?:\+|%2b)\s*[0-9a-z][0-9a-z.-]*)?"
+)
+_EXACT_VERSION_PATTERN = re.compile(
+    rf"(?<![\w.])(?P<version>{_EXACT_VERSION})(?!\w|\s*\.\s*\d)",
+    re.IGNORECASE,
+)
+_THIRD_PARTY_OWNER = (
+    r"(?:openai|httpx|ruff|pyright|pytest|python|node(?:\.js)?|twine|uv|actionlint|"
+    r"release[\s-]+please|pypi[\s-]+publisher|"
+    r"actions[ /-](?:checkout|download-artifact|setup-python|upload-artifact)|"
+    r"googleapis/release-please-action|pypa/gh-action-pypi-publish|pypi-attestations)"
+)
+_THIRD_PARTY_RELEASE_COMPONENT = (
+    rf"(?:{_THIRD_PARTY_OWNER}|minimum(?:\s+supported)?(?:\s+openai)?|"
+    rf"latest\s+available\s+below|pypi\s+publisher|release\s+please)"
+)
+_DEPENDENCY_RANGE = re.compile(
+    rf"(?i)(?<![\w.-])(?P<owner>[a-z][a-z0-9_.-]*(?:\[[a-z0-9_.-]+\])?)\s*"
+    rf"(?P<spec>(?:==|~=|!=|<=|>=|<|>)\s*{_EXACT_VERSION}"
+    rf"(?:\s*,\s*(?:==|~=|!=|<=|>=|<|>)\s*{_EXACT_VERSION})*)"
+)
+_THIRD_PARTY_VERSION_URL = re.compile(
+    rf"(?i)(?:"
+    rf"https://pypi\.org/project/(?!cometapi/)[^/\s)]+/(?P<pypi>{_EXACT_VERSION})/|"
+    rf"https://github\.com/(?!cometapi-dev/cometapi-python/releases/tag/)"
+    rf"[^/\s)]+/[^/\s)]+/releases/tag/(?P<github>{_EXACT_VERSION})"
+    rf")"
+)
+_RAW_HTML_MARKUP = re.compile(r"<!--.*?-->|</?[A-Za-z][^>]*>", re.DOTALL)
+_DECODED_HTML_TAG = re.compile(r"</?[A-Za-z][^>\n]*>")
+_MARKDOWN_LINK = re.compile(
+    r"\[(?P<label>(?:\\.|[^\]])*)\]"
+    r"\((?P<target>(?:\\.|[^()\s]|\((?:\\.|[^()])*\))*)\)"
+)
+_FIRST_PARTY_MARKDOWN_TARGET = re.compile(
+    rf"(?i)\A<?(?:"
+    rf"{re.escape(CANONICAL_REPOSITORY)}|"
+    r"https://pypi\.org/project/cometapi|"
+    r"https://img\.shields\.io/pypi/v/cometapi"
+    r")(?=$|[/?#>])"
+)
+_HTTP_URL = re.compile(r"https?://[^\s<>)\]]+", re.IGNORECASE)
+_RECOVERY_TAGS = {"0.1.0a1": "v0.1.0-alpha.1+recovery.1"}
+_FULL_COMMIT = re.compile(r"(?<![0-9a-f])[0-9a-f]{40}(?![0-9a-f])", re.IGNORECASE)
+_ACTIONS_RUN = re.compile(
+    rf"{re.escape(CANONICAL_REPOSITORY)}/actions/runs/[1-9]\d*(?:/attempts/[1-9]\d*)?"
+)
+_WHEEL_DIGEST = re.compile(
+    r"\bwheel\s+sha256\b[^0-9a-f]{0,96}(?P<digest>[0-9a-f]{64})(?![0-9a-f])",
+    re.IGNORECASE | re.DOTALL,
+)
+_SDIST_DIGEST = re.compile(
+    r"\b(?:source(?:[- ]distribution)?|(?:public\s+)?sdist)\b"
+    r"(?:\s+(?:sha256|digest)|\s+has\s+sha256)\b"
+    r"[^0-9a-f]{0,96}(?P<digest>[0-9a-f]{64})(?![0-9a-f])",
+    re.IGNORECASE | re.DOTALL,
+)
+_CANONICAL_OWNER = r"(?<![\w.-])cometapi(?:-python)?(?![\w-])"
+_CANONICAL_COMPONENT_BINDING = re.compile(
+    rf"(?i){_CANONICAL_OWNER}"
+    r"(?:[ \t]+(?:python[ \t]+)?(?:sdk|package|project|library|distribution|client))?"
+    r"[ \t]+(?:pins|requires|supports|uses)[ \t]+$"
+)
+_MARKDOWN_FENCE_OPEN = re.compile(r"^(?P<indent> {0,3})(?P<fence>`{3,}|~{3,})")
 PUBLIC_README_FORBIDDEN_PATTERNS = (
     (r"(?i)\bpending[\s-]+owner(?:ship|s)?\b", "pending owner identity"),
     (r"(?i)\bapproved\s+for\s+pypi\s+publication\b", "publication approval state"),
@@ -236,242 +175,17 @@ class CheckError(RuntimeError):
     """Raised when release-candidate evidence does not satisfy a local gate."""
 
 
-class _ClaimToken(NamedTuple):
-    kind: str
-    value: str
-    start: int
-    end: int
+@dataclass(frozen=True)
+class ReleaseEvidenceIdentity:
+    """Machine-readable identity for one immutable historical release."""
 
-
-def _visible_release_url_versions(value: str) -> str:
-    """Expose release URL versions while preserving offsets and line numbers."""
-    replacement = ["\n" if character == "\n" else " " for character in value]
-    for match in _VERSIONED_RELEASE_URL.finditer(value):
-        group = "pypi" if match.group("pypi") is not None else "github"
-        start, end = match.span(group)
-        marker = "immutableurl"
-        marker_start = max(match.start(), start - len(marker) - 1)
-        replacement[marker_start : marker_start + len(marker)] = marker
-        replacement[start:end] = value[start:end]
-    return "".join(replacement)
-
-
-def _replace_html(match: re.Match[str]) -> str:
-    """Discard markup without shifting line numbers used in diagnostics."""
-    value = match.group(0)
-    if value.startswith("<!--"):
-        return "".join("\n" if character == "\n" else " " for character in value)
-    return _visible_release_url_versions(value)
-
-
-def _replace_markdown_link(match: re.Match[str]) -> str:
-    """Keep link labels and exact release URL versions visible to the claim detector."""
-    value = match.group(0)
-    replacement = list(_visible_release_url_versions(value))
-    label = match.group(1)
-    label_start = value.find(label)
-    label_end = label_start + len(label)
-    replacement[label_start:label_end] = label
-    return "".join(replacement)
-
-
-def _claim_analysis_text(text: str) -> str:
-    normalized = unicodedata.normalize("NFKC", html.unescape(text))
-    normalized = _HTML.sub(_replace_html, normalized)
-    normalized = _MARKDOWN_LINK.sub(_replace_markdown_link, normalized)
-    normalized = _VERSIONED_RELEASE_URL.sub(
-        lambda match: _visible_release_url_versions(match.group(0)), normalized
-    )
-    normalized = re.sub(r"\\([`*_{}\[\]()#+.!|~>-])", r"\1", normalized)
-    normalized = re.sub(r"[`*_~#\[\]{}]", " ", normalized)
-    return normalized
-
-
-def _claim_tokens(text: str) -> list[_ClaimToken]:
-    url_spans = [(match.start(), match.end()) for match in _HTTP_URL.finditer(text)]
-    tokens: list[_ClaimToken] = []
-    for match in _CLAIM_TOKEN.finditer(text):
-        kind = match.lastgroup
-        if kind is None:
-            continue
-        if kind == "version" and any(
-            start <= match.start() and match.end() <= end for start, end in url_spans
-        ):
-            continue
-        tokens.append(_ClaimToken(kind, match.group(0).casefold(), match.start(), match.end()))
-    return tokens
-
-
-def _claim_window(tokens: list[_ClaimToken], version_index: int) -> list[_ClaimToken]:
-    start = version_index
-    words = 0
-    while start > 0 and words < 32:
-        previous = tokens[start - 1]
-        if previous.kind == "boundary" or (
-            previous.kind == "separator" and previous.value == "|" and words >= 1
-        ):
-            break
-        start -= 1
-        words += previous.kind in {"word", "version"}
-
-    end = version_index + 1
-    words = 0
-    while end < len(tokens) and words < 32:
-        following = tokens[end]
-        if following.kind == "boundary" or (
-            following.kind == "separator" and following.value == "|" and words >= 1
-        ):
-            break
-        end += 1
-        words += following.kind in {"word", "version"}
-    return tokens[start:end]
-
-
-def _word_values(tokens: Iterable[_ClaimToken]) -> list[str]:
-    return [token.value for token in tokens if token.kind == "word"]
-
-
-def _has_current_marker(words: list[str]) -> bool:
-    return bool(_CURRENT_WORDS.intersection(words)) or any(
-        first == "most" and second == "recent" for first, second in pairwise(words)
-    )
-
-
-def _valid_historical_snapshot(words: list[str]) -> bool:
-    if not _has_current_marker(words):
-        return False
-    dated_indexes: list[int] = []
-    for index, value in enumerate(words):
-        try:
-            date.fromisoformat(value)
-        except ValueError:
-            continue
-        dated_indexes.append(index)
-    if not dated_indexes:
-        return False
-
-    word_set = set(words)
-    if {"historical", "snapshot"}.issubset(word_set):
-        return True
-    if not _PAST_WORDS.intersection(word_set) or _PRESENT_WORDS.intersection(word_set):
-        return False
-    if "evidence" in word_set and bool({"publication", "release"}.intersection(word_set)):
-        return True
-    for index in dated_indexes:
-        prefix = words[index - 1] if index else ""
-        if prefix in {"at", "on"} or words[max(0, index - 2) : index] == ["as", "of"]:
-            return True
-    return False
-
-
-def _explicit_third_party_attribution(
-    window: list[_ClaimToken], version_index: int, version_value: str
-) -> bool:
-    if version_value.startswith("cometapi"):
-        return False
-    words_before = _word_values(window[:version_index])
-    words_after = _word_values(window[version_index + 1 :])
-
-    candidates: list[str] = []
-    if words_before and words_before[-1] in _KNOWN_THIRD_PARTY_ATTRIBUTIONS:
-        candidates.append(words_before[-1])
-    for index, word in enumerate(words_before):
-        if word not in _KNOWN_THIRD_PARTY_ATTRIBUTIONS:
-            continue
-        trailing = words_before[index + 1 :]
-        if any(
-            value in _RELEASE_IDENTITY_WORDS | _CURRENT_WORDS | {"stable"} for value in trailing
-        ):
-            candidates.append(word)
-    for index, word in enumerate(words_before[:-1]):
-        if word in _RELEASE_IDENTITY_WORDS and words_before[index + 1] in {"for", "of"}:
-            if index + 2 < len(words_before):
-                candidates.append(words_before[index + 2])
-    for index, word in enumerate(words_after[:-2]):
-        if word in _RELEASE_IDENTITY_WORDS and words_after[index + 1] in {"for", "of"}:
-            candidates.append(words_after[index + 2])
-
-    attributed = next(
-        (
-            candidate
-            for candidate in reversed(candidates)
-            if candidate not in _ATTRIBUTION_SKIP_WORDS
-        ),
-        None,
-    )
-    return attributed is not None and attributed not in _CANONICAL_ATTRIBUTIONS
-
-
-def _is_mutable_published_version_claim(window: list[_ClaimToken], version_index: int) -> bool:
-    words = _word_values(window)
-    version_value = window[version_index].value
-    if _explicit_third_party_attribution(window, version_index, version_value):
-        return False
-    if _valid_historical_snapshot(words):
-        return False
-
-    word_set = set(words)
-    has_identity = bool(_RELEASE_IDENTITY_WORDS.intersection(word_set))
-    has_registry = bool({"pypi", "registry"}.intersection(word_set))
-    has_publication = bool(_PUBLICATION_STATE_WORDS.intersection(word_set))
-    has_current = _has_current_marker(words)
-    immutable_release_url = "immutableurl" in word_set
-    if (
-        immutable_release_url
-        and not has_current
-        and not {"are", "now", "currently", "remains"}.intersection(word_set)
-        and not {"available", "hosts", "lists", "offers", "publishes", "serves"}.intersection(
-            word_set
-        )
-    ):
-        return False
-    immutable_history = bool(_IMMUTABLE_CONTEXT_WORDS.intersection(word_set)) and bool(
-        _HISTORICAL_ACTION_WORDS.intersection(word_set)
-    )
-    if "status" in word_set and "released" in word_set:
-        return True
-    if has_current and has_identity:
-        return True
-    if has_current and ("stable" in word_set or has_registry):
-        return True
-    if has_current and "cometapi" in word_set:
-        return True
-    if has_current and has_publication and (has_registry or "cometapi" in word_set):
-        return True
-
-    # A dated, past-tense publication event is immutable evidence, not current state.
-    publication_index = next(
-        (index for index, word in enumerate(words) if word in _PUBLICATION_STATE_WORDS),
-        -1,
-    )
-    past_index = next((index for index, word in enumerate(words) if word in _PAST_WORDS), -1)
-    conjunction_after_past = any(
-        word in {"and", "but", "so", "therefore"}
-        for word in words[past_index + 1 : publication_index]
-    )
-    if (
-        past_index >= 0
-        and publication_index >= 0
-        and past_index < publication_index
-        and not _PRESENT_WORDS.intersection(words[past_index + 1 :])
-        and not conjunction_after_past
-    ):
-        return False
-
-    if immutable_history and not has_current:
-        return False
-    # Present-state publication forms do not need an explicit latest/current marker.
-    if has_identity and has_publication:
-        return True
-    if has_registry and has_publication:
-        return True
-    if has_registry and "cometapi" in word_set:
-        return True
-    if "available" in word_set and "publicly" in word_set:
-        return True
-    if re.search(r"\b(?:pypi|registry)\s+(?:release|version|distribution)\b", " ".join(words)):
-        return True
-    return False
+    version: str
+    date: str
+    tag: str
+    commit: str
+    workflow_run: str
+    wheel_sha256: str
+    sdist_sha256: str
 
 
 def read_project_metadata(root: Path = PROJECT_ROOT) -> dict[str, object]:
@@ -552,92 +266,611 @@ def metadata_description(message: Message, source: str) -> str:
     return payload
 
 
+def _preserve_version_characters(match: re.Match[str]) -> str:
+    return "".join(
+        value if value == "\n" or value.isdigit() or value in ".%" else " "
+        for value in match.group()
+    )
+
+
+def _visible_markdown_link_text(match: re.Match[str]) -> str:
+    """Keep first-party destinations visible to the exact-version scanner."""
+    label = match.group("label")
+    target = match.group("target")
+    if _FIRST_PARTY_MARKDOWN_TARGET.match(target) is not None:
+        return f"{label} {target}"
+    return label
+
+
+def _normalized_document_text(text: str) -> str:
+    normalized = unquote(html.unescape(unicodedata.normalize("NFKC", text)))
+    while _MARKDOWN_LINK.search(normalized) is not None:
+        normalized = _MARKDOWN_LINK.sub(_visible_markdown_link_text, normalized)
+    normalized = _RAW_HTML_MARKUP.sub(_preserve_version_characters, normalized)
+    normalized = _DECODED_HTML_TAG.sub(_preserve_version_characters, normalized)
+    normalized = normalized.replace("<!--", "    ").replace("-->", "   ")
+    without_ignorable_formatting = "".join(
+        ""
+        if unicodedata.category(value) in {"Cf", "Mn"} and not unicodedata.combining(value)
+        else value
+        for value in normalized
+    )
+    unescaped = re.sub(r"\\([.`*_~])", r"\1", without_ignorable_formatting)
+    return re.sub(r"[*_`~]+", "", unescaped)
+
+
+def _markdown_fence_spans(text: str) -> list[tuple[int, int]]:
+    """Return block-code fence spans while preserving source offsets."""
+    spans: list[tuple[int, int]] = []
+    open_start: int | None = None
+    fence_character = ""
+    minimum_length = 0
+    offset = 0
+    for raw_line in text.splitlines(keepends=True):
+        line = raw_line.rstrip("\r\n")
+        if open_start is None:
+            match = _MARKDOWN_FENCE_OPEN.match(line)
+            if match is not None:
+                fence = match.group("fence")
+                open_start = offset
+                fence_character = fence[0]
+                minimum_length = len(fence)
+        elif re.fullmatch(
+            rf" {{0,3}}{re.escape(fence_character)}{{{minimum_length},}}[ \t]*",
+            line,
+        ):
+            spans.append((open_start, offset + len(raw_line)))
+            open_start = None
+            fence_character = ""
+            minimum_length = 0
+        offset += len(raw_line)
+    if open_start is not None:
+        spans.append((open_start, len(text)))
+    return spans
+
+
+def _inside_spans(position: int, spans: Iterable[tuple[int, int]]) -> bool:
+    return any(start <= position < end for start, end in spans)
+
+
+def _audited_component_version_spans(text: str) -> set[tuple[int, int]]:
+    """Return versions directly and unambiguously owned by an audited component."""
+    spans: set[tuple[int, int]] = set()
+    prefix = re.compile(
+        rf"(?i)(?<![\w.-]){_THIRD_PARTY_RELEASE_COMPONENT}(?![\w-]|\.(?=\w))"
+        rf"(?:[ \t]+(?:version|release))?[ \t]*[:=@]?[ \t]*"
+        rf"(?P<version>{_EXACT_VERSION})"
+    )
+    for match in prefix.finditer(text):
+        line_start = text.rfind("\n", 0, match.start()) + 1
+        line_end = text.find("\n", match.end("version"))
+        if line_end == -1:
+            line_end = len(text)
+        prefix_clause = text[line_start : match.start()]
+        suffix_clause = text[match.end("version") : line_end]
+        suffix_canonical = re.search(rf"(?i){_CANONICAL_OWNER}", suffix_clause)
+        suffix_sdk = re.search(r"(?i)\b(?:current|latest)\s+python\s+sdk\b", suffix_clause)
+        dependabot_row = "| dependabot " in prefix_clause.casefold()
+        suffix_binds_version = (suffix_canonical is not None and not dependabot_row) or (
+            suffix_sdk is not None
+        )
+        if suffix_binds_version:
+            continue
+        canonical_before = re.search(rf"(?i){_CANONICAL_OWNER}", prefix_clause)
+        if canonical_before is not None and (
+            _CANONICAL_COMPONENT_BINDING.search(prefix_clause) is None
+            and "placeholder:" not in prefix_clause.casefold()
+            and "| dependabot " not in prefix_clause.casefold()
+        ):
+            continue
+        spans.add(match.span("version"))
+        tail = text[match.end("version") : match.end("version") + 64]
+        for following in re.finditer(
+            rf"(?i)\s+(?:to|through|->)\s*(?P<version>{_EXACT_VERSION})",
+            tail,
+        ):
+            start, end = following.span("version")
+            spans.add((match.end("version") + start, match.end("version") + end))
+
+    verb_bound = re.compile(
+        rf"(?i)(?:\b(?:pins?|uses?|requires?|supports?)[ \t]+(?:the[ \t]+)?"
+        rf"(?:reviewed[ \t]+upstream[ \t]+)?{_THIRD_PARTY_RELEASE_COMPONENT}|"
+        rf"{_THIRD_PARTY_RELEASE_COMPONENT}(?![\w-]|\.(?=\w))[ \t]+"
+        rf"(?:pins?|uses?|requires?|supports?))[ \t]+(?P<version>{_EXACT_VERSION})"
+    )
+    for match in verb_bound.finditer(text):
+        spans.add(match.span("version"))
+
+    suffix = re.compile(
+        rf"(?i)(?P<version>{_EXACT_VERSION})\s*(?:"
+        rf"(?:for|of)\s+{_THIRD_PARTY_RELEASE_COMPONENT}(?![\w-]|\.(?=\w))"
+        rf"(?:\s+(?:release|version))?|"
+        rf"is\s+(?:the\s+)?(?:current\s+|latest\s+|stable\s+)?"
+        rf"{_THIRD_PARTY_RELEASE_COMPONENT}(?![\w-]|\.(?=\w))"
+        rf"(?:\s+(?:release|version))?"
+        rf")"
+    )
+    for match in suffix.finditer(text):
+        line_start = text.rfind("\n", 0, match.start()) + 1
+        line_end = text.find("\n", match.end())
+        if line_end == -1:
+            line_end = len(text)
+        if (
+            re.search(
+                rf"(?i){_CANONICAL_OWNER}",
+                text[line_start:line_end],
+            )
+            is None
+        ):
+            spans.add(match.span("version"))
+    return spans
+
+
+def _third_party_version_spans(text: str) -> set[tuple[int, int]]:
+    """Return exact-version spans structurally bound to an audited third party."""
+    spans: set[tuple[int, int]] = set()
+    for match in _DEPENDENCY_RANGE.finditer(text):
+        owner = match.group("owner").casefold()
+        bare_owner = owner.split("[", 1)[0]
+        if "cometapi" in owner or bare_owner in {
+            "client",
+            "distribution",
+            "library",
+            "package",
+            "project",
+            "release",
+            "sdk",
+            "version",
+        }:
+            continue
+        line_start = text.rfind("\n", 0, match.start()) + 1
+        line_end = text.find("\n", match.end())
+        if line_end == -1:
+            line_end = len(text)
+        owner_prefix = text[line_start : match.start()]
+        owner_suffix = text[match.end() : line_end]
+        suffix_canonical = re.search(rf"(?i){_CANONICAL_OWNER}", owner_suffix)
+        if suffix_canonical is not None and "| dependabot " not in owner_prefix.casefold():
+            continue
+        if re.fullmatch(_THIRD_PARTY_OWNER, bare_owner, re.IGNORECASE) is None:
+            if re.search(rf"(?i){_CANONICAL_OWNER}", owner_prefix):
+                continue
+        spec_start = match.start("spec")
+        for version in _EXACT_VERSION_PATTERN.finditer(match.group("spec")):
+            start, end = version.span("version")
+            spans.add((spec_start + start, spec_start + end))
+    for match in _THIRD_PARTY_VERSION_URL.finditer(text):
+        group = "pypi" if match.group("pypi") is not None else "github"
+        spans.add(match.span(group))
+    spans.update(_audited_component_version_spans(text))
+    return spans
+
+
+def _first_party_version_spans(text: str) -> list[tuple[int, int]]:
+    third_party = _third_party_version_spans(text)
+    return [
+        match.span("version")
+        for match in _EXACT_VERSION_PATTERN.finditer(text)
+        if match.span("version") not in third_party
+        and (match.start("version") + 1, match.end("version")) not in third_party
+    ]
+
+
+def _blank_span(text: str, start: int, end: int) -> str:
+    blanked = "".join("\n" if value == "\n" else " " for value in text[start:end])
+    return text[:start] + blanked + text[end:]
+
+
+def _canonical_release_tag(version: str) -> str:
+    normalized = normalize_version(version)
+    recovery = _RECOVERY_TAGS.get(normalized)
+    if recovery is not None:
+        return recovery
+    alpha = re.fullmatch(r"(?P<base>\d+\.\d+\.\d+)a(?P<number>\d+)", normalized)
+    if alpha is not None:
+        return f"v{alpha.group('base')}-alpha.{alpha.group('number')}"
+    return f"v{normalized}"
+
+
+def _identity_violations(
+    body: str,
+    version: str,
+    marker_date: str,
+    line: int,
+    evidence_versions: set[str],
+) -> tuple[ReleaseEvidenceIdentity | None, list[tuple[int, str]]]:
+    nonempty = [value.strip() for value in body.splitlines() if value.strip()]
+    identity_lines = [value for value in nonempty if "cometapi-release-identity" in value]
+    if len(identity_lines) != 1 or not nonempty or nonempty[0] != identity_lines[0]:
+        return None, [
+            (
+                line,
+                f"release-evidence block for {version} must begin with exactly one "
+                "canonical release-identity marker",
+            )
+        ]
+    match = RELEASE_EVIDENCE_IDENTITY.fullmatch(identity_lines[0])
+    if match is None:
+        return None, [
+            (line, f"release-evidence block for {version} has malformed release identity")
+        ]
+    identity = ReleaseEvidenceIdentity(
+        version=version,
+        date=marker_date,
+        tag=match.group("tag"),
+        commit=match.group("commit"),
+        workflow_run=match.group("run"),
+        wheel_sha256=match.group("wheel"),
+        sdist_sha256=match.group("sdist"),
+    )
+    findings: list[tuple[int, str]] = []
+    expected_tag = _canonical_release_tag(version)
+    if identity.tag != expected_tag:
+        findings.append(
+            (line, f"release-evidence identity for {version} must use canonical tag {expected_tag}")
+        )
+    if identity.wheel_sha256 == identity.sdist_sha256:
+        findings.append(
+            (line, f"release-evidence identity for {version} reuses one artifact digest")
+        )
+
+    encoded_tag = quote(identity.tag, safe="v.-")
+    exact_requirements = {
+        "canonical release tag": re.compile(
+            rf"(?<![\w.]){re.escape(identity.tag)}(?![\w.])|{re.escape(encoded_tag)}",
+            re.IGNORECASE,
+        ),
+        "canonical GitHub Release URL": re.compile(
+            rf"{re.escape(CANONICAL_REPOSITORY)}/releases/tag/"
+            rf"(?:{re.escape(identity.tag)}|{re.escape(encoded_tag)})",
+            re.IGNORECASE,
+        ),
+        "canonical PyPI release URL": re.compile(
+            rf"https://pypi\.org/project/cometapi/{re.escape(version)}/",
+            re.IGNORECASE,
+        ),
+        "exact release commit": re.compile(re.escape(identity.commit), re.IGNORECASE),
+        "exact release workflow URL": re.compile(
+            rf"{re.escape(CANONICAL_REPOSITORY)}/actions/runs/{identity.workflow_run}"
+            r"(?:/attempts/[1-9]\d*)?"
+        ),
+        "exact wheel SHA256": re.compile(
+            rf"\bwheel\s+sha256\b[^0-9a-f]{{0,96}}{identity.wheel_sha256}(?![0-9a-f])",
+            re.IGNORECASE | re.DOTALL,
+        ),
+        "exact source-distribution SHA256": re.compile(
+            rf"\b(?:source(?:[- ]distribution)?|sdist)\s+sha256\b"
+            rf"[^0-9a-f]{{0,96}}{identity.sdist_sha256}(?![0-9a-f])",
+            re.IGNORECASE | re.DOTALL,
+        ),
+    }
+    prose = "\n".join(nonempty[1:])
+    for label, pattern in exact_requirements.items():
+        if pattern.search(prose) is None:
+            findings.append(
+                (line, f"release-evidence block for {version} is missing {label} from its identity")
+            )
+
+    release_commit_values: set[str] = set()
+    for commit in _FULL_COMMIT.finditer(prose):
+        line_start = prose.rfind("\n", 0, commit.start()) + 1
+        prior_line_start = prose.rfind("\n", 0, max(0, line_start - 1)) + 1
+        line_end = prose.find("\n", commit.end())
+        if line_end == -1:
+            line_end = len(prose)
+        context = prose[prior_line_start:line_end]
+        before_commit = context[: commit.start() - prior_line_start]
+        if re.search(
+            r"(?i)\b(?:"
+            r"(?:release|publish(?:ed|ing)?|publication|registry)[ -]+(?:commit|sha)"
+            r"|exact[ -]+commit"
+            r"|tag[ -]+target"
+            r")\b[^\n]{0,64}$",
+            before_commit,
+        ):
+            release_commit_values.add(commit.group(0).lower())
+    release_run_values: set[str] = set()
+    for run in _ACTIONS_RUN.finditer(prose):
+        line_start = prose.rfind("\n", 0, run.start()) + 1
+        prior_line_start = prose.rfind("\n", 0, max(0, line_start - 1)) + 1
+        context = prose[prior_line_start : run.start()]
+        label = re.search(r"(?i)\[([^\]]+)\]\([^\n]*$", context)
+        label_text = label.group(1) if label is not None else context.splitlines()[-1]
+        if re.search(
+            r"(?i)\b(?:release|publish(?:ing)?|publication|registry)"
+            r"(?:[ -]+(?:workflow|job|pipeline))?[ -]+run\b"
+            r"|\b(?:release|publish(?:ing)?|publication|registry)"
+            r"(?:[ -]+(?:job|pipeline))?[ -]+workflow\b"
+            r"|\bworkflow[ -]+run\b"
+            r"|\bgithub[ -]+actions[ -]+run\b",
+            label_text,
+        ):
+            release_run_values.add(run.group(0).split("/actions/runs/", 1)[1].split("/", 1)[0])
+    labeled_values = (
+        ("release commit", release_commit_values, identity.commit),
+        ("release workflow run", release_run_values, identity.workflow_run),
+        (
+            "wheel SHA256",
+            {
+                match.group("digest").lower()
+                for match in re.finditer(
+                    r"(?i)\bwheel\s+(?:sha256|digest|checksum|hash)\b[^0-9a-f]{0,96}"
+                    r"(?P<digest>[0-9a-f]{64})(?![0-9a-f])",
+                    prose,
+                    re.DOTALL,
+                )
+            },
+            identity.wheel_sha256,
+        ),
+        (
+            "source-distribution SHA256",
+            {
+                match.group("digest").lower()
+                for match in re.finditer(
+                    r"(?i)\b(?:source(?:[- ]distribution)?|(?:public[ -]+)?sdist)\b"
+                    r"(?:[ -]+(?:sha256|digest|checksum|hash)|[ -]+has[ -]+sha256)\b"
+                    r"[^0-9a-f]{0,96}(?P<digest>[0-9a-f]{64})(?![0-9a-f])",
+                    prose,
+                    re.DOTALL,
+                )
+            },
+            identity.sdist_sha256,
+        ),
+    )
+    for label, values, expected in labeled_values:
+        unexpected = values - {expected.lower()}
+        if unexpected:
+            findings.append(
+                (
+                    line,
+                    f"release-evidence block for {version} contains {label} values that "
+                    "contradict its release-identity marker",
+                )
+            )
+    canonical_identity_urls = (
+        re.compile(
+            rf"{re.escape(CANONICAL_REPOSITORY)}/releases/tag/(?P<tag>[^\s)]+)",
+            re.IGNORECASE,
+        ),
+        re.compile(
+            r"https://pypi\.org/project/cometapi/(?P<tag>[^\s/)]+)/",
+            re.IGNORECASE,
+        ),
+    )
+    allowed_url_values = {
+        identity.tag.casefold(),
+        encoded_tag.casefold(),
+        version.casefold(),
+    }
+    for pattern in canonical_identity_urls:
+        for url in pattern.finditer(prose):
+            if url.group("tag").casefold() not in allowed_url_values:
+                findings.append(
+                    (
+                        line,
+                        f"release-evidence block for {version} contains a canonical release URL "
+                        "that contradicts its release-identity marker",
+                    )
+                )
+    expected_versions = {version, identity.tag, quote(identity.tag, safe="v.-")}
+    for start, end in _first_party_version_spans(prose):
+        value = re.sub(r"\s+", "", prose[start:end]).lower()
+        if value not in {item.lower() for item in expected_versions} and not (
+            version == "0.1.0"
+            and value == "0.1.0a1"
+            and "cdn\npropagation" in prose[max(0, start - 96) : end + 96].casefold()
+        ):
+            findings.append(
+                (
+                    line,
+                    f"release-evidence block for {version} contains unrelated "
+                    f"exact version {value!r}",
+                )
+            )
+    return identity, findings
+
+
+def _evidence_block_violations(
+    document: str,
+    text: str,
+) -> tuple[str, list[tuple[int, str]], dict[str, ReleaseEvidenceIdentity]]:
+    fenced_spans = _markdown_fence_spans(text)
+    markers = [
+        marker
+        for marker in RELEASE_EVIDENCE_MARKER.finditer(text)
+        if not _inside_spans(marker.start(), fenced_spans)
+    ]
+    evidence_versions: set[str] = set()
+    for marker in markers:
+        try:
+            evidence_versions.add(normalize_version(marker.group("version")))
+        except CheckError:
+            continue
+    malformed_markers = [
+        match
+        for match in _ANY_RELEASE_EVIDENCE_MARKER.finditer(text)
+        if not any(valid.start() == match.start() for valid in markers)
+    ]
+    findings = [
+        (
+            text.count("\n", 0, match.start()) + 1,
+            "malformed release-evidence marker; use paired start/end markers with "
+            "version and ISO date",
+        )
+        for match in malformed_markers
+    ]
+    identities: dict[str, ReleaseEvidenceIdentity] = {}
+    covered_identity_starts: set[int] = set()
+    searchable = text
+    open_marker: re.Match[str] | None = None
+    for marker in markers:
+        kind = marker.group("kind")
+        if kind == "start":
+            if open_marker is not None:
+                findings.append(
+                    (
+                        text.count("\n", 0, marker.start()) + 1,
+                        "nested release-evidence block",
+                    )
+                )
+            open_marker = marker
+            continue
+        if open_marker is None:
+            findings.append(
+                (text.count("\n", 0, marker.start()) + 1, "unpaired release-evidence end marker")
+            )
+            continue
+
+        start_line = text.count("\n", 0, open_marker.start()) + 1
+        try:
+            version = normalize_version(open_marker.group("version"))
+            end_version = normalize_version(marker.group("version"))
+        except CheckError:
+            findings.append(
+                (
+                    start_line,
+                    "malformed release-evidence marker; version must be a supported exact release",
+                )
+            )
+            searchable = _blank_span(searchable, open_marker.start(), marker.end())
+            open_marker = None
+            continue
+        if end_version != version or marker.group("date") != open_marker.group("date"):
+            findings.append(
+                (
+                    text.count("\n", 0, marker.start()) + 1,
+                    "release-evidence end marker must match its start version and date",
+                )
+            )
+        try:
+            date.fromisoformat(open_marker.group("date"))
+        except ValueError:
+            findings.append(
+                (
+                    start_line,
+                    "release-evidence marker date must be a valid ISO date",
+                )
+            )
+        body = text[open_marker.end() : marker.start()]
+        covered_identity_starts.update(
+            open_marker.end() + match.start()
+            for match in _ANY_RELEASE_EVIDENCE_IDENTITY.finditer(body)
+        )
+        identity, identity_findings = _identity_violations(
+            body,
+            version,
+            open_marker.group("date"),
+            start_line,
+            evidence_versions,
+        )
+        findings.extend(identity_findings)
+        if identity is not None:
+            if version in identities:
+                findings.append((start_line, f"duplicate release-evidence block for {version}"))
+            else:
+                identities[version] = identity
+        elif _ANY_RELEASE_EVIDENCE_IDENTITY.search(body) is not None:
+            findings.append(
+                (start_line, f"release-evidence block for {version} has invalid identity metadata")
+            )
+        searchable = _blank_span(searchable, open_marker.start(), marker.end())
+        open_marker = None
+    if open_marker is not None:
+        findings.append(
+            (text.count("\n", 0, open_marker.start()) + 1, "unpaired release-evidence start marker")
+        )
+    for identity_marker in _ANY_RELEASE_EVIDENCE_IDENTITY.finditer(text):
+        if identity_marker.start() not in covered_identity_starts:
+            findings.append(
+                (
+                    text.count("\n", 0, identity_marker.start()) + 1,
+                    "release-identity marker must appear inside one release-evidence block",
+                )
+            )
+    identity_fields = (
+        ("release commit", "commit"),
+        ("workflow run", "workflow_run"),
+        ("wheel SHA256", "wheel_sha256"),
+        ("source-distribution SHA256", "sdist_sha256"),
+    )
+    for label, field in identity_fields:
+        owners: dict[str, str] = {}
+        for version, identity in identities.items():
+            value = cast(str, getattr(identity, field))
+            previous = owners.get(value)
+            if previous is not None and previous != version:
+                findings.append(
+                    (
+                        1,
+                        f"release-evidence identities for {previous} and {version} "
+                        f"reuse the same {label}",
+                    )
+                )
+            else:
+                owners[value] = version
+    return searchable, findings, identities
+
+
+def exact_release_version_violations(
+    document: str,
+    text: str,
+    project_version: str,
+) -> list[tuple[int, str]]:
+    """Return deterministic CometAPI exact-version boundary violations."""
+    normalized = _normalized_document_text(text)
+    normalize_version(project_version)
+    findings: list[tuple[int, str]] = []
+    searchable = normalized
+    if document == "CHANGELOG.md":
+        return []
+    if document in RELEASE_EVIDENCE_DOCUMENTS:
+        structural = unicodedata.normalize("NFKC", text)
+        searchable, marker_findings, _ = _evidence_block_violations(
+            document,
+            structural,
+        )
+        normalized_searchable = _normalized_document_text(searchable)
+        searchable = normalized_searchable
+        findings.extend(marker_findings)
+    for start, _ in _first_party_version_spans(searchable):
+        findings.append(
+            (
+                searchable.count("\n", 0, start) + 1,
+                EXACT_RELEASE_VERSION_CATEGORY,
+            )
+        )
+    return sorted(set(findings))
+
+
+def release_evidence_identities(
+    document: str,
+    text: str,
+) -> dict[str, ReleaseEvidenceIdentity]:
+    """Return internally validated immutable identities from an evidence document."""
+    if document not in RELEASE_EVIDENCE_DOCUMENTS:
+        return {}
+    structural = unicodedata.normalize("NFKC", text)
+    _, findings, identities = _evidence_block_violations(document, structural)
+    if findings:
+        rendered = "; ".join(f"{document}:{line}: {label}" for line, label in findings)
+        raise CheckError(rendered)
+    return identities
+
+
 def public_readme_release_violations(text: str) -> list[str]:
     """Return transient or version-specific release statements in public README text."""
     violations = [
         label for pattern, label in PUBLIC_README_FORBIDDEN_PATTERNS if re.search(pattern, text)
     ]
-    violations.extend(label for _, label in mutable_published_version_claims(text))
+    violations.extend(
+        label
+        for _, label in exact_release_version_violations(
+            "README.md",
+            text,
+            read_project_version(),
+        )
+    )
     return violations
-
-
-def mutable_published_version_claims(text: str) -> list[tuple[int, str]]:
-    """Return line-numbered mutable exact-patch publication claims."""
-    searchable = _claim_analysis_text(text)
-    tokens = _claim_tokens(searchable)
-    findings: set[tuple[int, str]] = set()
-    for index, token in enumerate(tokens):
-        if token.kind != "version":
-            continue
-        window = _claim_window(tokens, index)
-        window_index = window.index(token)
-        # Markdown tables often put the mutable state in the cell after the
-        # version. Include that adjacent cell even though normal claim windows
-        # stop at a pipe boundary.
-        table_suffix: list[str] = []
-        if index + 1 < len(tokens) and tokens[index + 1].kind == "separator":
-            if tokens[index + 1].value == "|":
-                suffix_end = index + 2
-                while suffix_end < len(tokens):
-                    following = tokens[suffix_end]
-                    if following.kind == "boundary" or (
-                        following.kind == "separator" and following.value == "|"
-                    ):
-                        break
-                    suffix_end += 1
-                table_suffix = _word_values(tokens[index + 2 : suffix_end])
-        colon_label: list[str] = []
-        if index > 0 and (
-            (tokens[index - 1].kind == "separator" and tokens[index - 1].value == ":")
-            or (tokens[index - 1].kind == "separator" and tokens[index - 1].value == "|")
-        ):
-            label_start = index - 2
-            while label_start >= 0 and tokens[label_start].kind != "boundary":
-                if tokens[label_start].kind == "separator" and tokens[label_start].value == "|":
-                    break
-                label_start -= 1
-            colon_label = _word_values(tokens[label_start + 1 : index - 1])[-8:]
-        prefix = searchable[max(0, token.start - 160) : token.start]
-        parenthetical = re.search(r"([^.!?;]{0,100})\(([^()]*)\)\s*:\s*$", prefix)
-        if parenthetical is not None:
-            colon_label.extend(
-                re.findall(
-                    r"[A-Za-z0-9]+(?:[-'][A-Za-z0-9]+)*",
-                    " ".join(parenthetical.groups()).casefold(),
-                )[-12:]
-            )
-        label_words = set(colon_label)
-        mutable_label = (
-            bool(label_words.intersection(_MUTABLE_LABEL_WORDS))
-            or (
-                bool(label_words.intersection({"public", "stable"}))
-                and bool(label_words.intersection(_RELEASE_IDENTITY_WORDS))
-            )
-            or bool(label_words.intersection({"released", "published"}))
-        )
-        mutable_table_suffix = bool(
-            set(table_suffix).intersection(
-                _CURRENT_WORDS | _PUBLICATION_STATE_WORDS | {"stable", "status"}
-            )
-        )
-        attributed_label = (
-            bool(label_words.intersection(_KNOWN_THIRD_PARTY_ATTRIBUTIONS))
-            and "cometapi" not in label_words
-        )
-        window_words = _word_values(window)
-        recovery_mapping = (
-            "remains" in window_words
-            and bool({"artifact", "identity", "recovery"}.intersection(set(window_words)))
-            and not _has_current_marker(window_words)
-            and "but" not in window_words
-        )
-        if (
-            ((mutable_label or mutable_table_suffix) and not attributed_label)
-            or _is_mutable_published_version_claim(window, window_index)
-        ) and not recovery_mapping:
-            line = searchable.count("\n", 0, token.start) + 1
-            findings.add((line, MUTABLE_PUBLISHED_VERSION_CATEGORY))
-    return sorted(findings)
 
 
 def public_readme_has_install_command(text: str) -> bool:

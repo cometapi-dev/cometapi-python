@@ -36,7 +36,7 @@ def test_sync_chat_completion_contract() -> None:
 
     with CometAPI(api_key=API_KEY, base_url=BASE_URL, http_client=http_client) as client:
         result = client.chat.completions.create(
-            model="gpt-5.4",
+            model="gpt-5.6-sol",
             messages=[{"role": "user", "content": "ping"}],
         )
 
@@ -51,7 +51,7 @@ def test_sync_chat_completion_contract() -> None:
     )
     assert request_json(request) == {
         "messages": [{"role": "user", "content": "ping"}],
-        "model": "gpt-5.4",
+        "model": "gpt-5.6-sol",
     }
 
 
@@ -61,7 +61,7 @@ def test_sync_chat_completion_stream_contract() -> None:
 
     with CometAPI(api_key=API_KEY, base_url=BASE_URL, http_client=http_client) as client:
         stream = client.chat.completions.create(
-            model="gpt-5.4",
+            model="gpt-5.6-sol",
             messages=[{"role": "user", "content": "ping"}],
             stream=True,
         )
@@ -80,7 +80,7 @@ def test_sync_chat_completion_stream_contract() -> None:
     )
     assert request_json(request) == {
         "messages": [{"role": "user", "content": "ping"}],
-        "model": "gpt-5.4",
+        "model": "gpt-5.6-sol",
         "stream": True,
     }
 
@@ -90,14 +90,14 @@ def test_sync_response_contract() -> None:
     http_client = sync_http_client(router)
 
     with CometAPI(api_key=API_KEY, base_url=BASE_URL, http_client=http_client) as client:
-        result = client.responses.create(model="gpt-5.4", input="ping")
+        result = client.responses.create(model="gpt-5.6-sol", input="ping")
 
     assert isinstance(result, Response)
     assert result.id == "resp-contract"
     assert len(router.requests) == 1
     request = router.requests[0]
     assert_common_request(request, method="POST", url=f"{BASE_URL}/responses")
-    assert request_json(request) == {"input": "ping", "model": "gpt-5.4"}
+    assert request_json(request) == {"input": "ping", "model": "gpt-5.6-sol"}
 
 
 def test_sync_response_stream_contract() -> None:
@@ -105,7 +105,7 @@ def test_sync_response_stream_contract() -> None:
     http_client = sync_http_client(router)
 
     with CometAPI(api_key=API_KEY, base_url=BASE_URL, http_client=http_client) as client:
-        stream = client.responses.create(model="gpt-5.4", input="ping", stream=True)
+        stream = client.responses.create(model="gpt-5.6-sol", input="ping", stream=True)
         assert isinstance(stream, Stream)
         events = list(stream)
 
@@ -117,7 +117,7 @@ def test_sync_response_stream_contract() -> None:
     assert_common_request(request, method="POST", url=f"{BASE_URL}/responses")
     assert request_json(request) == {
         "input": "ping",
-        "model": "gpt-5.4",
+        "model": "gpt-5.6-sol",
         "stream": True,
     }
 
@@ -131,7 +131,7 @@ def test_sync_models_contract() -> None:
 
     assert len(result.data) == 1
     assert isinstance(result.data[0], Model)
-    assert result.data[0].id == "gpt-5.4"
+    assert result.data[0].id == "gpt-5.6-sol"
     assert len(router.requests) == 1
     request = router.requests[0]
     assert_common_request(request, method="GET", url=f"{BASE_URL}/models")
@@ -149,7 +149,7 @@ async def test_async_chat_completion_contract() -> None:
         http_client=http_client,
     ) as client:
         result = await client.chat.completions.create(
-            model="gpt-5.4",
+            model="gpt-5.6-sol",
             messages=[{"role": "user", "content": "ping"}],
         )
 
@@ -164,7 +164,7 @@ async def test_async_chat_completion_contract() -> None:
     )
     assert request_json(request) == {
         "messages": [{"role": "user", "content": "ping"}],
-        "model": "gpt-5.4",
+        "model": "gpt-5.6-sol",
     }
 
 
@@ -179,7 +179,7 @@ async def test_async_chat_completion_stream_contract() -> None:
         http_client=http_client,
     ) as client:
         stream = await client.chat.completions.create(
-            model="gpt-5.4",
+            model="gpt-5.6-sol",
             messages=[{"role": "user", "content": "ping"}],
             stream=True,
         )
@@ -198,7 +198,7 @@ async def test_async_chat_completion_stream_contract() -> None:
     )
     assert request_json(request) == {
         "messages": [{"role": "user", "content": "ping"}],
-        "model": "gpt-5.4",
+        "model": "gpt-5.6-sol",
         "stream": True,
     }
 
@@ -213,14 +213,14 @@ async def test_async_response_contract() -> None:
         base_url=BASE_URL,
         http_client=http_client,
     ) as client:
-        result = await client.responses.create(model="gpt-5.4", input="ping")
+        result = await client.responses.create(model="gpt-5.6-sol", input="ping")
 
     assert isinstance(result, Response)
     assert result.id == "resp-contract"
     assert len(router.requests) == 1
     request = router.requests[0]
     assert_common_request(request, method="POST", url=f"{BASE_URL}/responses")
-    assert request_json(request) == {"input": "ping", "model": "gpt-5.4"}
+    assert request_json(request) == {"input": "ping", "model": "gpt-5.6-sol"}
 
 
 @pytest.mark.asyncio
@@ -233,7 +233,7 @@ async def test_async_response_stream_contract() -> None:
         base_url=BASE_URL,
         http_client=http_client,
     ) as client:
-        stream = await client.responses.create(model="gpt-5.4", input="ping", stream=True)
+        stream = await client.responses.create(model="gpt-5.6-sol", input="ping", stream=True)
         assert isinstance(stream, AsyncStream)
         events = [event async for event in stream]
 
@@ -245,7 +245,7 @@ async def test_async_response_stream_contract() -> None:
     assert_common_request(request, method="POST", url=f"{BASE_URL}/responses")
     assert request_json(request) == {
         "input": "ping",
-        "model": "gpt-5.4",
+        "model": "gpt-5.6-sol",
         "stream": True,
     }
 
@@ -264,7 +264,7 @@ async def test_async_models_contract() -> None:
 
     assert len(result.data) == 1
     assert isinstance(result.data[0], Model)
-    assert result.data[0].id == "gpt-5.4"
+    assert result.data[0].id == "gpt-5.6-sol"
     assert len(router.requests) == 1
     request = router.requests[0]
     assert_common_request(request, method="GET", url=f"{BASE_URL}/models")

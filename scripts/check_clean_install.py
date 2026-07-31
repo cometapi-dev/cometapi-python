@@ -20,9 +20,21 @@ from typing import cast
 from urllib.parse import urlsplit
 
 try:
-    from scripts._checks import PROJECT_ROOT, CheckError, normalize_version, read_project_version
+    from scripts._checks import (
+        CANONICAL_ACTIVE_MODEL,
+        PROJECT_ROOT,
+        CheckError,
+        normalize_version,
+        read_project_version,
+    )
 except ModuleNotFoundError:  # Support direct execution from the repository root.
-    from _checks import PROJECT_ROOT, CheckError, normalize_version, read_project_version
+    from _checks import (
+        CANONICAL_ACTIVE_MODEL,
+        PROJECT_ROOT,
+        CheckError,
+        normalize_version,
+        read_project_version,
+    )
 
 README_EXAMPLE_NAMES = (
     "sync-chat",
@@ -32,6 +44,7 @@ README_EXAMPLE_NAMES = (
 )
 README_EXAMPLE_MARKER = re.compile(r"<!-- cometapi-readme-example: (?P<name>[a-z0-9-]+) -->")
 README_EXAMPLE_MARKER_PREFIX = "<!-- cometapi-readme-example:"
+MODEL_ARGUMENT = re.compile(r'\bmodel\s*=\s*["\']([^"\']+)["\']')
 
 README_EXAMPLE_BOOTSTRAP = r"""
 import ipaddress
@@ -64,6 +77,7 @@ import httpx
 from cometapi import AsyncCometAPI, CometAPI
 
 EXPECTED_VERSION = __EXPECTED_VERSION__
+CANONICAL_ACTIVE_MODEL = __CANONICAL_ACTIVE_MODEL__
 assert version("cometapi") == EXPECTED_VERSION
 import cometapi
 assert not hasattr(cometapi, "CometClient")
@@ -79,7 +93,7 @@ def response_for(request):
             "id": "chatcmpl-package-smoke",
             "object": "chat.completion",
             "created": 0,
-            "model": "gpt-5.4",
+            "model": CANONICAL_ACTIVE_MODEL,
             "choices": [{
                 "index": 0,
                 "message": {"role": "assistant", "content": "ok"},
@@ -92,13 +106,18 @@ def response_for(request):
             "object": "response",
             "created_at": 0,
             "status": "completed",
-            "model": "gpt-5.4",
+            "model": CANONICAL_ACTIVE_MODEL,
             "output": [],
         })
     if request.url.path == "/v1/models":
         return httpx.Response(200, json={
             "object": "list",
-            "data": [{"id": "gpt-5.4", "object": "model", "created": 0, "owned_by": "cometapi"}],
+            "data": [{
+                "id": CANONICAL_ACTIVE_MODEL,
+                "object": "model",
+                "created": 0,
+                "owned_by": "cometapi",
+            }],
         })
     return httpx.Response(404, json={
         "error": {"message": "unexpected route", "type": "invalid_request_error"}
@@ -111,13 +130,13 @@ with httpx.Client(transport=httpx.MockTransport(response_for)) as http_client:
         http_client=http_client,
     ) as client:
         chat = client.chat.completions.create(
-            model="gpt-5.4", messages=[{"role": "user", "content": "ping"}]
+            model=CANONICAL_ACTIVE_MODEL, messages=[{"role": "user", "content": "ping"}]
         )
         assert chat.choices[0].message.content == "ok"
-        result = client.responses.create(model="gpt-5.4", input="ping")
+        result = client.responses.create(model=CANONICAL_ACTIVE_MODEL, input="ping")
         assert result.id == "resp_package_smoke"
         models = client.models.list()
-        assert models.data[0].id == "gpt-5.4"
+        assert models.data[0].id == CANONICAL_ACTIVE_MODEL
 
 async def async_smoke():
     async def async_response_for(request):
@@ -130,7 +149,7 @@ async def async_smoke():
             http_client=http_client,
         ) as client:
             models = await client.models.list()
-            assert models.data[0].id == "gpt-5.4"
+            assert models.data[0].id == CANONICAL_ACTIVE_MODEL
 
 asyncio.run(async_smoke())
 assert set(seen) == {
@@ -144,7 +163,7 @@ CHAT_COMPLETION: dict[str, object] = {
     "id": "chatcmpl-readme",
     "object": "chat.completion",
     "created": 1,
-    "model": "gpt-5.4",
+    "model": CANONICAL_ACTIVE_MODEL,
     "choices": [
         {
             "index": 0,
@@ -157,7 +176,7 @@ CHAT_CHUNK: dict[str, object] = {
     "id": "chatcmpl-readme",
     "object": "chat.completion.chunk",
     "created": 1,
-    "model": "gpt-5.4",
+    "model": CANONICAL_ACTIVE_MODEL,
     "choices": [
         {
             "index": 0,
@@ -171,7 +190,7 @@ RESPONSE: dict[str, object] = {
     "object": "response",
     "created_at": 1,
     "status": "completed",
-    "model": "gpt-5.4",
+    "model": CANONICAL_ACTIVE_MODEL,
     "output": [
         {
             "id": "msg-readme",
@@ -195,7 +214,7 @@ MODEL_LIST: dict[str, object] = {
     "object": "list",
     "data": [
         {
-            "id": "gpt-5.4",
+            "id": CANONICAL_ACTIVE_MODEL,
             "object": "model",
             "created": 1,
             "owned_by": "cometapi",
@@ -248,6 +267,12 @@ def read_readme_examples(path: Path = PROJECT_ROOT / "README.md") -> list[tuple[
         code = "".join(lines[code_start:fence_end])
         if not code.strip():
             raise CheckError(f"README example {name!r} must not be empty")
+        model_values = set(MODEL_ARGUMENT.findall(code))
+        if model_values and model_values != {CANONICAL_ACTIVE_MODEL}:
+            raise CheckError(
+                f"README example {name!r} must use canonical active model "
+                f"{CANONICAL_ACTIVE_MODEL!r}; got {sorted(model_values)!r}"
+            )
         try:
             compile(code, f"{path.name}:{code_start + 1}", "exec")
         except SyntaxError as error:
@@ -388,7 +413,7 @@ def _run_readme_examples(
             "/v1/chat/completions",
             {
                 "messages": [{"role": "user", "content": "Hello!"}],
-                "model": "gpt-5.4",
+                "model": CANONICAL_ACTIVE_MODEL,
             },
         ),
         (
@@ -396,7 +421,7 @@ def _run_readme_examples(
             "/v1/chat/completions",
             {
                 "messages": [{"role": "user", "content": "Write one sentence."}],
-                "model": "gpt-5.4",
+                "model": CANONICAL_ACTIVE_MODEL,
                 "stream": True,
             },
         ),
@@ -405,14 +430,14 @@ def _run_readme_examples(
             "/v1/responses",
             {
                 "input": "Explain API compatibility in one sentence.",
-                "model": "gpt-5.4",
+                "model": CANONICAL_ACTIVE_MODEL,
             },
         ),
         ("GET", "/v1/models", {}),
         (
             "POST",
             "/v1/responses",
-            {"input": "Say hello.", "model": "gpt-5.4"},
+            {"input": "Say hello.", "model": CANONICAL_ACTIVE_MODEL},
         ),
     ]
     if server.errors:
@@ -494,7 +519,9 @@ def _install_and_smoke(
                     check=True,
                     timeout=300,
                 )
-                smoke = SMOKE_TEST.replace("__EXPECTED_VERSION__", repr(expected_version))
+                smoke = SMOKE_TEST.replace("__EXPECTED_VERSION__", repr(expected_version)).replace(
+                    "__CANONICAL_ACTIVE_MODEL__", repr(CANONICAL_ACTIVE_MODEL)
+                )
                 subprocess.run(
                     [str(python), "-I", "-c", smoke],
                     cwd=root,

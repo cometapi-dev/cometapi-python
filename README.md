@@ -74,7 +74,7 @@ from cometapi import CometAPI
 
 with CometAPI() as client:
     response = client.chat.completions.create(
-        model="gpt-5.4",
+        model="gpt-5.6-sol",
         messages=[{"role": "user", "content": "Hello!"}],
     )
     print(response.choices[0].message.content)
@@ -88,7 +88,7 @@ from cometapi import CometAPI
 
 with CometAPI() as client:
     stream = client.chat.completions.create(
-        model="gpt-5.4",
+        model="gpt-5.6-sol",
         messages=[{"role": "user", "content": "Write one sentence."}],
         stream=True,
     )
@@ -104,7 +104,7 @@ from cometapi import CometAPI
 
 with CometAPI() as client:
     response = client.responses.create(
-        model="gpt-5.4",
+        model="gpt-5.6-sol",
         input="Explain API compatibility in one sentence.",
     )
     models = client.models.list()
@@ -125,7 +125,7 @@ from cometapi import AsyncCometAPI
 async def main() -> None:
     async with AsyncCometAPI() as client:
         response = await client.responses.create(
-            model="gpt-5.4",
+            model="gpt-5.6-sol",
             input="Say hello.",
         )
         print(response.output_text)

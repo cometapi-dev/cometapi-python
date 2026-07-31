@@ -34,6 +34,17 @@ def _mutated_readme(tmp_path: Path, old: str, new: str) -> Path:
     return readme
 
 
+def test_readme_examples_require_the_canonical_active_model(tmp_path: Path) -> None:
+    readme = _mutated_readme(
+        tmp_path,
+        'model="gpt-5.6-sol",\n        messages',
+        'model="gpt-5.6",\n        messages',
+    )
+
+    with pytest.raises(CheckError, match=r"must use canonical active model 'gpt-5\.6-sol'"):
+        read_readme_examples(readme)
+
+
 def test_readme_examples_reject_unknown_markers(tmp_path: Path) -> None:
     readme = _mutated_readme(
         tmp_path,
@@ -137,7 +148,7 @@ import urllib.request
 
 request = urllib.request.Request(
     os.environ["COMETAPI_BASE_URL"] + "/chat/completions",
-    data=json.dumps({"model": "gpt-5.4", "messages": [], "stream": True}).encode(),
+    data=json.dumps({"model": "gpt-5.6-sol", "messages": [], "stream": True}).encode(),
     headers={"Authorization": "Bearer readme-example-key", "Content-Type": "application/json"},
 )
 with urllib.request.urlopen(request) as response:
@@ -166,7 +177,7 @@ assert "data: [DONE]" in payload
         (
             "POST",
             "/v1/chat/completions",
-            {"model": "gpt-5.4", "messages": [], "stream": True},
+            {"model": "gpt-5.6-sol", "messages": [], "stream": True},
         )
     ]
     assert server.errors == ["README example requests must not include a query string"]

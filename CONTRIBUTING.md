@@ -38,8 +38,8 @@ uv run python scripts/check_repository_independence.py
 uv run python scripts/run_actionlint.py
 ```
 
-`scripts/run_actionlint.py` downloads and checksum-verifies `actionlint`
-1.7.12 when it is not cached. A passing static workflow check does not mean the
+`scripts/run_actionlint.py` downloads and checksum-verifies actionlint 1.7.12
+when it is not cached. A passing static workflow check does not mean the
 workflow has run successfully on GitHub.
 
 If a check is unavailable, say so in the pull request rather than describing
