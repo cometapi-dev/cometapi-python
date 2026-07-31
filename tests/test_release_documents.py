@@ -714,6 +714,10 @@ def test_release_evidence_rejects_obsolete_workflow_reference_marker(
         "https://github.com/cometapi-dev/cometapi-python/actions\\/runs\\/30511373822",
         "https://github.com/cometapi-dev/cometapi-python/actions\\runs\\30511373822",
         "https://github.com/cometapi-dev/cometapi-python&#92;actions&#92;runs&#92;30511373822",
+        "https://github.com/cometapi-dev/cometapi-python%5Cactions%5Cruns%5C30511373822",
+        "https://evil.example/?next=https://github.com/cometapi-dev/cometapi-python%5Cactions%5Cruns%5C30511373822",
+        '<a href="https://github.com/cometapi-dev/cometapi-python/'
+        'act&#9;ions/runs/30511373822">Required CI</a>',
         "https://github.com/cometapi-dev/cometapi-python/actions/runs/30511373822.evil",
         "https://github.com/cometapi-dev/cometapi-python/actions/runs/30511373822/attempts/0",
     ],

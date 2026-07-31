@@ -681,19 +681,22 @@ def _canonical_actions_run_violations(
 ) -> list[tuple[int, str]]:
     """Require every Actions URL in immutable evidence to name one canonical run."""
     findings: list[tuple[int, str]] = []
-    normalized = unicodedata.normalize("NFKC", body)
-    direct = normalized
-    for _ in range(3):
-        decoded = html.unescape(direct)
-        if decoded == direct:
+    direct = unicodedata.normalize("NFKC", body)
+    variants = [direct]
+    for _ in range(8):
+        previous = variants[-1]
+        decoded = html.unescape(previous)
+        decoded = unquote(decoded)
+        decoded = re.sub(r"\\([/\\.:?&=%#])", r"\1", decoded)
+        decoded = decoded.replace("\t", "").replace("\n", "").replace("\r", "")
+        decoded = re.sub(
+            r"(?i)(https?://[^\s<>)\]]*)\\([^\s<>)\]]*)",
+            lambda match: match.group(0).replace("\\", "/"),
+            decoded,
+        )
+        if decoded == previous:
             break
-        direct = decoded
-    markdown_unescaped = re.sub(r"\\([/\\.:?&=%#])", r"\1", direct)
-    browser_normalized = re.sub(
-        r"(?i)(https?://[^\s<>)\]]*)\\([^\s<>)\]]*)",
-        lambda match: match.group(0).replace("\\", "/"),
-        markdown_unescaped,
-    )
+        variants.append(decoded)
 
     path_matches = list(_ACTIONS_PATH.finditer(direct))
     canonical_matches = list(_CANONICAL_ACTIONS_URL.finditer(direct))
@@ -704,39 +707,18 @@ def _canonical_actions_run_violations(
         for path in path_matches
     )
 
-    percent_decoded = direct
-    for _ in range(3):
-        decoded = unquote(percent_decoded)
-        if decoded == percent_decoded:
-            break
-        percent_decoded = decoded
     direct_paths = Counter((match.group("run"), match.group("attempt")) for match in path_matches)
-    decoded_paths = Counter(
-        (match.group("run"), match.group("attempt"))
-        for match in _ACTIONS_PATH.finditer(percent_decoded)
-    )
+    variant_paths = [
+        Counter(
+            (match.group("run"), match.group("attempt"))
+            for match in _ACTIONS_PATH.finditer(variant)
+        )
+        for variant in variants
+    ]
     malformed = malformed or any(
-        count > direct_paths[identity] for identity, count in decoded_paths.items()
-    )
-    normalized_paths = Counter(
-        (match.group("run"), match.group("attempt")) for match in _ACTIONS_PATH.finditer(normalized)
-    )
-    malformed = malformed or any(
-        count > normalized_paths[identity] for identity, count in direct_paths.items()
-    )
-    unescaped_paths = Counter(
-        (match.group("run"), match.group("attempt"))
-        for match in _ACTIONS_PATH.finditer(markdown_unescaped)
-    )
-    malformed = malformed or any(
-        count > normalized_paths[identity] for identity, count in unescaped_paths.items()
-    )
-    browser_paths = Counter(
-        (match.group("run"), match.group("attempt"))
-        for match in _ACTIONS_PATH.finditer(browser_normalized)
-    )
-    malformed = malformed or any(
-        count > normalized_paths[identity] for identity, count in browser_paths.items()
+        count > direct_paths[identity]
+        for paths in variant_paths[1:]
+        for identity, count in paths.items()
     )
 
     if malformed:
@@ -748,12 +730,7 @@ def _canonical_actions_run_violations(
                 "/attempts/<positive-id> suffix",
             )
         )
-    run_values = (
-        {run for run, _attempt in direct_paths}
-        | {run for run, _attempt in decoded_paths}
-        | {run for run, _attempt in unescaped_paths}
-        | {run for run, _attempt in browser_paths}
-    )
+    run_values = {run for paths in variant_paths for run, _attempt in paths}
     if run_values - {expected_run}:
         findings.append(
             (

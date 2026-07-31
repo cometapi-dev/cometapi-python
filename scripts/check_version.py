@@ -269,7 +269,7 @@ def _visible_heading_is_unreleased(label: str) -> bool:
         for value in label
     )
     words = re.findall(r"[A-Za-z]+", label)
-    return bool(words and words[0].casefold() == "unreleased")
+    return any(word.casefold() == "unreleased" for word in words)
 
 
 def _unreleased_heading_lines(text: str) -> list[int]:
