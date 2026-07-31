@@ -18,6 +18,8 @@ from pathlib import Path
 from typing import cast
 from urllib.parse import quote, unquote
 
+from markdown_it import MarkdownIt
+
 if sys.version_info >= (3, 11):
     import tomllib
 else:
@@ -192,6 +194,18 @@ def _actions_path_has_canonical_url(
     if boundary == "(":
         return canonical.start() == 1 or text[canonical.start() - 2].isspace()
     return False
+
+
+def _rendered_markdown_link_targets(text: str) -> list[str]:
+    targets: list[str] = []
+    for token in MarkdownIt("commonmark", {"html": True}).parse(text):
+        for child in token.children or []:
+            if child.type != "link_open":
+                continue
+            target = child.attrGet("href")
+            if isinstance(target, str):
+                targets.append(target)
+    return targets
 
 
 _WHEEL_DIGEST = re.compile(
@@ -762,6 +776,12 @@ def _canonical_actions_run_violations(
         )
         for variant in variants
     ]
+    malformed = malformed or any(
+        _ACTIONS_PATH.search(target) is not None
+        and _CANONICAL_ACTIONS_URL.fullmatch(target) is None
+        for variant in variants
+        for target in _rendered_markdown_link_targets(variant)
+    )
     malformed = malformed or any(
         count > direct_paths[identity]
         for paths in variant_paths[1:]

@@ -708,6 +708,8 @@ def test_release_evidence_rejects_obsolete_workflow_reference_marker(
         "prefix<https://github.com/cometapi-dev/cometapi-python/actions/runs/30515861246>",
         "[evil](mailto:foo](https://github.com/cometapi-dev/cometapi-python/"
         "actions/runs/30515861246))",
+        "[evil](mailto:foo([x](https://github.com/cometapi-dev/cometapi-python/"
+        "actions/runs/30515861246)))",
         "http://github.com/cometapi-dev/cometapi-python/actions/runs/30511373822",
         "https://evil.example/?next=https%3A%2F%2Fgithub.com%2Fcometapi-dev%2F"
         "cometapi-python%2Factions%2Fruns%2F30511373822",
