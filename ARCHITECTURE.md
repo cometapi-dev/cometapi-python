@@ -133,7 +133,9 @@ sdist, and PyPI metadata are immutable, the README uses an unversioned install
 command and publication-neutral release language that remains accurate before
 and after a release. Source-document and artifact checks reject approval,
 unpublished, exact-version installation, and versioned release-link text; each
-artifact long description must also exactly match the source README.
+artifact long description must also exactly match the source README. Artifact
+inspection additionally requires every reviewed source-distribution member to
+match the release checkout byte for byte.
 
 Release Please v5.0.0 is pinned to the immutable commit whose action metadata
 uses `node24`. The workflow semantic contract fixes that SHA and runtime
@@ -146,7 +148,8 @@ Conventional Commits and never maintain an `Unreleased` placeholder. The
 version gate rejects that structurally incompatible placeholder, accepts Release
 Please's native linked form and legacy dated history, and validates repository,
 previous tag, candidate tag, and calendar date without rewriting generated
-history.
+history. Raw HTML level-two headings are rejected rather than interpreted with
+renderer-specific error recovery.
 
 The PyPI publisher remains directly in `publish.yml` and is pinned to its
 reviewed Node 24 maintenance release. Pinning its exact SHA prevents a syntactic
@@ -165,11 +168,14 @@ ambiguous external state and is forbidden.
 Immutable run, tag, commit, registry, and digest records live only in the
 validated release-evidence blocks in `ROADMAP.md` and `RELEASING.md`. Each
 block binds only the canonical publication run through its machine-readable
-identity; preparatory implementation, CI, Release Please, failed-attempt, and
-recovery history stays outside the block. The checker rejects every other run
-identity plus wrapped or malformed Actions URLs, so Markdown wording cannot
-disguise a contradictory workflow. Architecture documents mechanisms and
-boundaries, not a second historical ledger.
+identity, without an attempt suffix; attempt provenance remains plain text.
+Preparatory implementation, CI, Release Please, failed-attempt, and recovery
+history stays outside the block. The checker rejects every other run
+identity and binds every source occurrence to exactly one rendered Markdown or
+HTML navigation destination after bounded normalization. Wrapped, encoded,
+control-obfuscated, malformed, or contradictory Actions URLs fail closed, so
+prose and renderer syntax cannot disguise a workflow identity. Architecture
+documents mechanisms and boundaries, not a second historical ledger.
 
 The scheduled/manual default-branch smoke is an operational canary only; it
 does not prove the release commit. `COMETAPI_KEY` is exposed only to the

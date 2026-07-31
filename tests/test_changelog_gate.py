@@ -97,13 +97,24 @@ def test_changelog_parser_rejects_obfuscated_mutable_versions(claim: str) -> Non
         "## Un&#x72;eleased",
         "## \uff35\uff4e\uff52\uff45\uff4c\uff45\uff41\uff53\uff45\uff44",
         "## Un\u034freleased",
+        "## Un\u202edesaeler\u202c",
+        "## Un\u2067released\u2069",
+        "## Current Unreleased",
+        "Next release (Unreleased)\n-------------------------",
         "Unreleased\n----------",
         "> ## Unreleased",
         "<h2>Un<em>released</em></h2>",
         "<h2>Unreleased",
         "<h2>Unreleased<h2>Archive</h2>",
         "<h2>Unreleased</h3>",
+        "<h2>Current Unreleased</h2>",
         "Intro <h2>Unreleased</h2>",
+        "<h2>Un<script>x</script>released</h2>",
+        "<h2>Un<style>x</style>released</h2>",
+        "<h2>Un<textarea>x</textarea>released</h2>",
+        "<h2>Un<script>x</style>released</h2>",
+        "<h2>Un<template>x</template>released</h2>",
+        "<h2>Un<script/>released</h2>",
     ],
 )
 @pytest.mark.parametrize("position", ["before", "between", "after"])
@@ -155,7 +166,7 @@ def test_changelog_parser_rejects_rendered_unreleased_heading_indentation(
         "## Un*released",
         "## [Current](https://example.invalid/Unreleased)",
         '## <span title="Unreleased">Current</span>',
-        "## `Current Unreleased`",
+        "## `Current release`",
         "## Unrelea\u0301sed",
     ],
 )
@@ -163,6 +174,23 @@ def test_changelog_parser_allows_non_unreleased_renderings(example: str) -> None
     text = _history("## [0.1.3] - 2026-07-30") + "\n" + example + "\n"
 
     assert changelog_release_dates(text) == {"0.1.3": "2026-07-30"}
+
+
+@pytest.mark.parametrize(
+    "heading",
+    [
+        "<h2>Archived release</h2>",
+        '<H2 class="history">Archived release</H2>',
+        "Intro <h2>Archived release</h2>",
+        "<h2\f>Archived release</h2>",
+        "<h2\fclass=history>Archived release</h2>",
+    ],
+)
+def test_changelog_parser_rejects_all_raw_html_level_two_headings(heading: str) -> None:
+    text = _history("## [0.1.3] - 2026-07-30") + "\n" + heading + "\n"
+
+    with pytest.raises(CheckError, match="raw HTML level-two headings"):
+        changelog_release_dates(text)
 
 
 @pytest.mark.parametrize(

@@ -177,6 +177,8 @@ def check_wheel(path: Path, expected_version: str, expected_description: str) ->
     with zipfile.ZipFile(path) as archive:
         paths = [_safe_path(info.filename, path) for info in archive.infolist()]
         names = {item.as_posix() for item in paths}
+        if len(names) != len(paths):
+            raise CheckError(f"{path.name}: duplicate normalized wheel member path")
         missing = REQUIRED_PACKAGE_FILES - names
         if missing:
             raise CheckError(f"{path.name}: missing package files: {sorted(missing)}")
@@ -257,6 +259,9 @@ def check_sdist(path: Path, expected_version: str, expected_description: str) ->
     with tarfile.open(path, mode="r:gz") as archive:
         members = archive.getmembers()
         paths = [_safe_path(member.name, path) for member in members]
+        normalized_paths = [item.as_posix() for item in paths]
+        if len(set(normalized_paths)) != len(normalized_paths):
+            raise CheckError(f"{path.name}: duplicate normalized sdist member path")
         if any(member.issym() or member.islnk() or member.isdev() for member in members):
             raise CheckError(f"{path.name}: links and device members are forbidden")
         if any(item.parts[0] != expected_root for item in paths):
@@ -274,6 +279,19 @@ def check_sdist(path: Path, expected_version: str, expected_description: str) ->
         unexpected = sorted(relative_files - expected_files)
         if unexpected:
             raise CheckError(f"{path.name}: unexpected sdist files: {unexpected}")
+        parity_violations: list[str] = []
+        for name in sorted(REQUIRED_SDIST_FILES):
+            stream = archive.extractfile(relative_members[name])
+            if stream is None:
+                raise CheckError(f"{path.name}:{name}: cannot read required source member")
+            try:
+                source = (PROJECT_ROOT / name).read_bytes()
+            except OSError as exc:
+                raise CheckError(f"cannot read source member {name}: {exc}") from exc
+            if stream.read() != source:
+                parity_violations.append(
+                    f"{path.name}:{name}: source-distribution member differs from source tree"
+                )
         document_violations: list[str] = []
         documents: dict[str, str] = {}
         for name in SDIST_PUBLIC_DOCUMENTS:
@@ -291,11 +309,13 @@ def check_sdist(path: Path, expected_version: str, expected_description: str) ->
                 for line, label in violations
             )
         evidence_violations = _release_evidence_binding_violations(documents)
-        if document_violations or evidence_violations:
+        if parity_violations or document_violations or evidence_violations:
             raise CheckError(
-                f"{path.name}: source-distribution document and release-evidence violations:\n"
+                f"{path.name}: source-distribution source parity, document, and "
+                "release-evidence violations:\n"
                 + "\n".join(
-                    f"- {violation}" for violation in document_violations + evidence_violations
+                    f"- {violation}"
+                    for violation in parity_violations + document_violations + evidence_violations
                 )
             )
         metadata_members = [

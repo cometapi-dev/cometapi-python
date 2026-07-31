@@ -157,14 +157,17 @@ Post-stable invariants:
 12. Keep `CHANGELOG.md` release-only: do not maintain an unmanaged `Unreleased`
     section. Record changes in Conventional Commits and let Release Please own
     the newest canonical dated release section after the changelog preamble.
-    The version gate must reject any `Unreleased` level-two heading before merge
-    or release.
+    Use only canonical Markdown for level-two changelog headings; raw HTML H2
+    parsing is renderer-dependent and must fail the version gate before merge or
+    release. The same gate must reject any `Unreleased` level-two heading.
 13. A validated release-evidence block binds one canonical publication workflow
-    run to its machine-readable identity marker and may contain no other Actions
-    run URL. Keep preparatory implementation, CI, Release Please, failed-attempt,
+    run URL without an attempt suffix to its machine-readable identity marker and
+    may contain no other Actions run URL. Record attempt provenance as plain
+    text. Keep preparatory implementation, CI, Release Please, failed-attempt,
     and recovery history outside that block. The document gate must reject
-    non-canonical, wrapped, malformed, or contradictory workflow URLs regardless
-    of prose or Markdown labeling.
+    non-canonical, wrapped, encoded, control-obfuscated, malformed, or
+    contradictory workflow URLs regardless of prose or Markdown labeling, and
+    bind each source occurrence to exactly one rendered navigation destination.
 
 ## Repository independence
 
@@ -289,8 +292,10 @@ workflow after maintainer authorization.
 Build wheel and source distribution into a clean output directory. Inspect
 their metadata and file lists, install each exact artifact independently
 outside the source tree, assert version and public imports, and run mocked-call
-smokes. Generated artifacts, local environments, and credentials must never be
-committed.
+smokes. Require every reviewed sdist member to match the release checkout byte
+for byte, and rerun the copied standalone repository verification in the
+immutable-tag build before retaining digests. Generated artifacts, local
+environments, and credentials must never be committed.
 
 ## Release and documentation rules
 
