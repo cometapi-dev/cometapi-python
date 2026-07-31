@@ -416,6 +416,8 @@ Accepted release evidence:
 
 <!-- cometapi-release-evidence:start version=0.1.0a1 date=2026-07-27 -->
 <!-- cometapi-release-identity tag=v0.1.0-alpha.1+recovery.1 commit=31b68904141489ca04932edbf305ccf88af09372 workflow-run=30261746138 wheel-sha256=a6820347317943ca22f7632acbe354dd992f31a122a6172dfe45b57960e3a093 sdist-sha256=98d86829ef14771e8b7ec180d452c6638289f49c14a39b7207be5c47cb64cde7 -->
+<!-- cometapi-release-workflow-reference run=30261497883 -->
+
 
 - Metadata fix [PR #16](https://github.com/cometapi-dev/cometapi-python/pull/16)
   merged as `6344c2d0e2e975360b42c887275c1950b82918ee`; recovery contract
@@ -449,6 +451,12 @@ Accepted release evidence:
 
 <!-- cometapi-release-evidence:start version=0.1.0 date=2026-07-28 -->
 <!-- cometapi-release-identity tag=v0.1.0 commit=6f42981edcc6c252f8db997606671c3da84d1dd8 workflow-run=30359383715 wheel-sha256=8eae758688bb6c98274e48d8d81f882eeae760f69cfd2f5e125004881d60e90f sdist-sha256=e9308b44f6091200b5121e24d1a0e1b9ea3e6bcccc109d6de87554b1ab2a8bca -->
+<!-- cometapi-release-workflow-reference run=30348177128 -->
+<!-- cometapi-release-workflow-reference run=30353657522 -->
+<!-- cometapi-release-workflow-reference run=30357111315 -->
+<!-- cometapi-release-workflow-reference run=30358662050 -->
+<!-- cometapi-release-workflow-reference run=30358990834 -->
+
 
 Canonical [GitHub release](https://github.com/cometapi-dev/cometapi-python/releases/tag/v0.1.0)
 and [PyPI release](https://pypi.org/project/cometapi/0.1.0/) identity.
@@ -529,6 +537,12 @@ the only remaining release-related repository variable.
 
 <!-- cometapi-release-evidence:start version=0.1.1 date=2026-07-29 -->
 <!-- cometapi-release-identity tag=v0.1.1 commit=576e7503a0a8c1103faca5143e4b8d576f8e8b44 workflow-run=30429821548 wheel-sha256=27e7904542f82fbbcd60e0de23a4a62c042420b6d004d00286d1f37d2ec4c5e5 sdist-sha256=64c7cb87745032703b3374cc562ea00b979416c54908862dbcebd116b2dc44c8 -->
+<!-- cometapi-release-workflow-reference run=30419881169 -->
+<!-- cometapi-release-workflow-reference run=30420057230 -->
+<!-- cometapi-release-workflow-reference run=30423490399 -->
+<!-- cometapi-release-workflow-reference run=30424732041 -->
+<!-- cometapi-release-workflow-reference run=30429821579 -->
+
 
 Maintenance release `0.1.1` rejects explicitly blank API keys and base URLs,
 treats a blank environment key as missing, and uses the default CometAPI URL
@@ -591,6 +605,13 @@ variables are absent. No recovery tag or recovery workflow was used.
 
 <!-- cometapi-release-evidence:start version=0.1.2 date=2026-07-30 -->
 <!-- cometapi-release-identity tag=v0.1.2 commit=710c56491d9ef5f47cccff3ce837ab7e799455b0 workflow-run=30515861246 wheel-sha256=3f12c26ae1ae7a1de5ac19d8ef27a784b2bf592143c716493f1b0f35ec19daca sdist-sha256=21c8edc0586610de1a9a8cd39b54ed23d2b1e20552100f69f53938cb7678da3d -->
+<!-- cometapi-release-workflow-reference run=30509764960 -->
+<!-- cometapi-release-workflow-reference run=30509063138 -->
+<!-- cometapi-release-workflow-reference run=30510887049 -->
+<!-- cometapi-release-workflow-reference run=30511071674 -->
+<!-- cometapi-release-workflow-reference run=30511373822 -->
+<!-- cometapi-release-workflow-reference run=30515861285 -->
+
 
 [Release Please run 30509764960](https://github.com/cometapi-dev/cometapi-python/actions/runs/30509764960)
 failed while maintaining the `0.1.2` release PR. The pinned v5 action had built
@@ -665,6 +686,13 @@ used for `0.1.2`.
 
 <!-- cometapi-release-evidence:start version=0.1.3 date=2026-07-30 -->
 <!-- cometapi-release-identity tag=v0.1.3 commit=45429f373bbd11314ec43ba81904fdbb78db2522 workflow-run=30550536000 wheel-sha256=9ac2f8062a8554943649bffd7ec859fc90491f76bbe2b0165327722201417d6f sdist-sha256=07ded54606d50f44b689dad38cf93a74e1175370efaa33be84a3c01240d48e66 -->
+<!-- cometapi-release-workflow-reference run=30547956809 -->
+<!-- cometapi-release-workflow-reference run=30548315922 -->
+<!-- cometapi-release-workflow-reference run=30548315785 -->
+<!-- cometapi-release-workflow-reference run=30548348489 -->
+<!-- cometapi-release-workflow-reference run=30548842807 -->
+<!-- cometapi-release-workflow-reference run=30550533622 -->
+
 
 [Implementation PR #34](https://github.com/cometapi-dev/cometapi-python/pull/34)
 removed the mutable published-patch claim from persistent guidance and extended

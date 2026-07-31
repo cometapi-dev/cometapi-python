@@ -4,12 +4,12 @@ from pathlib import Path
 
 import pytest
 
-from scripts._checks import CheckError
+from scripts._checks import CheckError, read_project_version
 from scripts.check_version import changelog_release_dates
 
 
-def _history(*headings: str, preamble: str = "", unreleased: str = "") -> str:
-    sections = ["# Changelog", preamble, "## [Unreleased]", unreleased]
+def _history(*headings: str, preamble: str = "") -> str:
+    sections = ["# Changelog", preamble]
     sections.extend(f"{heading}\n\n- Historical release." for heading in headings)
     return "\n\n".join(part for part in sections if part != "") + "\n"
 
@@ -28,27 +28,31 @@ def test_changelog_parser_accepts_canonical_legacy_history() -> None:
     }
 
 
-def test_changelog_parser_accepts_release_please_native_heading() -> None:
+def test_changelog_parser_accepts_exact_release_please_layout() -> None:
     text = _history(
-        "## [0.1.3](https://github.com/cometapi-dev/cometapi-python/compare/"
-        "v0.1.2...v0.1.3) (2026-07-30)",
-        "## [0.1.2] - 2026-07-29",
+        "## [0.1.4](https://github.com/cometapi-dev/cometapi-python/compare/"
+        "v0.1.3...v0.1.4) (2026-07-31)",
+        "## [0.1.3] - 2026-07-30",
     )
 
-    assert changelog_release_dates(text)["0.1.3"] == "2026-07-30"
+    assert changelog_release_dates(text) == {
+        "0.1.4": "2026-07-31",
+        "0.1.3": "2026-07-30",
+    }
 
 
-@pytest.mark.parametrize("region", ["preamble", "unreleased"])
-def test_changelog_parser_rejects_mutable_exact_claim_outside_history(region: str) -> None:
-    kwargs = {region: "The current CometAPI PyPI release is 0.1.2."}
-    text = _history("## [0.1.3] - 2026-07-30", **kwargs)
+def test_changelog_parser_rejects_mutable_exact_claim_in_preamble() -> None:
+    text = _history(
+        "## [0.1.3] - 2026-07-30",
+        preamble="The current CometAPI PyPI release is 0.1.2.",
+    )
 
     with pytest.raises(CheckError) as caught:
         changelog_release_dates(text)
 
     message = str(caught.value)
     assert "CHANGELOG.md:" in message
-    assert "preamble or Unreleased prose" in message
+    assert "in changelog preamble" in message
     assert "version-neutral 0.1.x guidance" in message
 
 
@@ -65,10 +69,47 @@ def test_changelog_parser_rejects_mutable_exact_claim_outside_history(region: st
     ],
 )
 def test_changelog_parser_rejects_obfuscated_mutable_versions(claim: str) -> None:
-    text = _history("## [0.1.3] - 2026-07-30", unreleased=claim)
+    text = _history("## [0.1.3] - 2026-07-30", preamble=claim)
 
-    with pytest.raises(CheckError, match="preamble or Unreleased prose"):
+    with pytest.raises(CheckError, match="in changelog preamble"):
         changelog_release_dates(text)
+
+
+@pytest.mark.parametrize(
+    "heading",
+    [
+        "## [Unreleased]",
+        "## Unreleased",
+        "## [unreleased]",
+        "## [ Unreleased ]",
+        "## [Unreleased] - pending",
+        "  ## [Unreleased]",
+        "   ## **Unreleased**",
+        "## [Un\u200breleased]",
+    ],
+)
+@pytest.mark.parametrize("position", ["before", "between", "after"])
+def test_changelog_parser_rejects_unmanaged_unreleased_heading(
+    heading: str,
+    position: str,
+) -> None:
+    newest = "## [0.1.4] - 2026-07-31\n\n- Newest release."
+    previous = "## [0.1.3] - 2026-07-30\n\n- Previous release."
+    parts = {
+        "before": [heading, newest, previous],
+        "between": [newest, heading, previous],
+        "after": [newest, previous, heading],
+    }[position]
+    text = "# Changelog\n\n" + "\n\n".join(parts) + "\n"
+
+    with pytest.raises(CheckError) as caught:
+        changelog_release_dates(text)
+
+    message = str(caught.value)
+    assert "CHANGELOG.md:" in message
+    assert "unmanaged Unreleased heading is forbidden" in message
+    assert "remove it" in message
+    assert "Release Please" in message
 
 
 @pytest.mark.parametrize(
@@ -188,4 +229,4 @@ def test_changelog_parser_ignores_nonprose_heading_examples(example: str) -> Non
 def test_repository_changelog_is_canonical() -> None:
     dates = changelog_release_dates(Path("CHANGELOG.md").read_text(encoding="utf-8"))
 
-    assert dates["0.1.3"] == "2026-07-30"
+    assert next(iter(dates)) == read_project_version()

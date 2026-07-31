@@ -69,7 +69,9 @@ legacy client aliases to a 0.1 change.
 
 Prefer the smallest complete change. Preserve precise type hints, update
 documentation and the compatibility matrix when public behavior changes, and
-add a changelog entry for user-visible changes.
+describe user-visible changes through Conventional Commits. Do not maintain an
+`Unreleased` changelog section; Release Please owns canonical dated release
+history.
 
 ## Commit and pull-request guidance
 

@@ -4,7 +4,9 @@
 from __future__ import annotations
 
 import argparse
+import html
 import re
+import unicodedata
 from dataclasses import dataclass
 from datetime import date
 from itertools import pairwise
@@ -76,11 +78,7 @@ _CHANGELOG_VERSION_HEADING_CANDIDATE = re.compile(
     rf"^##[ \t]+\[?(?P<version>{_CHANGELOG_VERSION})(?:\]|[ \t])",
     re.IGNORECASE,
 )
-_CHANGELOG_UNRELEASED_HEADING = re.compile(r"^##[ \t]+\[Unreleased\][ \t]*$")
-_CHANGELOG_UNRELEASED_CANDIDATE = re.compile(
-    r"^##[ \t]+\[?Unreleased(?:\]|[ \t])",
-    re.IGNORECASE,
-)
+_CHANGELOG_LEVEL_TWO_HEADING = re.compile(r"^ {0,3}##(?!#)[ \t]+(?P<label>.*)$")
 _CHANGELOG_REFERENCE_CANDIDATE = re.compile(
     rf"^\[(?P<version>{_CHANGELOG_VERSION})\]:[ \t]*(?P<url>\S+)[ \t]*$",
     re.IGNORECASE,
@@ -177,46 +175,39 @@ def _compare_tags(url: str) -> tuple[str, str] | None:
 
 
 def _changelog_preamble_end(text: str) -> int:
-    heading = re.search(r"(?m)^##[ \t]+.*$", text)
+    heading = re.search(r"(?m)^ {0,3}##(?!#)[ \t]+.*$", text)
     return heading.start() if heading is not None else len(text)
 
 
-def _changelog_unreleased_regions(text: str) -> list[tuple[int, int]]:
-    level_two = list(re.finditer(r"(?m)^##[ \t]+.*$", text))
-    regions: list[tuple[int, int]] = []
-    for index, heading in enumerate(level_two):
-        if _CHANGELOG_UNRELEASED_HEADING.fullmatch(heading.group(0)) is None:
-            continue
-        end = level_two[index + 1].start() if index + 1 < len(level_two) else len(text)
-        regions.append((heading.start(), end))
-    return regions
+def _is_changelog_unreleased_heading(line: str) -> bool:
+    heading = _CHANGELOG_LEVEL_TWO_HEADING.fullmatch(line)
+    if heading is None:
+        return False
+    label = html.unescape(unicodedata.normalize("NFKC", heading.group("label")))
+    label = re.sub(r"</?[A-Za-z][^>]*>", " ", label)
+    label = "".join("" if unicodedata.category(value) in {"Cf", "Mn"} else value for value in label)
+    words = re.findall(r"[A-Za-z]+", label)
+    return bool(words and words[0].casefold() == "unreleased")
 
 
 def _changelog_mutable_region_violations(
     text: str,
 ) -> list[str]:
-    regions = [(0, _changelog_preamble_end(text)), *_changelog_unreleased_regions(text)]
     findings: list[str] = []
     seen: set[tuple[int, str]] = set()
-    for start, end in regions:
-        region = text[start:end]
-        base_line = text.count("\n", 0, start)
-        for relative_line, label in exact_release_version_violations(
-            "CHANGELOG-Unreleased.md",
-            region,
-            "0.1.0",
-        ):
-            finding = (
-                base_line + relative_line,
-                label,
-            )
-            if finding in seen:
-                continue
-            seen.add(finding)
-            findings.append(
-                f"CHANGELOG.md:{finding[0]}: {finding[1]} in preamble or Unreleased prose; "
-                f"{EXACT_RELEASE_VERSION_FIX}"
-            )
+    preamble = text[: _changelog_preamble_end(text)]
+    for line, label in exact_release_version_violations(
+        "CHANGELOG-preamble.md",
+        preamble,
+        "0.1.0",
+    ):
+        finding = (line, label)
+        if finding in seen:
+            continue
+        seen.add(finding)
+        findings.append(
+            f"CHANGELOG.md:{line}: {label} in changelog preamble; {EXACT_RELEASE_VERSION_FIX}"
+        )
     return findings
 
 
@@ -224,7 +215,6 @@ def _parse_changelog_releases(text: str) -> list[_ChangelogRelease]:
     text = _mask_nonprose_changelog_regions(text)
     releases: list[_ChangelogRelease] = []
     violations: list[str] = []
-    unreleased_lines: list[int] = []
     offset = 0
     for line_number, raw_line in enumerate(text.splitlines(keepends=True), start=1):
         line = raw_line.rstrip("\r\n")
@@ -259,21 +249,16 @@ def _parse_changelog_releases(text: str) -> list[_ChangelogRelease]:
                 "heading: '## [version] - YYYY-MM-DD' or Release Please's canonical "
                 "compare-link form"
             )
-        elif _CHANGELOG_UNRELEASED_HEADING.fullmatch(line) is not None:
-            unreleased_lines.append(line_number)
-        elif _CHANGELOG_UNRELEASED_CANDIDATE.match(line) is not None:
+        elif _is_changelog_unreleased_heading(line):
             violations.append(
-                f"CHANGELOG.md:{line_number}: Unreleased heading must be exactly '## [Unreleased]'"
+                f"CHANGELOG.md:{line_number}: unmanaged Unreleased heading is forbidden; "
+                "remove it, record changes in Conventional Commits, and let Release Please "
+                "insert the newest canonical dated release section after the changelog preamble"
             )
         offset += len(raw_line)
 
     if not releases:
         violations.append("CHANGELOG.md: has no canonical dated release heading")
-    if len(unreleased_lines) > 1:
-        violations.append("CHANGELOG.md: must contain at most one '## [Unreleased]' heading")
-    if unreleased_lines and releases and unreleased_lines[0] > releases[0].line:
-        violations.append("CHANGELOG.md: '## [Unreleased]' must precede every dated release")
-
     seen_versions: dict[str, int] = {}
     for release in releases:
         previous_line = seen_versions.get(release.version)

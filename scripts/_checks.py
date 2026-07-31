@@ -81,6 +81,13 @@ RELEASE_EVIDENCE_IDENTITY = re.compile(
     r"wheel-sha256=(?P<wheel>[0-9a-f]{64}) "
     r"sdist-sha256=(?P<sdist>[0-9a-f]{64}) -->$"
 )
+RELEASE_EVIDENCE_WORKFLOW_REFERENCE = re.compile(
+    r"^<!-- cometapi-release-workflow-reference "
+    r"run=(?P<run>[1-9]\d*) -->$"
+)
+_ANY_RELEASE_EVIDENCE_WORKFLOW_REFERENCE = re.compile(
+    r"(?m)^.*cometapi-release-workflow-reference.*$"
+)
 _ANY_RELEASE_EVIDENCE_IDENTITY = re.compile(r"(?m)^.*cometapi-release-identity.*$")
 _ANY_RELEASE_EVIDENCE_MARKER = re.compile(r"(?m)^.*cometapi-release-evidence:.*$")
 _EXACT_VERSION = (
@@ -131,7 +138,8 @@ _HTTP_URL = re.compile(r"https?://[^\s<>)\]]+", re.IGNORECASE)
 _RECOVERY_TAGS = {"0.1.0a1": "v0.1.0-alpha.1+recovery.1"}
 _FULL_COMMIT = re.compile(r"(?<![0-9a-f])[0-9a-f]{40}(?![0-9a-f])", re.IGNORECASE)
 _ACTIONS_RUN = re.compile(
-    rf"{re.escape(CANONICAL_REPOSITORY)}/actions/runs/[1-9]\d*(?:/attempts/[1-9]\d*)?"
+    rf"(?<![^\s(<]){re.escape(CANONICAL_REPOSITORY)}/actions/runs/"
+    r"[1-9]\d*(?:/attempts/[1-9]\d*)?(?=$|[\s)>])"
 )
 _WHEEL_DIGEST = re.compile(
     r"\bwheel\s+sha256\b[^0-9a-f]{0,96}(?P<digest>[0-9a-f]{64})(?![0-9a-f])",
@@ -504,6 +512,39 @@ def _identity_violations(
         sdist_sha256=match.group("sdist"),
     )
     findings: list[tuple[int, str]] = []
+    workflow_references: set[str] = set()
+    workflow_reference_lines = [
+        value for value in nonempty if "cometapi-release-workflow-reference" in value
+    ]
+    for reference_line in _ANY_RELEASE_EVIDENCE_WORKFLOW_REFERENCE.findall(body):
+        if reference_line.strip() not in workflow_reference_lines:
+            findings.append(
+                (line, f"release-evidence block for {version} has malformed workflow reference")
+            )
+    for reference_line in workflow_reference_lines:
+        reference = RELEASE_EVIDENCE_WORKFLOW_REFERENCE.fullmatch(reference_line)
+        if reference is None:
+            findings.append(
+                (line, f"release-evidence block for {version} has malformed workflow reference")
+            )
+            continue
+        run = reference.group("run")
+        if run in workflow_references:
+            findings.append(
+                (
+                    line,
+                    f"release-evidence block for {version} duplicates workflow reference run {run}",
+                )
+            )
+        workflow_references.add(run)
+    if identity.workflow_run in workflow_references:
+        findings.append(
+            (
+                line,
+                f"release-evidence block for {version} must not classify its canonical "
+                "publication run as an ancillary workflow reference",
+            )
+        )
     expected_tag = _canonical_release_tag(version)
     if identity.tag != expected_tag:
         findings.append(
@@ -569,26 +610,32 @@ def _identity_violations(
             before_commit,
         ):
             release_commit_values.add(commit.group(0).lower())
-    release_run_values: set[str] = set()
-    for run in _ACTIONS_RUN.finditer(prose):
-        line_start = prose.rfind("\n", 0, run.start()) + 1
-        prior_line_start = prose.rfind("\n", 0, max(0, line_start - 1)) + 1
-        context = prose[prior_line_start : run.start()]
-        label = re.search(r"(?i)\[([^\]]+)\]\([^\n]*$", context)
-        label_text = label.group(1) if label is not None else context.splitlines()[-1]
-        if re.search(
-            r"(?i)\b(?:release|publish(?:ing)?|publication|registry)"
-            r"(?:[ -]+(?:workflow|job|pipeline))?[ -]+run\b"
-            r"|\b(?:release|publish(?:ing)?|publication|registry)"
-            r"(?:[ -]+(?:job|pipeline))?[ -]+workflow\b"
-            r"|\bworkflow[ -]+run\b"
-            r"|\bgithub[ -]+actions[ -]+run\b",
-            label_text,
-        ):
-            release_run_values.add(run.group(0).split("/actions/runs/", 1)[1].split("/", 1)[0])
+    # Prose may cite only the canonical publication run or an exact ancillary run
+    # declared by a typed machine-readable reference.
+    release_run_values = {
+        run.group(0).split("/actions/runs/", 1)[1].split("/", 1)[0]
+        for run in _ACTIONS_RUN.finditer(prose)
+    }
+    unreferenced_workflow_runs = set(workflow_references) - release_run_values
+    if unreferenced_workflow_runs:
+        findings.append(
+            (
+                line,
+                f"release-evidence block for {version} declares ancillary workflow runs "
+                "that have no exact canonical Actions URL in the block",
+            )
+        )
+    undeclared_release_runs = release_run_values - {
+        identity.workflow_run,
+        *workflow_references,
+    }
     labeled_values = (
         ("release commit", release_commit_values, identity.commit),
-        ("release workflow run", release_run_values, identity.workflow_run),
+        (
+            "release workflow run",
+            undeclared_release_runs | {identity.workflow_run},
+            identity.workflow_run,
+        ),
         (
             "wheel SHA256",
             {

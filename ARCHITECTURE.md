@@ -140,9 +140,13 @@ uses `node24`. The workflow semantic contract fixes that SHA and runtime
 disposition so GitHub does not need to force a deprecated Node 20 action onto a
 newer runtime.
 
-The version gate accepts Release Please's native linked, dated changelog heading
-as well as the existing legacy dated form. It validates repository, previous
-tag, candidate tag, and calendar date rather than rewriting generated history.
+The changelog is release-only. Release Please owns the newest canonical dated
+section immediately after its preamble; contributors record pending changes in
+Conventional Commits and never maintain an `Unreleased` placeholder. The
+version gate rejects that structurally incompatible placeholder, accepts Release
+Please's native linked form and legacy dated history, and validates repository,
+previous tag, candidate tag, and calendar date without rewriting generated
+history.
 
 The PyPI publisher remains directly in `publish.yml` and is pinned to its
 reviewed Node 24 maintenance release. Pinning its exact SHA prevents a syntactic
@@ -159,9 +163,12 @@ idempotent, while retrying immutable tag or GitHub Release creation could leave
 ambiguous external state and is forbidden.
 
 Immutable run, tag, commit, registry, and digest records live only in the
-validated release-evidence blocks in `ROADMAP.md` and `RELEASING.md`.
-Architecture documents mechanisms and boundaries, not a second historical
-ledger.
+validated release-evidence blocks in `ROADMAP.md` and `RELEASING.md`. Each
+block binds the canonical publication run through its machine-readable identity
+and binds every ancillary workflow URL through an exact reference marker. The
+checker requires a canonical URL and rejects undeclared or unused run identities,
+so Markdown wording cannot disguise a contradictory workflow. Architecture
+documents mechanisms and boundaries, not a second historical ledger.
 
 The scheduled/manual default-branch smoke is an operational canary only; it
 does not prove the release commit. `COMETAPI_KEY` is exposed only to the
