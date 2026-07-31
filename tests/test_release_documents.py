@@ -7,6 +7,7 @@ import tarfile
 import zipfile
 from collections.abc import Callable
 from pathlib import Path
+from urllib.parse import quote
 
 import pytest
 
@@ -705,11 +706,18 @@ def test_release_evidence_rejects_obsolete_workflow_reference_marker(
         "https://evil.example/#(https://github.com/cometapi-dev/cometapi-python/"
         "actions/runs/30515861246)",
         "mailto:(https://github.com/cometapi-dev/cometapi-python/actions/runs/30515861246)",
-        "prefix<https://github.com/cometapi-dev/cometapi-python/actions/runs/30515861246>",
         "[evil](mailto:foo](https://github.com/cometapi-dev/cometapi-python/"
         "actions/runs/30515861246))",
         "[evil](mailto:foo([x](https://github.com/cometapi-dev/cometapi-python/"
         "actions/runs/30515861246)))",
+        "mailto:x](https://github.com/cometapi-dev/cometapi-python/actions/runs/30515861246)",
+        "[release](mailto:evil (https://github.com/cometapi-dev/cometapi-python/"
+        "actions/runs/30515861246))",
+        "![release](https://github.com/cometapi-dev/cometapi-python/actions/runs/30515861246)",
+        '<a href="mailto:evil" title="see (https://github.com/cometapi-dev/'
+        'cometapi-python/actions/runs/30515861246)">release run</a>',
+        '<form action="https://github.com/cometapi-dev/cometapi-python/actions/runs/'
+        '30515861246">release run</form>',
         "http://github.com/cometapi-dev/cometapi-python/actions/runs/30511373822",
         "https://evil.example/?next=https%3A%2F%2Fgithub.com%2Fcometapi-dev%2F"
         "cometapi-python%2Factions%2Fruns%2F30511373822",
@@ -754,8 +762,40 @@ def test_release_evidence_rejects_noncanonical_workflow_reference_url(
     with pytest.raises(CheckError) as caught:
         require_public_preview_docs()
 
-    assert "non-canonical Actions URL" in str(caught.value)
-    assert "/actions/runs/<positive-id>" in str(caught.value)
+    message = str(caught.value)
+    assert (
+        "non-canonical Actions URL" in message
+        or "contradicts its release-identity marker" in message
+    )
+    if "non-canonical Actions URL" in message:
+        assert "/actions/runs/<positive-id>" in message
+
+
+@pytest.mark.parametrize("depth", [9, 64])
+def test_release_evidence_rejects_deeply_encoded_workflow_reference_url(
+    releasable_documents: Path,
+    depth: int,
+) -> None:
+    wrapped = (
+        "https://evil.example/?next=https://github.com/cometapi-dev/cometapi-python/"
+        "actions/runs/30511373822"
+    )
+    for _ in range(depth):
+        wrapped = quote(wrapped, safe="")
+    evidence = _release_evidence_block().replace(
+        "30515861246\n- https://pypi.org",
+        f"30515861246\n- Required CI {wrapped}\n- https://pypi.org",
+        1,
+    )
+    for name in ("ROADMAP.md", "RELEASING.md"):
+        with (releasable_documents / name).open("a", encoding="utf-8") as stream:
+            stream.write(evidence)
+
+    with pytest.raises(CheckError) as caught:
+        require_public_preview_docs()
+
+    message = str(caught.value)
+    assert "non-canonical Actions URL" in message
 
 
 def test_release_evidence_accepts_canonical_raw_html_anchor(
@@ -1510,6 +1550,27 @@ def test_copied_repository_verification_runs_public_document_gate() -> None:
             "--require-releasable-docs",
         ]
     ]
+
+
+def test_copied_repository_checker_imports_before_dependency_sync(
+    tmp_path: Path,
+) -> None:
+    root = tmp_path / "repository"
+    scripts = root / "scripts"
+    scripts.mkdir(parents=True)
+    for name in ("_checks.py", "check_repository_independence.py"):
+        shutil.copy2(PROJECT_ROOT / "scripts" / name, scripts / name)
+
+    result = subprocess.run(
+        [sys.executable, "-S", "scripts/check_repository_independence.py", "--scan-only"],
+        cwd=root,
+        capture_output=True,
+        check=False,
+        text=True,
+    )
+
+    assert result.returncode == 0, result.stderr
+    assert "standalone copied-checkout verification passed" in result.stdout
 
 
 def test_artifact_metadata_must_match_source_readme_exactly() -> None:

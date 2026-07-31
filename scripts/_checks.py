@@ -14,11 +14,10 @@ from dataclasses import dataclass
 from datetime import date
 from email.message import Message
 from email.parser import Parser
+from html.parser import HTMLParser
 from pathlib import Path
 from typing import cast
 from urllib.parse import quote, unquote
-
-from markdown_it import MarkdownIt
 
 if sys.version_info >= (3, 11):
     import tomllib
@@ -134,7 +133,6 @@ _FIRST_PARTY_MARKDOWN_TARGET = re.compile(
     r")(?=$|[/?#>])"
 )
 _HTTP_URL = re.compile(r"https?://[^\s<>)\]]+", re.IGNORECASE)
-_URLISH_TOKEN = re.compile(r"https?:[^\s<>\"']+", re.IGNORECASE)
 _RECOVERY_TAGS = {"0.1.0a1": "v0.1.0-alpha.1+recovery.1"}
 _FULL_COMMIT = re.compile(r"(?<![0-9a-f])[0-9a-f]{40}(?![0-9a-f])", re.IGNORECASE)
 _ACTIONS_PREFIX = f"{CANONICAL_REPOSITORY}/actions/runs/"
@@ -142,72 +140,15 @@ _ACTIONS_PATH = re.compile(
     r"actions/runs/(?P<run>\d+)(?:/attempts/(?P<attempt>\d+))?",
     re.IGNORECASE,
 )
-_CANONICAL_ACTIONS_URL = re.compile(
-    rf"(?<![^\s<(\"']){re.escape(_ACTIONS_PREFIX)}(?P<run>[1-9]\d*)"
+_CANONICAL_ACTIONS_DESTINATION = re.compile(
+    rf"{re.escape(_ACTIONS_PREFIX)}(?P<run>[1-9]\d*)"
     r"(?:/attempts/(?P<attempt>[1-9]\d*))?"
-    r"(?=$|[\s<>\"')\]}]|[.,;:!?](?=$|\s))"
 )
-_RAW_HTML_URL_ATTRIBUTE = re.compile(
-    r"(?is)\b(?:href|src)\s*=\s*(?P<quote>['\"])(?P<url>.*?)(?P=quote)"
+_RAW_ACTIONS_DESTINATION = re.compile(
+    rf"(?<![^\s(])(?P<url>{re.escape(_ACTIONS_PREFIX)}[1-9]\d*"
+    r"(?:/attempts/[1-9]\d*)?)"
+    r"(?=$|[\s.,;:!?])"
 )
-
-
-def _actions_path_has_canonical_url(
-    text: str,
-    path: re.Match[str],
-    canonical_matches: list[re.Match[str]],
-) -> bool:
-    canonical = next(
-        (
-            match
-            for match in canonical_matches
-            if match.start() <= path.start() and path.end() <= match.end()
-        ),
-        None,
-    )
-    if canonical is None:
-        return False
-
-    for link in _MARKDOWN_LINK.finditer(text):
-        if link.start("target") <= path.start() and path.end() <= link.end("target"):
-            return _CANONICAL_ACTIONS_URL.fullmatch(link.group("target")) is not None
-
-    for attribute in _RAW_HTML_URL_ATTRIBUTE.finditer(text):
-        if attribute.start("url") <= path.start() and path.end() <= attribute.end("url"):
-            return _CANONICAL_ACTIONS_URL.fullmatch(attribute.group("url")) is not None
-
-    containing_tokens = [
-        match
-        for match in _URLISH_TOKEN.finditer(text)
-        if match.start() <= path.start() and path.end() <= match.end()
-    ]
-    if containing_tokens and min(match.start() for match in containing_tokens) < canonical.start():
-        return False
-
-    if canonical.start() == 0:
-        return True
-    boundary = text[canonical.start() - 1]
-    if boundary.isspace():
-        return True
-    if boundary == "<":
-        return canonical.start() >= 2 and text[canonical.start() - 2].isspace()
-    if boundary == "(":
-        return canonical.start() == 1 or text[canonical.start() - 2].isspace()
-    return False
-
-
-def _rendered_markdown_link_targets(text: str) -> list[str]:
-    targets: list[str] = []
-    for token in MarkdownIt("commonmark", {"html": True}).parse(text):
-        for child in token.children or []:
-            if child.type != "link_open":
-                continue
-            target = child.attrGet("href")
-            if isinstance(target, str):
-                targets.append(target)
-    return targets
-
-
 _WHEEL_DIGEST = re.compile(
     r"\bwheel\s+sha256\b[^0-9a-f]{0,96}(?P<digest>[0-9a-f]{64})(?![0-9a-f])",
     re.IGNORECASE | re.DOTALL,
@@ -248,6 +189,24 @@ PUBLIC_README_FORBIDDEN_PATTERNS = (
 
 class CheckError(RuntimeError):
     """Raised when release-candidate evidence does not satisfy a local gate."""
+
+
+class _ActionsAnchorParser(HTMLParser):
+    """Collect exact Actions destinations from rendered HTML anchors."""
+
+    def __init__(self) -> None:
+        super().__init__(convert_charrefs=True)
+        self.destinations: Counter[tuple[str, str | None]] = Counter()
+
+    def handle_starttag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
+        if tag.casefold() != "a":
+            return
+        for name, value in attrs:
+            if name.casefold() != "href" or value is None:
+                continue
+            destination = _CANONICAL_ACTIONS_DESTINATION.fullmatch(value)
+            if destination is not None:
+                self.destinations[(destination.group("run"), destination.group("attempt"))] += 1
 
 
 @dataclass(frozen=True)
@@ -747,45 +706,71 @@ def _canonical_actions_run_violations(
     findings: list[tuple[int, str]] = []
     direct = unicodedata.normalize("NFKC", body)
     variants = [direct]
-    for _ in range(8):
+    converged = False
+    for _ in range(len(direct) + 1):
         previous = variants[-1]
         decoded = html.unescape(previous)
         decoded = unquote(decoded)
         decoded = re.sub(r"\\([/\\.:?&=%#])", r"\1", decoded)
-        decoded = decoded.replace("\t", "").replace("\n", "").replace("\r", "")
+        decoded = decoded.replace("\t", "")
         decoded = re.sub(
             r"(?i)(https?:[^\s<>)\]]*)\\([^\s<>)\]]*)",
             lambda match: match.group(0).replace("\\", "/"),
             decoded,
         )
         if decoded == previous:
+            converged = True
             break
         variants.append(decoded)
 
-    path_matches = list(_ACTIONS_PATH.finditer(direct))
-    canonical_matches = list(_CANONICAL_ACTIONS_URL.finditer(direct))
-    malformed = any(
-        not _actions_path_has_canonical_url(direct, path, canonical_matches)
-        for path in path_matches
-    )
-    direct_paths = Counter((match.group("run"), match.group("attempt")) for match in path_matches)
     variant_paths = [
         Counter(
-            (match.group("run"), match.group("attempt"))
+            (match.group("run"), match.group("attempt") or None)
             for match in _ACTIONS_PATH.finditer(variant)
         )
         for variant in variants
     ]
+    normalized = variants[-1]
+    rendered_destinations: Counter[tuple[str, str | None]] = Counter()
+    # Keep module import dependency-free for the copied-checkout pre-sync bootstrap.
+    from markdown_it import MarkdownIt
+
+    parser = MarkdownIt("commonmark", {"html": True})
+    for token in parser.parse(normalized):
+        for child in token.children or []:
+            if child.type == "html_inline":
+                html_parser = _ActionsAnchorParser()
+                html_parser.feed(child.content)
+                rendered_destinations.update(html_parser.destinations)
+                continue
+            if child.type != "link_open":
+                continue
+            target = child.attrGet("href")
+            if not isinstance(target, str):
+                continue
+            destination = _CANONICAL_ACTIONS_DESTINATION.fullmatch(target)
+            if destination is not None:
+                rendered_destinations[(destination.group("run"), destination.group("attempt"))] += 1
+
+        if token.type == "html_block":
+            html_parser = _ActionsAnchorParser()
+            html_parser.feed(token.content)
+            rendered_destinations.update(html_parser.destinations)
+
+    for raw in _RAW_ACTIONS_DESTINATION.finditer(normalized):
+        destination = _CANONICAL_ACTIONS_DESTINATION.fullmatch(raw.group("url"))
+        if destination is not None:
+            rendered_destinations[(destination.group("run"), destination.group("attempt"))] += 1
+
+    malformed = not converged or variant_paths[-1] != rendered_destinations
     malformed = malformed or any(
-        _ACTIONS_PATH.search(target) is not None
-        and _CANONICAL_ACTIONS_URL.fullmatch(target) is None
-        for variant in variants
-        for target in _rendered_markdown_link_targets(variant)
-    )
-    malformed = malformed or any(
-        count > direct_paths[identity]
+        count > variant_paths[0][identity]
         for paths in variant_paths[1:]
         for identity, count in paths.items()
+    )
+    malformed = malformed or any(
+        match.end() < len(normalized) and normalized[match.end()] not in " \t\r\n.,;:!?)]}>\"'"
+        for match in _ACTIONS_PATH.finditer(normalized)
     )
 
     if malformed:
@@ -793,7 +778,8 @@ def _canonical_actions_run_violations(
             (
                 line,
                 f"release-evidence block for {version} contains a non-canonical Actions URL; "
-                "use the exact repository /actions/runs/<positive-id> URL with an optional "
+                "use the exact repository /actions/runs/<positive-id> URL as plain Markdown "
+                "text, an autolink, or a link destination, with an optional "
                 "/attempts/<positive-id> suffix",
             )
         )
