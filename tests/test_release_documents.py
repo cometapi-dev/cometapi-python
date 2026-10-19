@@ -1576,6 +1576,30 @@ def test_artifact_metadata_accepts_publication_neutral_long_description() -> Non
     )
 
 
+@pytest.mark.parametrize("build_options", [[], ["--wheel"]], ids=["sdist-to-wheel", "direct-wheel"])
+def test_built_distributions_pass_locked_twine_check(
+    tmp_path: Path, build_options: list[str]
+) -> None:
+    """Exercise the isolated build backend against the locked metadata validator."""
+    built = tmp_path / "distributions"
+    subprocess.run(
+        ["uv", "build", *build_options, "--out-dir", str(built)],
+        cwd=PROJECT_ROOT,
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+    artifacts = sorted(built.glob("*.whl")) + sorted(built.glob("*.tar.gz"))
+    assert len(artifacts) == (1 if build_options else 2)
+    subprocess.run(
+        [sys.executable, "-m", "twine", "check", "--strict", *map(str, artifacts)],
+        cwd=tmp_path,
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+
+
 @pytest.mark.parametrize(
     "description",
     [
