@@ -51,6 +51,7 @@ requires = ["hatchling>=1.27.0,<2.0.0"]
 build-backend = "hatchling.build"
 
 [tool.hatch.build.targets.sdist]
+core-metadata-version = "2.4"
 include = [
     "/AGENTS.md",
     "/ARCHITECTURE.md",
@@ -71,6 +72,7 @@ include = [
 ]
 
 [tool.hatch.build.targets.wheel]
+core-metadata-version = "2.4"
 packages = ["src/cometapi"]
 
 [tool.pyright]
