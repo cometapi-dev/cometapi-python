@@ -23,12 +23,32 @@ from scripts._checks import (
     CheckError,
     exact_release_version_violations,
     read_project_version,
+    require_exact_build_system,
 )
 from scripts.check_artifacts import check_metadata, check_sdist, check_wheel
 from scripts.check_version import require_public_preview_docs, require_releasable_docs
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 VERSION_SCRIPT = PROJECT_ROOT / "scripts" / "check_version.py"
+
+
+def test_build_system_requires_exact_hatchling_constraint(tmp_path: Path) -> None:
+    pyproject = tmp_path / "pyproject.toml"
+    pyproject.write_text(
+        '[build-system]\nrequires = ["hatchling==1.32.4"]\nbuild-backend = "hatchling.build"\n',
+        encoding="utf-8",
+    )
+    require_exact_build_system(tmp_path)
+
+    for invalid_build_system in (
+        '[build-system]\nrequires = ["hatchling>=1.27.0,<2.0.0"]\n'
+        'build-backend = "hatchling.build"\n',
+        '[build-system]\nrequires = ["setuptools==80.0.0"]\n'
+        'build-backend = "setuptools.build_meta"\n',
+    ):
+        pyproject.write_text(invalid_build_system, encoding="utf-8")
+        with pytest.raises(CheckError, match=r"\[build-system\].*exactly"):
+            require_exact_build_system(tmp_path)
 
 
 def _copy_version_checker(root: Path) -> Path:

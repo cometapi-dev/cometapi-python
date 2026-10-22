@@ -8,6 +8,23 @@ updates:
       time: "04:00"
       timezone: Etc/UTC
     open-pull-requests-limit: 10
+    allow:
+      - dependency-type: production
+      # Toolchain majors require a coordinated compatibility review.
+      # This filter affects version updates, not security updates.
+      - dependency-type: development
+        update-types:
+          - version-update:semver-minor
+          - version-update:semver-patch
+    groups:
+      production-dependencies:
+        dependency-type: production
+      development-dependencies:
+        dependency-type: development
+    ignore:
+      - dependency-name: openai
+        versions:
+          - ">=3"
     labels:
       - dependencies
       - python

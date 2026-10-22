@@ -21,6 +21,8 @@ from urllib.parse import quote, unquote
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 DIST_NAME = "cometapi"
+BUILD_SYSTEM_BACKEND = "hatchling.build"
+BUILD_SYSTEM_REQUIREMENT = "hatchling==1.32.4"
 CANONICAL_ACTIVE_MODEL = "gpt-5.6-sol"
 CANONICAL_AUTHOR = "CometAPI"
 CANONICAL_COPYRIGHT = "Copyright (c) 2026 CometAPI"
@@ -279,6 +281,33 @@ def read_project_metadata(root: Path = PROJECT_ROOT) -> dict[str, object]:
     if not isinstance(project, dict):
         raise CheckError("pyproject.toml has no [project] table")
     return cast(dict[str, object], project)
+
+
+def require_exact_build_system(root: Path = PROJECT_ROOT) -> None:
+    """Require the reviewed isolated build backend and exact version constraint."""
+    path = root / "pyproject.toml"
+    try:
+        if sys.version_info >= (3, 11):
+            import tomllib
+        else:
+            import tomli as tomllib
+    except ImportError as exc:
+        raise CheckError("TOML parsing requires tomli on Python 3.10") from exc
+    try:
+        document = cast(dict[str, object], tomllib.loads(path.read_text(encoding="utf-8")))
+    except (OSError, UnicodeError, tomllib.TOMLDecodeError) as exc:
+        raise CheckError(f"cannot read {path.name}: {exc}") from exc
+    build_system = document.get("build-system")
+    if not isinstance(build_system, dict):
+        raise CheckError("pyproject.toml has no [build-system] table")
+    build_system = cast(dict[str, object], build_system)
+    backend = build_system.get("build-backend")
+    requires = build_system.get("requires")
+    if backend != BUILD_SYSTEM_BACKEND or requires != [BUILD_SYSTEM_REQUIREMENT]:
+        raise CheckError(
+            "[build-system] must use exactly "
+            f"{BUILD_SYSTEM_BACKEND!r} with requires=[{BUILD_SYSTEM_REQUIREMENT!r}]"
+        )
 
 
 def read_project_version(root: Path = PROJECT_ROOT) -> str:
