@@ -43,11 +43,13 @@ when it is not cached. A passing static workflow check does not mean the
 workflow has run successfully on GitHub.
 
 Both Hatch build targets explicitly emit Core Metadata 2.4, which the locked
-Twine toolchain can validate. Build isolation resolves Hatchling separately from
-`uv.lock`, so relying on its default metadata version can break an unchanged
-checkout. The build regression test checks both the sdist-to-wheel path and a
+Twine toolchain can validate. The build backend is pinned to
+`hatchling==1.32.4` because build isolation resolves it separately from
+`uv.lock`; the workflow semantic check rejects a floating or alternate backend
+constraint. The build regression test checks both the sdist-to-wheel path and a
 direct wheel build with the locked Twine validator. Change the metadata format
-only together with verified support in the validation and publication tools.
+or backend pin only together with verified support in the validation and
+publication tools.
 
 If a check is unavailable, say so in the pull request rather than describing
 it as passing.

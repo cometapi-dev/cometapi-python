@@ -13,9 +13,19 @@ from typing import cast
 import yaml
 
 try:
-    from ._checks import CANONICAL_ACTIVE_MODEL, PROJECT_ROOT, CheckError
+    from ._checks import (
+        CANONICAL_ACTIVE_MODEL,
+        PROJECT_ROOT,
+        CheckError,
+        require_exact_build_system,
+    )
 except ImportError:  # Direct execution from the repository root.
-    from _checks import CANONICAL_ACTIVE_MODEL, PROJECT_ROOT, CheckError
+    from _checks import (
+        CANONICAL_ACTIVE_MODEL,
+        PROJECT_ROOT,
+        CheckError,
+        require_exact_build_system,
+    )
 
 RELEASE_PLEASE_BASELINE_SHA = "31b68904141489ca04932edbf305ccf88af09372"
 RELEASE_PLEASE_LOCK_JSONPATH = "$.package[?(@.name.value == 'cometapi')].version"
@@ -1864,6 +1874,7 @@ def main() -> int:
         default=PROJECT_ROOT / ".release-please-manifest.json",
     )
     args = parser.parse_args()
+    require_exact_build_system(PROJECT_ROOT)
     paths = check_workflow_inventory(args.ci_workflow.parent)
     publish_text = args.publish_workflow.read_text(encoding="utf-8")
     check_publish_workflow(
