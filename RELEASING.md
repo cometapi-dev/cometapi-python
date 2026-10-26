@@ -173,12 +173,17 @@ whose immutable action metadata selects `node24`. The semantic
 checker rejects any other pin so the workflow cannot silently regress to the
 deprecated Node 20 runtime.
 
-The direct PyPI publisher v1.14.1 is pinned to the reviewed commit. Its only
-action-definition change from the previously reviewed publisher is the
-conditional `setup-python` fallback moving from Node 20 to Node 24; the
+The direct PyPI publisher v1.14.3 is pinned to
+`7245906fb61fa33a13554f9d5fb856fe61758086`. The reviewed
+[upstream comparison](https://github.com/pypa/gh-action-pypi-publish/compare/ba38be9e461d3875417946c167d0b5f3d385a247...7245906fb61fa33a13554f9d5fb856fe61758086)
+retains the composite action definition and Node 24 `setup-python` fallback.
+Its runtime updates include Twine, Sigstore, and certifi plus hashed dependency
+constraints. The certifi and Sigstore update addresses
+[GHSA-5xjx-3w67-w9x9](https://github.com/pypa/gh-action-pypi-publish/security/advisories/GHSA-5xjx-3w67-w9x9).
+The semantic checker requires this exact publisher SHA while preserving the
 top-level `publish.yml`, `publish` job, `pypi` environment, and Trusted
-Publisher identity remain unchanged. The semantic checker requires this exact
-publisher SHA.
+Publisher identity. Local CI does not exercise OIDC publication or attestations;
+those require the separately authorized release workflow.
 
 The job invokes the pinned action release-only first with
 `skip-github-pull-request: true`. That step cannot continue on error and is

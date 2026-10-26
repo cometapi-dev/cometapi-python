@@ -134,10 +134,12 @@ Post-stable invariants:
    state read-only, and stop. Do not use another main push or recovery path
    until the exact external state is known and recovery is separately
    authorized.
-   Keep the PyPI publisher v1.14.1 pinned to the reviewed commit whose
+   Keep the PyPI publisher v1.14.3 pinned to the reviewed commit whose
    composite action uses the Node 24 `setup-python` fallback. The workflow
    checker must reject any other publisher SHA without changing the top-level
-   workflow, job, environment, or Trusted Publisher identity.
+   workflow, job, environment, or Trusted Publisher identity. Publisher upgrades
+   must update the workflow pin, semantic-checker constants, regression tests,
+   and current maintenance guidance together after reviewing upstream changes.
 10. `README.md` is the distribution long description and must remain accurate
     before and after publication. Use `python -m pip install cometapi`,
     unversioned project links, and publication-neutral maintenance language.
