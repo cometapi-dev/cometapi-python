@@ -500,13 +500,22 @@ def test_pypi_publisher_uses_reviewed_node24_action() -> None:
     check_publish_workflow(text, LIVE_SMOKE_WORKFLOW.read_text(encoding="utf-8"))
 
 
-def test_pypi_publisher_rejects_another_full_sha() -> None:
+@pytest.mark.parametrize(
+    "unreviewed_sha",
+    [
+        "ba38be9e461d3875417946c167d0b5f3d385a247",
+        "dc37677b2e1c63e2034f94d8a5b11f265b73ba33",
+        "cef221092ed1bacb1cc03d23a2d87d1d172e277b",
+    ],
+    ids=["prior-1.14.1", "prior-1.14.2", "unreviewed"],
+)
+def test_pypi_publisher_rejects_another_full_sha(unreviewed_sha: str) -> None:
     text = PUBLISH_WORKFLOW.read_text(encoding="utf-8").replace(
         PYPI_PUBLISH_ACTION,
-        "pypa/gh-action-pypi-publish@cef221092ed1bacb1cc03d23a2d87d1d172e277b",
+        f"pypa/gh-action-pypi-publish@{unreviewed_sha}",
         1,
     )
-    with pytest.raises(RuntimeError, match=r"pypa/gh-action-pypi-publish@ba38be9"):
+    with pytest.raises(RuntimeError, match=re.escape(PYPI_PUBLISH_ACTION)):
         check_publish_workflow(text, LIVE_SMOKE_WORKFLOW.read_text(encoding="utf-8"))
 
 

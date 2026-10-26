@@ -51,6 +51,15 @@ direct wheel build with the locked Twine validator. Change the metadata format
 or backend pin only together with verified support in the validation and
 publication tools.
 
+Dependabot can update a protected publisher Action SHA before its semantic
+contract has been reviewed. Review the upstream action definition and runtime
+dependencies, then update the workflow SHA and version comment,
+`PYPI_PUBLISH_ACTION_SHA` and `PYPI_PUBLISH_ACTION_VERSION` in
+`scripts/check_workflows.py`, regression coverage, and current maintenance
+guidance in the same pull request. Run the complete checks above and retain the
+exact-SHA rejection tests. Do not remove the guard or relax release conditions,
+permissions, or protected-environment requirements to make an update pass.
+
 If a check is unavailable, say so in the pull request rather than describing
 it as passing.
 
